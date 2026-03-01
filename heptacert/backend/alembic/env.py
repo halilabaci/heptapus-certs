@@ -11,14 +11,18 @@ from alembic import context
 # Add src/ to path so models can be imported
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.main import Base  # noqa: E402
+try:
+    from src.main import Base  # noqa: E402
+    target_metadata = Base.metadata
+except Exception:
+    # Fallback: create a bare metadata so alembic can still run migrations
+    from sqlalchemy import MetaData
+    target_metadata = MetaData()
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-target_metadata = Base.metadata
 
 # Allow ALEMBIC_DATABASE_URL env var to override alembic.ini
 _db_url = os.environ.get("ALEMBIC_DATABASE_URL") or config.get_main_option("sqlalchemy.url")

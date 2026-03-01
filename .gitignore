@@ -1,0 +1,51 @@
+# ── Environment & Secrets ──────────────────────────────────────────────────────
+heptacert/.env
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# ── Node / Next.js ────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Persistent data volumes (never commit)
+heptacert_data/
+db_data/
+backup_data/
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+desktop.ini
+ehthumbs.db
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+test_import.py
+migrate_attendance.sql

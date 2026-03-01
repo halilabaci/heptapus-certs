@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Mail, ArrowLeft, CheckCircle2, Eye, EyeOff, Key, Webhook,
   ShieldCheck, Plus, Trash2, Loader2, Copy, Check, ChevronDown, ChevronUp,
-  History, TrendingUp, TrendingDown, Coins
+  History, TrendingUp, TrendingDown, Coins, Globe
 } from "lucide-react";
 import Link from "next/link";
 
@@ -30,6 +30,7 @@ const TABS = [
   { id: "webhooks", label: "Webhooks", icon: Webhook },
   { id: "2fa", label: "2FA Güvenlik", icon: ShieldCheck },
   { id: "transactions", label: "Coin Geçmişi", icon: History },
+  { id: "domain", label: "Özel Domain", icon: Globe },
 ];
 const WEBHOOK_EVENTS = ["cert.issued", "cert.revoked", "cert.bulk_completed", "cert.expiring_soon"];
 
@@ -554,6 +555,90 @@ function TransactionsTab() {
   );
 }
 
+// ─── Custom Domain Tab ────────────────────────────────────────────────────────
+function CustomDomainTab() {
+  const [domain, setDomain] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/admin/organization/domain")
+      .then(r => r.json())
+      .then(d => { setDomain(d.custom_domain || ""); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null); setOk(false); setSaving(true);
+    try {
+      await apiFetch("/admin/organization/domain", {
+        method: "PUT",
+        body: JSON.stringify({ custom_domain: domain.trim() || null }),
+      });
+      setOk(true);
+      setTimeout(() => setOk(false), 3000);
+    } catch (e: any) {
+      setErr(e?.message || "Kaydedilemedi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>;
+
+  return (
+    <div className="max-w-lg space-y-6">
+      <div className="card p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Globe className="h-5 w-5" /></div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Özel Alan Adı</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Sertifika doğrulama sayfaları kendi alan adınızda görünsün</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 mb-5">
+          <p className="text-xs text-amber-700 font-medium">Growth ve Enterprise planlarına özeldir. DNS'inizde <code className="font-mono bg-amber-100 px-1 rounded">CNAME</code> kaydı oluşturmanız gerekir.</p>
+        </div>
+        <form onSubmit={save} className="space-y-4">
+          <div>
+            <label className="label">Alan Adı</label>
+            <div className="relative">
+              <Globe className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input-field pl-10"
+                type="text"
+                value={domain}
+                onChange={e => setDomain(e.target.value)}
+                placeholder="certs.sirketiniz.com"
+                autoComplete="off"
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">Boş bırakırsanız özel alan adı kaldırılır.</p>
+          </div>
+          {err && <div className="error-banner">{err}</div>}
+          {ok && <div className="success-banner"><CheckCircle2 className="h-4 w-4 shrink-0" /> Alan adı kaydedildi.</div>}
+          <button type="submit" disabled={saving} className="btn-primary gap-2">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Kaydet
+          </button>
+        </form>
+      </div>
+      <div className="card p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-800">DNS Yapılandırması</h3>
+        <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 text-xs font-mono space-y-1">
+          <p className="text-gray-500"># DNS sağlayıcınıza şu kaydı ekleyin:</p>
+          <p className="text-gray-800">{domain || "certs.sirketiniz.com"} &nbsp;CNAME&nbsp; {typeof window !== "undefined" ? window.location.hostname : "heptacert.app"}</p>
+        </div>
+        <p className="text-xs text-gray-400">DNS değişikliklerinin yayılması 24-48 saat sürebilir.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -590,6 +675,7 @@ export default function AdminSettingsPage() {
             {activeTab === "webhooks" && <WebhooksTab />}
             {activeTab === "2fa" && <TwoFATab />}
             {activeTab === "transactions" && <TransactionsTab />}
+            {activeTab === "domain" && <CustomDomainTab />}
           </motion.div>
         </AnimatePresence>
       </div>

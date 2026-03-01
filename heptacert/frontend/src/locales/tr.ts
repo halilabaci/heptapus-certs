@@ -7,11 +7,11 @@ export const tr = {
   nav_start_free: "Ücretsiz Başla",
 
   // --- HOME PAGE ---
-  home_hero_badge: "Heptapus Group — Dijital Sertifika Platformu",
-  home_hero_title_1: "Sertifikalarınızı",
-  home_hero_title_2: "dijital ortamda",
-  home_hero_title_3: "yönetin ve doğrulayın",
-  home_hero_subtitle: "Etkinlikleriniz için özelleştirilebilir sertifikalar oluşturun, toplu üretin ve QR kod ile anında doğrulanabilir hale getirin.",
+  home_hero_badge: "Heptapus Group — Etkinlik & Sertifika Yönetim Platformu",
+  home_hero_title_1: "Etkinliklerinizi",
+  home_hero_title_2: "profesyonelce yönetin",
+  home_hero_title_3: "ve belgeleyin",
+  home_hero_subtitle: "Etkinlik oluşturun, oturumlar planlayın, katılımcıları takip edin ve QR doğrulamalı sertifikalar üretin — hepsi tek platformda.",
   home_cta_register: "Ücretsiz Hesap Oluştur",
   home_cta_verify: "Sertifika Sorgula",
   home_cta_demo: "Demo İncele",
@@ -42,12 +42,12 @@ export const tr = {
 
   // --- HOW IT WORKS ---
   home_how_title: "Nasıl Çalışır?",
-  step1_title: "Şablon Yükle",
-  step1_desc: "Sertifika şablonunuzu yükleyin, ad ve QR kod konumlarını editörden belirleyin.",
-  step2_title: "Katılımcıları Ekle",
-  step2_desc: "Excel dosyasıyla toplu yükleyin ya da tek tek manuel olarak ekleyin.",
-  step3_title: "Paylaşın",
-  step3_desc: "Sistem her katılımcı için PDF üretir. QR kodu okutarak doğrulama anında yapılır.",
+  step1_title: "Etkinlik Oluştur",
+  step1_desc: "Etkinliğinizi tanımlayın, oturumlar ekleyin ve sertifika şablonunu editörde özelleştirin.",
+  step2_title: "Katılımcıları Yönet",
+  step2_desc: "QR ile check-in alın, Excel ile toplu katılımcı yükleyin, kayıt linklerini paylaşın.",
+  step3_title: "Sertifika Üret & Paylaş",
+  step3_desc: "Her katılımcı için PDF otomatik oluşturulur. QR okutarak anında doğrulama yapılır.",
 
   // --- CTA SECTION ---
   home_cta_section_badge: "Hemen başlayın",

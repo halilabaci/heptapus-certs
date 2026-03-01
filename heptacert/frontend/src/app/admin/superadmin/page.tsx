@@ -33,6 +33,9 @@ import {
   HardDrive,
   Server,
   Clock,
+  ClipboardList,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
@@ -56,7 +59,7 @@ type PricingTier = {
   is_enterprise: boolean;
 };
 
-type Tab = "admins" | "pricing" | "stats" | "payment" | "orgs" | "auditlogs" | "health";
+type Tab = "admins" | "subscriptions" | "pricing" | "stats" | "payment" | "orgs" | "auditlogs" | "health" | "waitlist";
 
 type PaymentConfig = {
   payment_enabled: boolean;
@@ -389,8 +392,8 @@ export default function SuperAdminPage() {
     show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
   };
 
-  const tierBorders = ["border-brand-200", "border-violet-200", "border-amber-200"];
-  const tierBadgeBg = ["bg-brand-50 text-brand-700", "bg-violet-50 text-violet-700", "bg-amber-50 text-amber-700"];
+  const tierBorders = ["border-brand-200", "border-violet-200", "border-rose-200", "border-amber-200"];
+  const tierBadgeBg = ["bg-brand-50 text-brand-700", "bg-violet-50 text-violet-700", "bg-rose-50 text-rose-700", "bg-amber-50 text-amber-700"];
 
   return (
     <div className="grid gap-6 pb-20 pt-6">
@@ -471,7 +474,7 @@ export default function SuperAdminPage() {
 
       {/* --- TAB BAR --- */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(["admins", "pricing", "stats", "payment", "orgs", "auditlogs", "health"] as Tab[]).map((tab) => (
+        {(["admins", "subscriptions", "pricing", "stats", "payment", "orgs", "auditlogs", "health", "waitlist"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -482,18 +485,22 @@ export default function SuperAdminPage() {
             }`}
           >
             {tab === "admins" ? <Users className="h-4 w-4" /> :
+             tab === "subscriptions" ? <CreditCard className="h-4 w-4" /> :
              tab === "pricing" ? <Tag className="h-4 w-4" /> :
              tab === "stats" ? <BarChart3 className="h-4 w-4" /> :
              tab === "orgs" ? <Building2 className="h-4 w-4" /> :
              tab === "auditlogs" ? <ScrollText className="h-4 w-4" /> :
              tab === "health" ? <Activity className="h-4 w-4" /> :
+             tab === "waitlist" ? <ClipboardList className="h-4 w-4" /> :
              <CreditCard className="h-4 w-4" />}
             {tab === "admins" ? t("superadmin_tab_admins") :
+             tab === "subscriptions" ? "Abonelikler" :
              tab === "pricing" ? t("superadmin_tab_pricing") :
              tab === "stats" ? "İstatistikler" :
              tab === "orgs" ? "Kurumlar" :
              tab === "auditlogs" ? "Denetim Kaydı" :
              tab === "health" ? "Sistem Sağlığı" :
+             tab === "waitlist" ? "Bekleme Listesi" :
              "Ödeme"}
           </button>
         ))}
@@ -719,7 +726,7 @@ export default function SuperAdminPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
                 </div>
               ) : (
-                <div className="grid gap-6 lg:grid-cols-3">
+                <div className="grid gap-6 lg:grid-cols-4 xl:grid-cols-4">
                   {pricingTiers.map((tier, idx) => (
                     <div
                       key={tier.id}
@@ -1121,7 +1128,141 @@ export default function SuperAdminPage() {
       {/* ===== SYSTEM HEALTH TAB ===== */}
       {!loading && activeTab === "health" && <SystemHealthTab />}
 
+      {/* ===== WAITLIST TAB ===== */}
+      {!loading && activeTab === "waitlist" && <WaitlistTab />}
+
+      {/* ===== SUBSCRIPTIONS TAB ===== */}
+      {!loading && activeTab === "subscriptions" && <SubscriptionsTab />}
+
     </div>
+  );
+}
+
+// ─── Waitlist Tab ────────────────────────────────────────────────────────────────
+type WaitlistRow = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  plan_interest: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+function WaitlistTab() {
+  const [entries, setEntries] = useState<WaitlistRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/superadmin/waitlist")
+      .then(r => r.json())
+      .then(d => { setEntries(d.entries || []); setTotal(d.total || 0); })
+      .catch(() => setErr("Veriler yüklenemedi."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function exportCsv() {
+    if (!entries.length) return;
+    const header = "ID,Ad Soyad,E-posta,Telefon,İlgilenilen Plan,Not,Tarih";
+    const rows = entries.map(e =>
+      [e.id, e.name, e.email, e.phone || "", e.plan_interest || "", (e.note || "").replace(/,/g, " "), e.created_at].join(",")
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "bekleme-listesi.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) return <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-brand-500" /></div>;
+  if (err) return <div className="error-banner mx-auto max-w-md mt-8">{err}</div>;
+
+  return (
+    <motion.div
+      key="waitlist"
+      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      {/* Header */}
+      <div className="card p-6 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-1 h-full rounded-l-3xl bg-violet-500" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50">
+              <ClipboardList className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900">Bekleme Listesi</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {total > 0 ? `${total} kişi kaydoldu` : "Henüz kayıt yok"}
+              </p>
+            </div>
+          </div>
+          {total > 0 && (
+            <button onClick={exportCsv} className="btn-secondary gap-2 text-sm">
+              CSV İndir
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      {entries.length === 0 ? (
+        <div className="card p-12 text-center">
+          <ClipboardList className="h-12 w-12 mx-auto text-gray-200 mb-4" />
+          <p className="text-gray-500 font-semibold">Henüz kimse bekleme listesine katılmadı.</p>
+          <p className="text-xs text-gray-400 mt-1">Fiyatlandırma sayfasından gelen başvurular burada görünür.</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Ad Soyad</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">E-posta</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Telefon</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Tarih</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {entries.map((e) => (
+                  <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-gray-400 text-xs">{e.id}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">{e.name}</td>
+                    <td className="px-4 py-3">
+                      <a href={`mailto:${e.email}`} className="flex items-center gap-1.5 text-brand-600 hover:text-brand-800 transition-colors">
+                        <Mail className="h-3.5 w-3.5" /> {e.email}
+                      </a>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {e.phone ? (
+                        <a href={`tel:${e.phone}`} className="flex items-center gap-1.5 hover:text-brand-600 transition-colors">
+                          <Phone className="h-3.5 w-3.5" /> {e.phone}
+                        </a>
+                      ) : <span className="text-gray-300">&mdash;</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {e.plan_interest ? (
+                        <span className="rounded-full bg-violet-50 border border-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700 capitalize">
+                          {e.plan_interest}
+                        </span>
+                      ) : <span className="text-gray-300">&mdash;</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      {new Date(e.created_at).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }
 
@@ -1406,6 +1547,222 @@ function AuditLogTab() {
         <span className="text-sm text-gray-500">Sayfa {page}</span>
         <button onClick={() => setPage(p => p + 1)} disabled={logs.length < 50} className="btn-secondary text-sm px-3 py-1.5">Sonraki →</button>
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Subscriptions Tab ────────────────────────────────────────────────────────
+type SubscriptionRow = {
+  id: number;
+  user_id: number;
+  user_email: string;
+  plan_id: string;
+  order_id: number | null;
+  started_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+};
+
+const PLAN_OPTIONS = ["starter", "pro", "growth", "enterprise"];
+
+function SubscriptionsTab() {
+  const [subs, setSubs] = useState<SubscriptionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Grant form
+  const [grantEmail, setGrantEmail] = useState("");
+  const [grantPlan, setGrantPlan] = useState("pro");
+  const [grantDays, setGrantDays] = useState(365);
+  const [granting, setGranting] = useState(false);
+
+  // Revoke
+  const [revoking, setRevoking] = useState<number | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await apiFetch("/superadmin/subscriptions");
+      setSubs(await r.json());
+    } catch (e: any) {
+      setErr(e?.message || "Abonelikler yüklenemedi.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function onGrant(e: React.FormEvent) {
+    e.preventDefault();
+    setGranting(true);
+    setErr(null);
+    setSuccessMsg(null);
+    try {
+      await apiFetch("/superadmin/subscriptions/grant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_email: grantEmail, plan_id: grantPlan, days: grantDays }),
+      });
+      setSuccessMsg(`${grantEmail} kullanıcısına ${grantPlan} planı verildi (${grantDays} gün).`);
+      setGrantEmail("");
+      load();
+    } catch (e: any) {
+      setErr(e?.message || "Abonelik verilemedi.");
+    } finally {
+      setGranting(false);
+    }
+  }
+
+  async function onRevoke(id: number) {
+    if (!confirm("Bu aboneliği iptal etmek istiyor musunuz?")) return;
+    setRevoking(id);
+    try {
+      await apiFetch(`/superadmin/subscriptions/${id}`, { method: "DELETE" });
+      load();
+    } catch (e: any) {
+      setErr(e?.message || "İptal edilemedi.");
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  const planBadge: Record<string, string> = {
+    starter: "bg-gray-100 text-gray-600",
+    pro: "bg-violet-100 text-violet-700",
+    growth: "bg-rose-100 text-rose-700",
+    enterprise: "bg-amber-100 text-amber-700",
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Abonelik Yönetimi</h2>
+          <p className="text-sm text-gray-500">Kullanıcılara ücretsiz abonelik verin veya mevcut abonelikleri iptal edin.</p>
+        </div>
+        <button onClick={load} disabled={loading} className="btn-secondary gap-2">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />} Yenile
+        </button>
+      </div>
+
+      {err && <div className="flex items-center gap-2 text-rose-600 text-sm bg-rose-50 border border-rose-100 rounded-xl p-3"><AlertCircle className="h-4 w-4 shrink-0" />{err}</div>}
+      {successMsg && <div className="flex items-center gap-2 text-emerald-700 text-sm bg-emerald-50 border border-emerald-100 rounded-xl p-3"><CheckCircle2 className="h-4 w-4 shrink-0" />{successMsg}</div>}
+
+      {/* Grant Form */}
+      <div className="card p-6 border-2 border-brand-100">
+        <div className="flex items-center gap-2 font-bold text-gray-800 mb-4">
+          <div className="p-2 rounded-xl bg-brand-50"><CreditCard className="h-5 w-5 text-brand-600" /></div>
+          Ücretsiz Abonelik Ver
+        </div>
+        <form onSubmit={onGrant} className="grid sm:grid-cols-4 gap-4 items-end">
+          <div className="sm:col-span-2">
+            <label className="label">Kullanıcı E-posta</label>
+            <input
+              className="input-field"
+              type="email"
+              required
+              value={grantEmail}
+              onChange={e => setGrantEmail(e.target.value)}
+              placeholder="user@example.com"
+            />
+          </div>
+          <div>
+            <label className="label">Plan</label>
+            <select className="input-field" value={grantPlan} onChange={e => setGrantPlan(e.target.value)}>
+              {PLAN_OPTIONS.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Süre (gün)</label>
+            <input
+              className="input-field"
+              type="number"
+              min={1}
+              max={3650}
+              value={grantDays}
+              onChange={e => setGrantDays(Number(e.target.value))}
+            />
+          </div>
+          <div className="sm:col-span-4">
+            <button type="submit" disabled={granting} className="btn-primary gap-2">
+              {granting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
+              {granting ? "Veriliyor..." : "Abonelik Ver"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Subscriptions Table */}
+      {loading ? (
+        <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>
+      ) : subs.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <CreditCard className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Henüz abonelik yok.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                {["#", "Kullanıcı", "Plan", "Başlangıç", "Bitiş", "Durum", ""].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {subs.map(sub => (
+                <tr key={sub.id} className={`hover:bg-gray-50 transition-colors ${!sub.is_active ? "opacity-50" : ""}`}>
+                  <td className="px-4 py-3 text-xs font-mono text-gray-400">{sub.id}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-800 text-xs">{sub.user_email}</div>
+                    <div className="text-xs text-gray-400 font-mono">ID: {sub.user_id}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${planBadge[sub.plan_id] ?? "bg-gray-100 text-gray-600"}`}>
+                      {sub.plan_id}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    {sub.started_at ? new Date(sub.started_at).toLocaleDateString("tr-TR") : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    {sub.expires_at ? new Date(sub.expires_at).toLocaleDateString("tr-TR") : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {sub.is_active ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Aktif
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gray-400" /> Pasif
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {sub.is_active && (
+                      <button
+                        onClick={() => onRevoke(sub.id)}
+                        disabled={revoking === sub.id}
+                        className="rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                        title="Aboneliği İptal Et"
+                      >
+                        {revoking === sub.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </motion.div>
   );
 }

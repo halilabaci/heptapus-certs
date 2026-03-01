@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion";
 import {
-  ShieldCheck,
   Zap,
   ArrowRight,
   Search,
@@ -79,13 +78,6 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <motion.section variants={stagger} initial="hidden" animate="show" className="text-center pt-10">
-        <motion.div variants={in_view} className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
-          </span>
-          {t("home_hero_badge")}
-        </motion.div>
 
         <motion.h1 variants={in_view} className="mx-auto max-w-3xl text-5xl font-extrabold tracking-tight text-gray-900 sm:text-6xl leading-tight">
           {t("home_hero_title_1")}{" "}
@@ -223,8 +215,8 @@ export default function LandingPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-violet-500 text-white shadow-brand">
-                <ShieldCheck className="h-5 w-5" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-900 p-1.5 shadow-lg">
+                <img src="https://heptapusgroup.com/icons/heptapus_logo_white.png" alt="Heptapus Group" className="h-8 w-8 object-contain" />
               </div>
               <span className="text-lg font-black text-gray-900">Heptapus Group</span>
             </div>
@@ -262,17 +254,27 @@ export default function LandingPage() {
       </motion.section>
 
       {/* ── FOOTER ── */}
-      <footer className="flex flex-col items-center justify-between gap-6 border-t border-gray-100 pt-10 pb-6 md:flex-row">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-auto">
-            <Image src="/logo.png" alt="HeptaCert" width={160} height={44} className="h-10 w-auto" unoptimized />
-          </div>
-          <span className="text-sm text-gray-400 font-normal">© {new Date().getFullYear()}</span>
+      <footer className="flex flex-col gap-8 border-t border-gray-100 pt-10 pb-6">
+        {/* Legal links row */}
+        <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center text-xs text-gray-400">
+          <Link href="/kvkk" className="hover:text-brand-600 transition-colors">KVKK Aydınlatma Metni</Link>
+          <Link href="/gizlilik" className="hover:text-brand-600 transition-colors">Gizlilik Politikası</Link>
+          <Link href="/iade" className="hover:text-brand-600 transition-colors">İade ve İptal Politikası</Link>
+          <Link href="/mesafeli-satis" className="hover:text-brand-600 transition-colors">Mesafeli Satış Sözleşmesi</Link>
+          <Link href="/iletisim" className="hover:text-brand-600 transition-colors">İletişim</Link>
         </div>
-        <div className="flex gap-6 text-sm font-medium text-gray-500">
-          <Link href="/verify" className="hover:text-brand-600 transition-colors">{t("footer_verify")}</Link>
-          <Link href="/pricing" className="hover:text-brand-600 transition-colors">{t("footer_pricing")}</Link>
-          <Link href="/admin/login" className="hover:text-gray-900 transition-colors">{t("footer_login")}</Link>
+        {/* Bottom row */}
+        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+          <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="HeptaCert" width={160} height={44} className="h-10 w-auto" unoptimized />
+            <span className="text-sm text-gray-400 font-normal">© {new Date().getFullYear()} Heptapus Group</span>
+          </div>
+          <div className="flex gap-6 text-sm font-medium text-gray-500">
+            <Link href="/verify" className="hover:text-brand-600 transition-colors">{t("footer_verify")}</Link>
+            <Link href="/pricing" className="hover:text-brand-600 transition-colors">{t("footer_pricing")}</Link>
+            <Link href="/iletisim" className="hover:text-brand-600 transition-colors">İletişim</Link>
+            <Link href="/admin/login" className="hover:text-gray-900 transition-colors">{t("footer_login")}</Link>
+          </div>
         </div>
       </footer>
 

@@ -26,6 +26,8 @@ import {
   CheckSquare,
   Square,
   X,
+  QrCode,
+  Users,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
@@ -229,11 +231,28 @@ export default function CertificatesPage({ params }: { params: { id: string } })
     <div className="flex flex-col gap-6 pb-20 pt-6">
 
       {/* TOP NAV */}
-      <div className="flex items-center justify-between">
-        <Link href="/admin/events" className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
-          <ChevronLeft className="h-4 w-4" /> {t("certs_back")}
+      {/* Breadcrumb + Event Tab Nav */}
+      <div className="flex flex-col gap-3">
+        <Link href="/admin/events" className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors w-fit">
+          <ChevronLeft className="h-3.5 w-3.5" /> Tüm Etkinlikler
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          <Link href={`/admin/events/${eventId}/certificates`} className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm">
+            <LockKeyhole className="h-3.5 w-3.5" /> Sertifikalar
+          </Link>
+          <Link href={`/admin/events/${eventId}/sessions`} className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 shadow-sm transition-colors">
+            <QrCode className="h-3.5 w-3.5" /> Oturumlar
+          </Link>
+          <Link href={`/admin/events/${eventId}/attendees`} className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3.5 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
+            <Users className="h-3.5 w-3.5" /> Katılımcılar
+          </Link>
+          <Link href={`/admin/events/${eventId}/checkin`} className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 shadow-sm transition-colors">
+            <Hash className="h-3.5 w-3.5" /> Check-in
+          </Link>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-px h-5 bg-gray-200" />
           <button onClick={() => exportCerts("csv")} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 shadow-sm transition-colors">
             <FileDown className="h-3.5 w-3.5" /> CSV
           </button>
@@ -244,7 +263,6 @@ export default function CertificatesPage({ params }: { params: { id: string } })
             <Hash className="h-3 w-3" /> Event: {eventId}
           </div>
         </div>
-      </div>
 
       {/* Bulk action floating bar */}
       <AnimatePresence>

@@ -73,3 +73,272 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   }
   return res;
 }
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface EventOut {
+  id: number;
+  name: string;
+  template_image_url: string;
+  config: Record<string, unknown>;
+  event_date?: string | null;
+  event_description?: string | null;
+  event_location?: string | null;
+  min_sessions_required: number;
+  event_banner_url?: string | null;
+}
+
+export interface SessionOut {
+  id: number;
+  event_id: number;
+  name: string;
+  session_date?: string | null;
+  session_start?: string | null;
+  session_location?: string | null;
+  checkin_token: string;
+  is_active: boolean;
+  created_at: string;
+  attendance_count: number;
+}
+
+export interface AttendeeOut {
+  id: number;
+  event_id: number;
+  name: string;
+  email: string;
+  source: "import" | "self_register";
+  registered_at: string;
+  sessions_attended: number;
+  has_certificate: boolean;
+}
+
+export interface AttendanceMatrixRow {
+  attendee_id: number;
+  name: string;
+  email: string;
+  source: string;
+  sessions_attended: number;
+  meets_threshold: boolean;
+  has_certificate: boolean;
+  certificate_uuid: string | null;
+  checkins: Record<string, string | null>;
+}
+
+export interface AttendanceMatrix {
+  event_id: number;
+  min_sessions_required: number;
+  sessions: { id: number; name: string; session_date: string | null }[];
+  rows: AttendanceMatrixRow[];
+}
+
+// ── Event (extended) ──────────────────────────────────────────────────────────
+
+export interface SubscriptionInfo {
+  active: boolean;
+  plan_id: string | null;
+  expires_at: string | null;
+  role?: string | null;
+}
+
+export async function getMySubscription(): Promise<SubscriptionInfo> {
+  const res = await apiFetch("/billing/subscription");
+  return res.json();
+}
+
+export async function updateEventMeta(
+  eventId: number,
+  data: {
+    name: string;
+    event_date?: string | null;
+    event_description?: string | null;
+    event_location?: string | null;
+    min_sessions_required?: number | null;
+    event_banner_url?: string | null;
+  }
+) {
+  const res = await apiFetch(`/admin/events/${eventId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return res.json() as Promise<EventOut>;
+}
+
+export async function uploadEventBanner(eventId: number, file: File): Promise<{ event_banner_url: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(`/admin/events/${eventId}/banner-upload`, {
+    method: "POST",
+    body: form,
+  });
+  return res.json();
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+export async function listSessions(eventId: number): Promise<SessionOut[]> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions`);
+  return res.json();
+}
+
+export async function createSession(
+  eventId: number,
+  data: { name: string; session_date?: string; session_start?: string; session_location?: string }
+): Promise<SessionOut> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateSession(
+  eventId: number,
+  sessionId: number,
+  data: { name: string; session_date?: string; session_start?: string; session_location?: string }
+): Promise<SessionOut> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteSession(eventId: number, sessionId: number) {
+  await apiFetch(`/admin/events/${eventId}/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function toggleSession(eventId: number, sessionId: number): Promise<SessionOut> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions/${sessionId}/toggle`, {
+    method: "PATCH",
+  });
+  return res.json();
+}
+
+export function getSessionQrUrl(eventId: number, sessionId: number): string {
+  const token = getToken();
+  return `${API_BASE}/admin/events/${eventId}/sessions/${sessionId}/qr?token=${token}`;
+}
+
+export async function fetchSessionQr(eventId: number, sessionId: number): Promise<{ blob: Blob; checkinUrl: string }> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions/${sessionId}/qr`);
+  const blob = await res.blob();
+  const checkinUrl = res.headers.get("x-checkin-url") || "";
+  return { blob, checkinUrl };
+}
+
+// ── Attendees ─────────────────────────────────────────────────────────────────
+
+export async function listAttendees(
+  eventId: number,
+  params: { page?: number; limit?: number; search?: string } = {}
+): Promise<{ items: AttendeeOut[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.search) qs.set("search", params.search);
+  const res = await apiFetch(`/admin/events/${eventId}/attendees?${qs}`);
+  return res.json();
+}
+
+export async function importAttendees(eventId: number, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(`/admin/events/${eventId}/attendees/import`, {
+    method: "POST",
+    body: form,
+  });
+  return res.json() as Promise<{ added: number; skipped: number }>;
+}
+
+export async function deleteAttendee(eventId: number, attendeeId: number) {
+  await apiFetch(`/admin/events/${eventId}/attendees/${attendeeId}`, { method: "DELETE" });
+}
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+
+export async function getAttendanceMatrix(eventId: number): Promise<AttendanceMatrix> {
+  const res = await apiFetch(`/admin/events/${eventId}/attendance`);
+  return res.json();
+}
+
+export async function adminManualCheckin(
+  eventId: number,
+  sessionId: number,
+  email: string
+): Promise<{ ok: boolean; message: string }> {
+  const res = await apiFetch(`/admin/events/${eventId}/sessions/${sessionId}/checkin`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
+}
+
+export function getAttendanceExportUrl(eventId: number, fmt: "xlsx" | "csv" = "xlsx"): string {
+  return `${API_BASE}/admin/events/${eventId}/attendance/export?fmt=${fmt}`;
+}
+
+// ── Bulk certify ──────────────────────────────────────────────────────────────
+
+export async function bulkCertifyAttendees(
+  eventId: number,
+  hosting_term: "monthly" | "yearly" = "yearly"
+): Promise<{ created: number; already_had_cert: number; below_threshold: number; total_attendees: number; spent_heptacoin: number }> {
+  const res = await apiFetch(`/admin/events/${eventId}/bulk-certify`, {
+    method: "POST",
+    body: JSON.stringify({ hosting_term }),
+  });
+  return res.json();
+}
+
+// ── Public: event info ────────────────────────────────────────────────────────
+
+export async function getPublicEventInfo(eventId: number) {
+  const res = await fetch(`${API_BASE}/events/${eventId}/info`);
+  if (!res.ok) throw new Error("Event not found");
+  return res.json();
+}
+
+export async function publicRegisterAttendee(
+  eventId: number,
+  data: { name: string; email: string }
+) {
+  const res = await fetch(`${API_BASE}/events/${eventId}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j?.detail || "Kayıt başarısız");
+  }
+  return res.json();
+}
+
+export async function getCheckinSessionInfo(token: string) {
+  const res = await fetch(`${API_BASE}/attend/${token}`);
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j?.detail || "Geçersiz QR kodu");
+  }
+  return res.json();
+}
+
+export async function selfCheckin(token: string, email: string) {
+  const res = await fetch(`${API_BASE}/attend/${token}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j?.detail || "Check-in başarısız");
+  }
+  return res.json() as Promise<{
+    success: boolean;
+    message: string;
+    attendee_name: string;
+    sessions_attended: number;
+    sessions_required: number;
+    total_sessions: number;
+  }>;
+}

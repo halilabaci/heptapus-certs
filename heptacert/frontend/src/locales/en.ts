@@ -9,11 +9,11 @@ export const en: typeof tr = {
   nav_start_free: "Start Free",
 
   // --- HOME PAGE ---
-  home_hero_badge: "Heptapus Group — Digital Certificate Platform",
-  home_hero_title_1: "Manage and verify",
-  home_hero_title_2: "your certificates",
-  home_hero_title_3: "digitally",
-  home_hero_subtitle: "Create customizable certificates for your events, generate in bulk, and make them instantly verifiable with QR codes.",
+  home_hero_badge: "Heptapus Group — Event & Certificate Management Platform",
+  home_hero_title_1: "Manage your events",
+  home_hero_title_2: "professionally",
+  home_hero_title_3: "and document them",
+  home_hero_subtitle: "Create events, manage sessions, track attendees, and generate QR-verified certificates — all in one platform.",
   home_cta_register: "Create Free Account",
   home_cta_verify: "Verify Certificate",
   home_cta_demo: "View Demo",
@@ -44,12 +44,12 @@ export const en: typeof tr = {
 
   // --- HOW IT WORKS ---
   home_how_title: "How It Works",
-  step1_title: "Upload Template",
-  step1_desc: "Upload your certificate template and set name and QR code positions in the editor.",
-  step2_title: "Add Participants",
-  step2_desc: "Upload in bulk with an Excel file, or add them one by one manually.",
-  step3_title: "Share",
-  step3_desc: "The system generates a PDF for each participant. Scanning the QR code enables instant verification.",
+  step1_title: "Create Event",
+  step1_desc: "Define your event, add sessions, and customise the certificate template in the editor.",
+  step2_title: "Manage Attendees",
+  step2_desc: "Check in with QR codes, bulk-upload participants via Excel, and share registration links.",
+  step3_title: "Generate & Share Certificates",
+  step3_desc: "A PDF is automatically generated for each participant. Scan the QR code for instant verification.",
 
   // --- CTA SECTION ---
   home_cta_section_badge: "Get started now",

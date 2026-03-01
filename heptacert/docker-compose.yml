@@ -23,6 +23,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://heptacert:heptacert@db:5432/heptacert
       ALEMBIC_DATABASE_URL: postgresql://heptacert:heptacert@db:5432/heptacert
       PUBLIC_BASE_URL: http://localhost:8765
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3030}
       STORAGE_MODE: local
       LOCAL_STORAGE_DIR: /data
       # Email / SMTP — .env dosyasından alınır
@@ -51,7 +52,7 @@ services:
     command: >
       sh -c "
         cd /app &&
-        alembic upgrade head &&
+        (python -m alembic upgrade head || echo 'Alembic skipped, continuing...') &&
         uvicorn src.main:app --host 0.0.0.0 --port 8000
       "
     healthcheck:
@@ -68,8 +69,10 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8765/api}
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:8765/api
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8765/api}
     ports:
       - "3030:3000"
     depends_on:

@@ -16,6 +16,8 @@ RUN pip install --upgrade pip && \
     -r requirements.txt
 
 COPY src ./src
+COPY alembic ./alembic
+COPY alembic.ini .
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000

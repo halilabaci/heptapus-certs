@@ -1,14 +1,14 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch, clearToken } from "@/lib/api";
+import { apiFetch, clearToken, getMySubscription, type SubscriptionInfo } from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, LogOut, LayoutGrid, Image as ImageIcon, Hash,
   AlertCircle, Loader2, Shield, ListChecks, Pencil, Coins,
-  Zap, FolderKanban, Trash2, Check, X, Settings,
+  Zap, FolderKanban, Trash2, Check, X, Settings, Link2, ClipboardCheck,
 } from "lucide-react";
 
 type EventOut = { id: number; name: string; template_image_url: string; config: any };
@@ -26,6 +26,16 @@ export default function AdminEvents() {
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [certStats, setCertStats] = useState<Record<number, EventStat>>({});
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [hasPaidPlan, setHasPaidPlan] = useState(false);
+
+  function copyRegisterLink(id: number) {
+    const url = `${window.location.origin}/events/${id}/register`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }
 
   const router = useRouter();
 
@@ -46,6 +56,14 @@ export default function AdminEvents() {
           const map: Record<number, EventStat> = {};
           (d.events_with_stats || []).forEach((s) => { map[s.event_id] = s; });
           setCertStats(map);
+        })
+        .catch(() => {});
+      // Load subscription (non-blocking)
+      getMySubscription()
+        .then((sub) => {
+          if (sub.role === "superadmin" || (sub.active && ["pro", "growth", "enterprise"].includes(sub.plan_id ?? ""))) {
+            setHasPaidPlan(true);
+          }
         })
         .catch(() => {});
     } catch (e: any) {
@@ -133,7 +151,8 @@ export default function AdminEvents() {
                 <LayoutGrid className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Etkinlik Paneli</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Yönetim Paneli</h1>
+                <p className="text-sm text-gray-500 mt-0.5">Etkinlikler, oturumlar ve sertifikalar</p>
                 {me ? (
                   <div className="mt-1.5 flex flex-wrap items-center gap-3">
                     <span className="text-sm text-gray-500">{me.email}</span>
@@ -299,6 +318,31 @@ export default function AdminEvents() {
                                 </span>
                               )}
                             </Link>
+                            <Link
+                              href={`/admin/events/${ev.id}/sessions`}
+                              className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${hasPaidPlan ? "border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100" : "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"}`}
+                              title={hasPaidPlan ? undefined : "Pro veya Enterprise plan gerekli"}
+                            >
+                              <Hash className="h-3.5 w-3.5" /> Oturumlar
+                            </Link>
+                            <Link
+                              href={`/admin/events/${ev.id}/attendees`}
+                              className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${hasPaidPlan ? "border-violet-100 bg-violet-50 text-violet-700 hover:bg-violet-100" : "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"}`}
+                              title={hasPaidPlan ? undefined : "Pro veya Enterprise plan gerekli"}
+                            >
+                              <FolderKanban className="h-3.5 w-3.5" /> Katılım
+                            </Link>
+                            {hasPaidPlan && (
+                            <button
+                              onClick={() => copyRegisterLink(ev.id)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-sky-100 bg-sky-50 px-3.5 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+                            >
+                              {copiedId === ev.id
+                                ? <><ClipboardCheck className="h-3.5 w-3.5" /> Kopyalandı!</>
+                                : <><Link2 className="h-3.5 w-3.5" /> Kayıt Linki</>
+                              }
+                            </button>
+                            )}
                             <button
                               onClick={() => setDeletingId(ev.id)}
                               className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"

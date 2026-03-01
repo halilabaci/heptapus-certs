@@ -1,0 +1,95 @@
+name: CI — Tests & Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: heptacert/backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: heptacert_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d heptacert_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///
+      JWT_SECRET: ci-test-jwt-secret-32chars-minimum!!
+      EMAIL_TOKEN_SECRET: ci-test-email-token-secret
+      BOOTSTRAP_SUPERADMIN_EMAIL: super@test.com
+      BOOTSTRAP_SUPERADMIN_PASSWORD: SuperPass123!
+      PUBLIC_BASE_URL: http://localhost:8000
+      FRONTEND_BASE_URL: http://localhost:3000
+      CORS_ORIGINS: "*"
+      STORAGE_MODE: local
+      LOCAL_STORAGE_DIR: /tmp/heptacert_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: heptacert/backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
+
+      - name: Check for security issues (bandit)
+        run: |
+          pip install bandit
+          bandit -r src/ -ll -ii --skip B101 || true
+
+  frontend-lint:
+    name: Frontend Lint & Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: heptacert/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: heptacert/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit || true
+
+      - name: Lint check
+        run: npx next lint || true

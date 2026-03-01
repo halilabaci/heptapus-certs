@@ -1,6 +1,8 @@
 "use client";
 
-import { apiFetch, API_BASE } from "@/lib/api";
+import {
+  apiFetch, API_BASE, uploadEventBanner,
+} from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Draggable from "react-draggable";
 import Link from "next/link";
@@ -78,7 +80,7 @@ const DEFAULT_CFG: EditorConfig = {
   image_height: 877,
   background_image: null,
   name: { ...FIELD_DEFAULT, x: 620, y: 438, font_size: 48, font_color: "#1e293b" },
-  cert_id: { ...FIELD_DEFAULT, x: 620, y: 700, font_size: 20, font_color: "#64748b", font_weight: "normal" },
+  cert_id: { ...FIELD_DEFAULT, x: 620, y: 700, font_size: 22, font_color: "#334155", font_weight: "normal" },
   qr: { x: 80, y: 700, size: 120, show: true },
 };
 
@@ -143,6 +145,18 @@ function FieldPanel({ label, field, onChange }: {
           <option value="right">Sağ</option>
         </select>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label text-[10px]">
+            X (px)
+          </label>
+          <input type="number" value={field.x} min={0} onChange={e => onChange({ x: +e.target.value })} className="input-field py-1.5 text-xs" />
+        </div>
+        <div>
+          <label className="label text-[10px]">Y (px)</label>
+          <input type="number" value={field.y} min={0} onChange={e => onChange({ y: +e.target.value })} className="input-field py-1.5 text-xs" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -153,6 +167,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const t = useT();
 
   const [cfg, setCfg] = useState<EditorConfig>(DEFAULT_CFG);
+  const [cfgVersion, setCfgVersion] = useState(0);
   const [loadingCfg, setLoadingCfg] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -197,6 +212,31 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [bgUploading, setBgUploading] = useState(false);
   const bgInputRef = useRef<HTMLInputElement>(null);
 
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  async function uploadBanner(file: File) {
+    setBannerUploading(true);
+    setErr(null);
+    try {
+      const data = await uploadEventBanner(eventId, file);
+      setBannerUrl(data.event_banner_url);
+    } catch (e: any) {
+      setErr(e?.message || "Banner yüklenemedi.");
+    } finally {
+      setBannerUploading(false);
+    }
+  }
+
+  // Load initial banner URL from event data
+  useEffect(() => {
+    apiFetch(`/admin/events/${eventId}`, { method: "GET" })
+      .then(r => r.json())
+      .then((d: any) => { if (d.event_banner_url) setBannerUrl(d.event_banner_url); })
+      .catch(() => {});
+  }, [eventId]);
+
   const renderH = cfg.image_width > 0
     ? Math.round((cfg.image_height / cfg.image_width) * RENDER_W)
     : Math.round((877 / 1240) * RENDER_W);
@@ -229,6 +269,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             };
           }
           setCfg(merged);
+          setCfgVersion(v => v + 1);
         }
       })
       .catch(() => {/* use defaults */})
@@ -301,6 +342,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           },
         };
       });
+      setCfgVersion(v => v + 1);
     } catch (e: any) {
       setErr(e?.message || "Arka plan yüklenemedi.");
     } finally {
@@ -336,17 +378,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }
 
   /* Drag handlers */
-  const onNameStop = useCallback((_: any, d: { x: number; y: number }) => {
+  // Text elements are RENDER_W-wide: x is always 0 in the canvas (full-width).
+  // Dragging only moves them vertically. Horizontal position (anchor) is set via the X input.
+  // Using controlled `position` prop so input changes immediately reflect in the canvas.
+  const onNameDrag = useCallback((_: any, d: { x: number; y: number }) => {
     setCfg(c => ({
       ...c,
-      name: { ...c.name, x: Math.round(toRealPx(d.x + RENDER_W / 2, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
+      name: { ...c.name, x: Math.round(toRealPx(d.x, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
     }));
   }, []);
 
-  const onCertIdStop = useCallback((_: any, d: { x: number; y: number }) => {
+  const onCertIdDrag = useCallback((_: any, d: { x: number; y: number }) => {
     setCfg(c => ({
       ...c,
-      cert_id: { ...c.cert_id, x: Math.round(toRealPx(d.x + RENDER_W / 2, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
+      cert_id: { ...c.cert_id, x: Math.round(toRealPx(d.x, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
     }));
   }, []);
 
@@ -365,10 +410,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     );
   }
 
-  const nameRX = toRenderPx(cfg.name.x, cfg.image_width) - RENDER_W / 2;
-  const nameRY = toRenderPx(cfg.name.y, cfg.image_width);
-  const certIdRX = toRenderPx(cfg.cert_id.x, cfg.image_width) - RENDER_W / 2;
-  const certIdRY = toRenderPx(cfg.cert_id.y, cfg.image_width);
+  // Render-space coordinates for text elements (freely draggable)
+  const nameRX    = toRenderPx(cfg.name.x,    cfg.image_width);
+  const nameRY    = toRenderPx(cfg.name.y,    cfg.image_width);
+  const certIdRX  = toRenderPx(cfg.cert_id.x, cfg.image_width);
+  const certIdRY  = toRenderPx(cfg.cert_id.y, cfg.image_width);
+
+  // Alignment offset: shift visual element so the anchor point matches the generator
+  const alignTransform = (align: string) =>
+    align === "center" ? "translateX(-50%)" : align === "right" ? "translateX(-100%)" : "none";
   const qrRX = toRenderPx(cfg.qr.x, cfg.image_width);
   const qrRY = toRenderPx(cfg.qr.y, cfg.image_width);
   const qrRS = toRenderPx(cfg.qr.size, cfg.image_width);
@@ -439,39 +489,59 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             <input ref={bgInputRef} type="file" accept="image/*" className="hidden"
               onChange={e => { if (e.target.files?.[0]) uploadBackground(e.target.files[0]); }} />
 
-            {/* Name draggable */}
+            {/* Name draggable — freely movable in X+Y */}
             {cfg.name.show && (
-              <Draggable key={`name-${cfg.name.x}-${cfg.name.y}`} defaultPosition={{ x: nameRX, y: nameRY }} onStop={onNameStop} bounds="parent">
-                <div className="absolute cursor-move select-none"
-                  style={{
-                    fontSize: toRenderPx(cfg.name.font_size, cfg.image_width),
-                    color: cfg.name.font_color,
-                    fontWeight: cfg.name.font_weight,
-                    fontStyle: cfg.name.font_style,
-                    textAlign: cfg.name.text_align,
-                    whiteSpace: "nowrap",
-                  }}>
-                  <div className="rounded border-2 border-dashed border-brand-400/50 px-2 py-1 hover:border-brand-400 transition-colors">
-                    {t("editor_preview_name")}
+              <Draggable
+                key={`name-${cfgVersion}`}
+                position={{ x: nameRX, y: nameRY }}
+                onDrag={onNameDrag}
+                bounds="parent"
+              >
+                <div
+                  className="absolute cursor-move select-none z-20"
+                  style={{ lineHeight: 1.3 }}
+                >
+                  <div style={{ transform: alignTransform(cfg.name.text_align) }}>
+                    <span
+                      className="rounded border-2 border-dashed border-brand-400/60 px-2 py-0.5 hover:border-brand-500 transition-colors bg-white/5 backdrop-blur-sm whitespace-nowrap inline-block"
+                      style={{
+                        fontSize: toRenderPx(cfg.name.font_size, cfg.image_width),
+                        color: cfg.name.font_color,
+                        fontWeight: cfg.name.font_weight,
+                        fontStyle: cfg.name.font_style,
+                      }}
+                    >
+                      {t("editor_preview_name")}
+                    </span>
                   </div>
                 </div>
               </Draggable>
             )}
 
-            {/* Cert ID draggable */}
+            {/* Cert ID draggable — freely movable in X+Y */}
             {cfg.cert_id.show && (
-              <Draggable key={`certid-${cfg.cert_id.x}-${cfg.cert_id.y}`} defaultPosition={{ x: certIdRX, y: certIdRY }} onStop={onCertIdStop} bounds="parent">
-                <div className="absolute cursor-move select-none"
-                  style={{
-                    fontSize: toRenderPx(cfg.cert_id.font_size, cfg.image_width),
-                    color: cfg.cert_id.font_color,
-                    fontWeight: cfg.cert_id.font_weight,
-                    fontStyle: cfg.cert_id.font_style,
-                    textAlign: cfg.cert_id.text_align,
-                    whiteSpace: "nowrap",
-                  }}>
-                  <div className="rounded border-2 border-dashed border-amber-400/50 px-2 py-1 hover:border-amber-400 transition-colors">
-                    {t("editor_preview_cert_id")}
+              <Draggable
+                key={`certid-${cfgVersion}`}
+                position={{ x: certIdRX, y: certIdRY }}
+                onDrag={onCertIdDrag}
+                bounds="parent"
+              >
+                <div
+                  className="absolute cursor-move select-none z-20"
+                  style={{ lineHeight: 1.3 }}
+                >
+                  <div style={{ transform: alignTransform(cfg.cert_id.text_align) }}>
+                    <span
+                      className="rounded border-2 border-dashed border-amber-400/60 px-2 py-0.5 hover:border-amber-500 transition-colors bg-white/5 backdrop-blur-sm whitespace-nowrap inline-block"
+                      style={{
+                        fontSize: toRenderPx(cfg.cert_id.font_size, cfg.image_width),
+                        color: cfg.cert_id.font_color,
+                        fontWeight: cfg.cert_id.font_weight,
+                        fontStyle: cfg.cert_id.font_style,
+                      }}
+                    >
+                      {t("editor_preview_cert_id")}
+                    </span>
                   </div>
                 </div>
               </Draggable>
@@ -479,7 +549,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
             {/* QR draggable */}
             {cfg.qr.show && (
-              <Draggable key={`qr-${cfg.qr.x}-${cfg.qr.y}`} defaultPosition={{ x: qrRX, y: qrRY }} onStop={onQrStop} bounds="parent">
+              <Draggable key={`qr-${cfgVersion}`} defaultPosition={{ x: qrRX, y: qrRY }} onStop={onQrStop} bounds="parent">
                 <div className="absolute cursor-move" style={{ width: qrRS, height: qrRS }}>
                   <div className="w-full h-full rounded-md border-2 border-dashed border-emerald-400/60 bg-white/10 backdrop-blur flex items-center justify-center hover:border-emerald-400 transition-colors">
                     <QrCode className="text-emerald-300" style={{ width: "50%", height: "50%" }} />
@@ -563,6 +633,16 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                       <input type="number" value={cfg.qr.size} min={40} max={400}
                         onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, size: +e.target.value } }))} className="input-field py-1.5 text-xs" />
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label text-[10px]">X (px)</label>
+                        <input type="number" value={cfg.qr.x} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, x: +e.target.value } }))} className="input-field py-1.5 text-xs" />
+                      </div>
+                      <div>
+                        <label className="label text-[10px]">Y (px)</label>
+                        <input type="number" value={cfg.qr.y} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, y: +e.target.value } }))} className="input-field py-1.5 text-xs" />
+                      </div>
+                    </div>
                   </div>
                 </PanelSection>
 
@@ -589,10 +669,55 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   </div>
                 </PanelSection>
 
+                {/* Event Banner / Hero Image */}
+                <PanelSection icon={<ImagePlus className="h-3.5 w-3.5" />} title="Etkinlik Kapak Görseli">
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Kayıt sayfasında hero bölümünde gösterilecek görsel.
+                    </p>
+                    {bannerUrl && (
+                      <div className="relative rounded-xl overflow-hidden border border-gray-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={bannerUrl} alt="Banner" className="w-full h-24 object-cover" />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                          onClick={() => bannerInputRef.current?.click()}>
+                          <span className="text-white text-xs font-bold">Değiştir</span>
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 p-5 hover:border-brand-300 hover:bg-brand-50/30 transition-all group cursor-pointer"
+                      onClick={() => bannerInputRef.current?.click()}
+                    >
+                      {bannerUploading ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
+                      ) : (
+                        <>
+                          <Upload className="h-5 w-5 text-gray-300 group-hover:text-brand-400 transition-colors" />
+                          <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors font-medium">
+                            {bannerUrl ? "Yeni görsel yükle" : "Kapak görseli yükle"}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      ref={bannerInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadBanner(e.target.files[0]); }}
+                    />
+                  </div>
+                </PanelSection>
+
                 <div className="pt-2">
-                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-3 flex items-start gap-2.5">
-                    <Move className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-gray-400 leading-relaxed">{t("editor_drag_hint")}</p>
+                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-3 space-y-1.5">
+                    <div className="flex items-start gap-2.5">
+                      <Move className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-gray-400 leading-relaxed">
+                        Tüm elemanları (İsim, Sertifika No, QR) sürükleyerek istediğiniz yere taşıyabilirsiniz.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </motion.div>
