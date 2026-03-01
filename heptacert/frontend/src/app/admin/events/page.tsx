@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { apiFetch, clearToken } from "@/lib/api";
@@ -6,24 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
-  LogOut,
-  LayoutGrid,
-  ChevronRight,
-  Image as ImageIcon,
-  Hash,
-  AlertCircle,
-  Loader2,
-  Shield,
-  ListChecks,
-  Pencil,
-  Coins,
-  Zap,
-  FolderKanban
+  Plus, LogOut, LayoutGrid, Image as ImageIcon, Hash,
+  AlertCircle, Loader2, Shield, ListChecks, Pencil, Coins,
+  Zap, FolderKanban, Trash2, Check, X, Settings,
 } from "lucide-react";
 
 type EventOut = { id: number; name: string; template_image_url: string; config: any };
 type MeOut = { id: number; email: string; role: "admin" | "superadmin"; heptacoin_balance: number };
+type EventStat = { event_id: number; active: number; total: number };
 
 export default function AdminEvents() {
   const [events, setEvents] = useState<EventOut[]>([]);
@@ -31,6 +21,11 @@ export default function AdminEvents() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<MeOut | null>(null);
+
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [certStats, setCertStats] = useState<Record<number, EventStat>>({});
 
   const router = useRouter();
 
@@ -41,12 +36,18 @@ export default function AdminEvents() {
         apiFetch("/admin/events", { method: "GET" }),
         apiFetch("/me", { method: "GET" }),
       ]);
-
-      const data = await eventsRes.json();
-      setEvents(data);
-
+      setEvents(await eventsRes.json());
       const meData = (await meRes.json()) as MeOut;
       setMe(meData);
+      // Load cert stats (non-blocking)
+      apiFetch("/admin/dashboard/stats")
+        .then((r) => r.json())
+        .then((d: { events_with_stats?: EventStat[] }) => {
+          const map: Record<number, EventStat> = {};
+          (d.events_with_stats || []).forEach((s) => { map[s.event_id] = s; });
+          setCertStats(map);
+        })
+        .catch(() => {});
     } catch (e: any) {
       const msg = e?.message || "";
       setErr(msg || "Yükleme başarısız.");
@@ -80,103 +81,119 @@ export default function AdminEvents() {
     }
   }
 
+  async function saveRename(id: number) {
+    if (!renameValue.trim()) return;
+    setErr(null);
+    try {
+      await apiFetch(`/admin/events/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: renameValue.trim() }),
+      });
+      setRenamingId(null);
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Yeniden adlandırma başarısız.");
+    }
+  }
+
+  async function deleteEvent(id: number) {
+    setErr(null);
+    try {
+      await apiFetch(`/admin/events/${id}`, { method: "DELETE" });
+      setDeletingId(null);
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Silme işlemi başarısız.");
+    }
+  }
+
   const containerVars = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.08 } },
   };
-
   const itemVars = {
     hidden: { opacity: 0, y: 15 },
     show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
   };
 
   return (
-    <div className="flex flex-col gap-10 pb-20 pt-6">
-      
-      {/* --- DASHBOARD HEADER --- */}
+    <div className="flex flex-col gap-8 pb-20 pt-6">
+
+      {/* HEADER */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[2.5rem] border border-slate-800 bg-slate-900/40 p-1px backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+        className="card p-0 overflow-hidden"
       >
-        <div className="absolute top-0 right-0 w-96 h-96 bg-violet-600/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-amber-600/5 rounded-full blur-[100px] pointer-events-none" />
-        
-        <div className="bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-8 md:p-12 relative z-10">
-          
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
-            {/* Title & User Info */}
-            <div className="flex items-start gap-5">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-900/20 border border-violet-500/30 text-violet-400 shadow-[0_0_30px_rgba(124,58,237,0.15)]">
-                <LayoutGrid className="h-8 w-8" />
+        <div className="bg-gradient-to-r from-brand-600 to-indigo-700 px-8 py-1.5" />
+        <div className="p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 border border-brand-100">
+                <LayoutGrid className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-3xl font-black text-white tracking-tight">Etkinlik Paneli</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Etkinlik Paneli</h1>
                 {me ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <span className="text-sm font-medium text-slate-400">{me.email}</span>
-                    <span className="hidden sm:inline text-slate-700">•</span>
-                    <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${me.role === 'superadmin' ? 'bg-violet-500/20 text-violet-300' : 'bg-slate-800 text-slate-300'}`}>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                    <span className="text-sm text-gray-500">{me.email}</span>
+                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${me.role === "superadmin" ? "bg-indigo-50 text-indigo-700" : "bg-gray-100 text-gray-600"}`}>
                       {me.role}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[10px] font-bold text-amber-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                       <Coins className="h-3 w-3" /> {me.heptacoin_balance} HC
                     </span>
                   </div>
                 ) : (
-                  <div className="mt-2 h-4 w-48 bg-slate-800 rounded animate-pulse" />
+                  <div className="mt-2 h-4 w-48 bg-gray-100 rounded animate-pulse" />
                 )}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link href="/admin/settings" className="btn-ghost gap-2 text-xs px-4 py-2">
+                <Settings className="h-4 w-4" /> Ayarlar
+              </Link>
               {me?.role === "superadmin" && (
                 <button
                   onClick={() => router.push("/admin/superadmin")}
-                  className="group flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-5 py-2.5 text-xs font-bold text-violet-300 transition-all hover:bg-violet-500 hover:text-white shadow-[0_0_20px_rgba(124,58,237,0.1)] hover:shadow-[0_0_30px_rgba(124,58,237,0.3)]"
+                  className="btn-secondary gap-2 text-xs px-4 py-2"
                 >
-                  <Shield className="h-4 w-4" />
-                  Sistem Otoritesi
+                  <Shield className="h-4 w-4" /> Sistem Otoritesi
                 </button>
               )}
               <button
                 onClick={() => { clearToken(); router.push("/admin/login"); }}
-                className="group flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-5 py-2.5 text-xs font-bold text-slate-300 transition-all hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400"
+                className="btn-ghost gap-2 text-xs px-4 py-2 text-red-600 hover:bg-red-50"
               >
-                <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-                Güvenli Çıkış
+                <LogOut className="h-4 w-4" /> Çıkış
               </button>
             </div>
           </div>
 
-          <hr className="border-slate-800/60 mb-8" />
+          <hr className="border-gray-100 mb-6" />
 
-          {/* Create Event Form */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1 group">
-              <Zap className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-600 group-focus-within:text-amber-400 transition-colors" />
+          {/* Create Event */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Zap className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 py-4 pl-12 pr-4 text-sm font-medium text-slate-200 outline-none transition-all focus:border-amber-500/50 focus:bg-slate-900 focus:ring-4 focus:ring-amber-500/10 placeholder:text-slate-600"
+                className="input-field pl-10"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Örn: 2026 Siber Güvenlik Zirvesi Katılım Sertifikası..."
+                onKeyDown={(e) => e.key === "Enter" && createEvent()}
+                placeholder="Yeni etkinlik adı..."
               />
             </div>
-            <button
-              onClick={createEvent}
-              disabled={!name.trim()}
-              className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-8 py-4 text-sm font-black text-slate-950 transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(245,158,11,0.3)] disabled:opacity-50 disabled:grayscale active:scale-95"
-            >
-              <Plus className="h-5 w-5" />
-              Yeni Etkinlik
+            <button onClick={createEvent} disabled={!name.trim()} className="btn-primary gap-2 px-6">
+              <Plus className="h-4 w-4" /> Yeni Etkinlik
             </button>
           </div>
 
           <AnimatePresence>
             {err && (
-              <motion.div initial={{ opacity: 0, height: 0, marginTop: 0 }} animate={{ opacity: 1, height: "auto", marginTop: 16 }} exit={{ opacity: 0, height: 0, marginTop: 0 }} className="overflow-hidden">
-                <div className="flex items-center gap-2 text-sm font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl">
+              <motion.div initial={{ opacity: 0, height: 0, marginTop: 0 }} animate={{ opacity: 1, height: "auto", marginTop: 12 }} exit={{ opacity: 0, height: 0, marginTop: 0 }} className="overflow-hidden">
+                <div className="error-banner flex items-center gap-2">
                   <AlertCircle className="h-4 w-4" /> {err}
                 </div>
               </motion.div>
@@ -185,80 +202,123 @@ export default function AdminEvents() {
         </div>
       </motion.div>
 
-      {/* --- EVENTS LIST --- */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-3 px-2">
-          <FolderKanban className="h-5 w-5 text-slate-500" />
-          <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-400">Aktif Etkinlikler</h2>
-          <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-slate-300 ml-auto">
-            {events.length} Kayıt
+      {/* EVENTS LIST */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 px-1">
+          <FolderKanban className="h-4 w-4 text-gray-400" />
+          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Aktif Etkinlikler</h2>
+          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-bold text-gray-500 ml-auto">
+            {events.length} Etkinlik
           </span>
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 text-slate-500">
-            <Loader2 className="h-10 w-10 animate-spin mb-4 text-violet-500" />
-            <span className="text-sm font-bold tracking-widest uppercase">Veriler Çekiliyor...</span>
+          <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+            <Loader2 className="h-8 w-8 animate-spin mb-3 text-brand-500" />
+            <span className="text-sm font-medium">Yükleniyor...</span>
           </div>
         ) : (
-          <motion.div variants={containerVars} initial="hidden" animate="show" className="grid gap-4">
+          <motion.div variants={containerVars} initial="hidden" animate="show" className="grid gap-3">
             {events.map((ev) => (
               <motion.div key={ev.id} variants={itemVars}>
-                <div className="group relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/30 p-6 transition-all hover:border-violet-500/30 hover:bg-slate-900/60 hover:shadow-[0_10px_40px_rgba(124,58,237,0.05)]">
-                  
-                  {/* Left Highlight Line */}
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="group card p-5 hover:shadow-card transition-all duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    
-                    {/* Event Info */}
-                    <div className="flex items-center gap-5 min-w-0">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-slate-950/80 border border-slate-800 text-slate-500 group-hover:text-violet-400 group-hover:border-violet-500/30 transition-all">
-                        <ImageIcon className="h-6 w-6" />
+                    {/* Event Info / Rename */}
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-50 border border-gray-200 text-gray-400 group-hover:text-brand-600 group-hover:bg-brand-50 group-hover:border-brand-100 transition-all">
+                        <ImageIcon className="h-5 w-5" />
                       </div>
 
-                      <div className="min-w-0">
-                        <div className="text-lg font-bold text-slate-200 truncate group-hover:text-white transition-colors">{ev.name}</div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                          <span className="flex items-center gap-1.5 text-slate-400">
-                            <Hash className="h-3.5 w-3.5" /> Sistem ID: {ev.id}
-                          </span>
-                          <span className="hidden sm:inline text-slate-700">•</span>
-                          <span className="flex items-center gap-1 truncate max-w-[250px]">
-                            Şablon: {ev.template_image_url !== 'placeholder' ? <span className="text-emerald-400 normal-case">Yüklendi</span> : <span className="text-rose-400 normal-case">Eksik</span>}
-                          </span>
+                      {renamingId === ev.id ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            className="input-field py-1.5 text-sm flex-1"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename(ev.id);
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            autoFocus
+                          />
+                          <button onClick={() => saveRename(ev.id)} className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => setRenamingId(null)} className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200">
+                            <X className="h-4 w-4" />
+                          </button>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-800 truncate">{ev.name}</div>
+                          <div className="mt-0.5 flex items-center gap-3 text-[11px] text-gray-400 font-medium">
+                            <span className="flex items-center gap-1"><Hash className="h-3 w-3" /> ID {ev.id}</span>
+                            <span>·</span>
+                            <span>Şablon: {ev.template_image_url !== "placeholder" ? <span className="text-emerald-600">Yüklendi</span> : <span className="text-rose-500">Eksik</span>}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Link
-                        href={`/admin/events/${ev.id}/editor`}
-                        className="flex-1 lg:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/10 px-5 py-3 text-xs font-bold text-violet-300 transition-colors hover:bg-violet-500/20 hover:border-violet-500/40"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Görsel Editör
-                      </Link>
-
-                      <Link
-                        href={`/admin/events/${ev.id}/certificates`}
-                        className="flex-1 lg:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-3 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-500/20 hover:border-emerald-500/40"
-                      >
-                        <ListChecks className="h-4 w-4" />
-                        Üretim & Liste
-                      </Link>
-                    </div>
+                    {renamingId !== ev.id && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {deletingId === ev.id ? (
+                          <>
+                            <span className="text-xs text-gray-500 font-medium">Silmek istediğinize emin misiniz?</span>
+                            <button onClick={() => deleteEvent(ev.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 flex items-center gap-1">
+                              <Check className="h-3.5 w-3.5" /> Evet, Sil
+                            </button>
+                            <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold hover:bg-gray-200 flex items-center gap-1">
+                              <X className="h-3.5 w-3.5" /> İptal
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => { setRenamingId(ev.id); setRenameValue(ev.name); }}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-600 hover:border-brand-200 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Yeniden Adlandır
+                            </button>
+                            <Link
+                              href={`/admin/events/${ev.id}/editor`}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-brand-100 bg-brand-50 px-3.5 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Editör
+                            </Link>
+                            <Link
+                              href={`/admin/events/${ev.id}/certificates`}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                              <ListChecks className="h-3.5 w-3.5" /> Sertifikalar
+                              {certStats[ev.id] && (
+                                <span className="ml-1 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  {certStats[ev.id].total}
+                                </span>
+                              )}
+                            </Link>
+                            <button
+                              onClick={() => setDeletingId(ev.id)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Sil
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>
             ))}
 
             {events.length === 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-700 bg-slate-900/20 py-20 text-center">
-                <FolderKanban className="h-12 w-12 text-slate-600 mb-4" />
-                <h3 className="text-lg font-bold text-slate-300">Henüz Bir Etkinlik Yok</h3>
-                <p className="mt-2 text-sm text-slate-500 max-w-sm">Yukarıdaki formu kullanarak ilk sertifika etkinliğinizi oluşturmaya başlayın.</p>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-20 text-center">
+                <FolderKanban className="h-10 w-10 text-gray-300 mb-4" />
+                <h3 className="text-base font-semibold text-gray-600">Henüz Bir Etkinlik Yok</h3>
+                <p className="mt-1 text-sm text-gray-400 max-w-xs">Yukarıdaki formu kullanarak ilk sertifika etkinliğinizi oluşturun.</p>
               </motion.div>
             )}
           </motion.div>

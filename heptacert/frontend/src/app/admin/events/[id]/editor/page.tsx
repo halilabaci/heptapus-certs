@@ -1,408 +1,677 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch, API_BASE } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Draggable from "react-draggable";
-import { apiFetch } from "@/lib/api";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Save,
-  UploadCloud,
-  Settings,
-  Type,
-  QrCode,
-  Hash,
-  FileSpreadsheet,
-  CheckCircle,
-  ExternalLink,
-  Download,
-  Loader2,
   ChevronLeft,
+  ImagePlus,
+  Save,
+  TableProperties,
+  FileText,
+  Type,
+  SlidersHorizontal,
+  Hash,
+  Loader2,
   AlertCircle,
-  Palette,
-  Maximize
+  CheckCircle2,
+  QrCode,
+  User,
+  CreditCard,
+  Download,
+  Upload,
+  RefreshCcw,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Move,
+  History,
+  RotateCcw,
 } from "lucide-react";
-import Link from "next/link";
+import { useT } from "@/lib/i18n";
 
-type EventOut = { id: number; name: string; template_image_url: string; config: any };
-type Box = { x: number; y: number; w: number; h: number };
+/* ─── Types ──────────────────────────────────────────────── */
+type Pos = { x: number; y: number };
+type FieldConfig = {
+  x: number; y: number;
+  font_size: number;
+  font_color: string;
+  font_weight: "normal" | "bold";
+  font_style: "normal" | "italic";
+  text_align: "left" | "center" | "right";
+  show: boolean;
+};
+type EditorConfig = {
+  image_width: number;
+  image_height: number;
+  background_image?: string | null;
+  name: FieldConfig;
+  cert_id: FieldConfig;
+  qr: { x: number; y: number; size: number; show: boolean };
+};
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+const RENDER_W = 780;
 
-export default function EventEditorPage({ params }: { params: { id: string } }) {
+function toRenderPx(v: number, realW: number) {
+  if (!realW || realW === 0) return v;
+  return (v / realW) * RENDER_W;
+}
+function toRealPx(v: number, realW: number) {
+  if (!realW || realW === 0) return v;
+  return (v / RENDER_W) * realW;
+}
+
+const FIELD_DEFAULT: FieldConfig = {
+  x: 50, y: 50,
+  font_size: 32,
+  font_color: "#1e293b",
+  font_weight: "bold",
+  font_style: "normal",
+  text_align: "center",
+  show: true,
+};
+
+const DEFAULT_CFG: EditorConfig = {
+  image_width: 1240,
+  image_height: 877,
+  background_image: null,
+  name: { ...FIELD_DEFAULT, x: 620, y: 438, font_size: 48, font_color: "#1e293b" },
+  cert_id: { ...FIELD_DEFAULT, x: 620, y: 700, font_size: 20, font_color: "#64748b", font_weight: "normal" },
+  qr: { x: 80, y: 700, size: 120, show: true },
+};
+
+/* ─── Panel wrappers ─────────────────────────────────────── */
+function PanelSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="card p-5">
+      <div className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-800">
+        <span className="p-1.5 rounded-lg bg-brand-50 text-brand-600">{icon}</span>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FieldPanel({ label, field, onChange }: {
+  label: string;
+  field: FieldConfig;
+  onChange: (patch: Partial<FieldConfig>) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-gray-600">{label}</span>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={field.show} onChange={e => onChange({ show: e.target.checked })} className="accent-brand-600 h-3.5 w-3.5" />
+          <span className="text-[11px] font-medium text-gray-500">Göster</span>
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label text-[10px]">Yazı Boyutu</label>
+          <input type="number" value={field.font_size} min={8} max={200} onChange={e => onChange({ font_size: +e.target.value })} className="input-field py-1.5 text-xs" />
+        </div>
+        <div>
+          <label className="label text-[10px]">Renk</label>
+          <input type="color" value={field.font_color} onChange={e => onChange({ font_color: e.target.value })} className="h-9 w-full cursor-pointer rounded-lg border border-gray-200 bg-white p-1" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label text-[10px]">Kalınlık</label>
+          <select value={field.font_weight} onChange={e => onChange({ font_weight: e.target.value as any })} className="input-field py-1.5 text-xs">
+            <option value="normal">Normal</option>
+            <option value="bold">Bold</option>
+          </select>
+        </div>
+        <div>
+          <label className="label text-[10px]">Stil</label>
+          <select value={field.font_style} onChange={e => onChange({ font_style: e.target.value as any })} className="input-field py-1.5 text-xs">
+            <option value="normal">Normal</option>
+            <option value="italic">İtalik</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="label text-[10px]">Hizalama</label>
+        <select value={field.text_align} onChange={e => onChange({ text_align: e.target.value as any })} className="input-field py-1.5 text-xs">
+          <option value="left">Sol</option>
+          <option value="center">Orta</option>
+          <option value="right">Sağ</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main ───────────────────────────────────────────────── */
+export default function EditorPage({ params }: { params: { id: string } }) {
   const eventId = Number(params.id);
+  const t = useT();
 
-  const [event, setEvent] = useState<EventOut | null>(null);
+  const [cfg, setCfg] = useState<EditorConfig>(DEFAULT_CFG);
+  const [loadingCfg, setLoadingCfg] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [imgUrl, setImgUrl] = useState<string>("");
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const [imgTick, setImgTick] = useState(0);
+  const [activePanel, setActivePanel] = useState<"typography" | "bulk" | "history">("typography");
 
-  // draggable boxes (RENDER pixels)
-  const [nameBox, setNameBox] = useState<Box>({ x: 120, y: 140, w: 320, h: 60 });
-  const [qrBox, setQrBox] = useState<Box>({ x: 120, y: 240, w: 220, h: 220 });
-  const [certIdBox, setCertIdBox] = useState<Box>({ x: 60, y: 60, w: 260, h: 44 });
+  // Template history
+  type TemplateSnap = { id: number; template_image_url: string | null; created_at: string };
+  const [snapshots, setSnapshots] = useState<TemplateSnap[]>([]);
+  const [snapsLoading, setSnapsLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
 
-  // style fields
-  const [fontSize, setFontSize] = useState<number>(48);
-  const [fontColor, setFontColor] = useState<string>("#FFFFFF");
-  const [certIdFontSize, setCertIdFontSize] = useState<number>(18);
-  const [certIdColor, setCertIdColor] = useState<string>("#94A3B8");
+  async function loadSnapshots() {
+    setSnapsLoading(true);
+    try {
+      const r = await apiFetch(`/admin/events/${eventId}/template-history`);
+      setSnapshots(await r.json());
+    } catch { /* silent */ } finally { setSnapsLoading(false); }
+  }
 
-  // upload / bulk
-  const [uploading, setUploading] = useState(false);
+  async function restoreSnapshot(snapId: number) {
+    if (!confirm("Bu şablona geri dönmek istediğinize emin misiniz? Mevcut şablon kaybolacak.")) return;
+    setRestoringId(snapId);
+    try {
+      await apiFetch(`/admin/events/${eventId}/template-history/${snapId}/restore`, { method: "POST" });
+      await loadCfg();
+      setActivePanel("typography");
+    } catch (ex: any) {
+      setErr(ex?.message || "Geri yükleme başarısız.");
+    } finally { setRestoringId(null); }
+  }
+
+  useEffect(() => {
+    if (activePanel === "history") loadSnapshots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel]);
+
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<any>(null);
 
-  // image metrics
-  const imgMetrics = useMemo(() => {
-    const img = imgRef.current;
-    if (!img || !img.complete) return null;
-    return {
-      renderW: img.clientWidth,
-      renderH: img.clientHeight,
-      naturalW: img.naturalWidth,
-      naturalH: img.naturalHeight,
-    };
-  }, [imgTick, imgUrl]);
+  const [bgUploading, setBgUploading] = useState(false);
+  const bgInputRef = useRef<HTMLInputElement>(null);
 
-  function toRealPx(x: number, y: number) {
-    const m = imgMetrics;
-    if (!m) return { rx: Math.round(x), ry: Math.round(y) };
-    const sx = m.naturalW / m.renderW;
-    const sy = m.naturalH / m.renderH;
-    return { rx: Math.round(x * sx), ry: Math.round(y * sy) };
+  const renderH = cfg.image_width > 0
+    ? Math.round((cfg.image_height / cfg.image_width) * RENDER_W)
+    : Math.round((877 / 1240) * RENDER_W);
+
+  /* Load config */
+  async function loadCfg() {
+    setLoadingCfg(true);
+    await apiFetch(`/admin/events/${eventId}`, { method: "GET" })
+      .then(r => r.json())
+      .then((d: { config: any }) => {
+        if (d.config && Object.keys(d.config).length > 0) {
+          const c = d.config;
+          let merged: EditorConfig;
+          if (c.name && typeof c.name === "object") {
+            merged = { ...DEFAULT_CFG, ...c, name: { ...DEFAULT_CFG.name, ...c.name }, cert_id: { ...DEFAULT_CFG.cert_id, ...c.cert_id }, qr: { ...DEFAULT_CFG.qr, ...c.qr } };
+          } else {
+            merged = DEFAULT_CFG;
+          }
+          // Auto-fix: if image_width > 2000 but font sizes look like 1240px defaults
+          // (ratio font_size/image_width < 0.02), rescale everything from 1240px reference.
+          const refW = 1240;
+          const imgW = merged.image_width;
+          if (imgW > refW && merged.name.font_size / imgW < 0.02) {
+            const scale = imgW / refW;
+            merged = {
+              ...merged,
+              name: { ...merged.name, x: Math.round(merged.name.x * scale), y: Math.round(merged.name.y * scale), font_size: Math.round(merged.name.font_size * scale) },
+              cert_id: { ...merged.cert_id, x: Math.round(merged.cert_id.x * scale), y: Math.round(merged.cert_id.y * scale), font_size: Math.round(merged.cert_id.font_size * scale) },
+              qr: { ...merged.qr, x: Math.round(merged.qr.x * scale), y: Math.round(merged.qr.y * scale), size: Math.round(merged.qr.size * scale) },
+            };
+          }
+          setCfg(merged);
+        }
+      })
+      .catch(() => {/* use defaults */})
+      .finally(() => setLoadingCfg(false));
   }
 
-  function toRenderPx(rx: number, ry: number) {
-    const m = imgMetrics;
-    if (!m) return { x: rx, y: ry };
-    const sx = m.renderW / m.naturalW;
-    const sy = m.renderH / m.naturalH;
-    return { x: Math.round(rx * sx), y: Math.round(ry * sy) };
-  }
+  useEffect(() => { loadCfg(); }, [eventId]);
 
-  async function loadEvent() {
-    setErr(null);
-    try {
-      const res = await apiFetch(`/admin/events/${eventId}`, { method: "GET" });
-      const data = await res.json();
-      setEvent(data);
-
-      const t = data.template_image_url;
-      if (t && typeof t === "string") {
-        if (t.startsWith("templates/")) setImgUrl(`${API_BASE}/files/${t}`);
-        else setImgUrl(t);
-      } else {
-        setImgUrl("");
-      }
-
-      const cfg = data.config || {};
-      setFontSize(cfg.font_size ?? 48);
-      setFontColor(cfg.font_color ?? "#FFFFFF");
-      setCertIdFontSize(cfg.cert_id_font_size ?? 18);
-      setCertIdColor(cfg.cert_id_color ?? "#94A3B8");
-
-    } catch (e: any) {
-      setErr(e?.message || "Yükleme başarısız.");
-    }
-  }
-
-  useEffect(() => {
-    if (eventId) loadEvent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId]);
-
-  useEffect(() => {
-    if (!event?.config || !imgMetrics) return;
-    const cfg = event.config;
-
-    if (typeof cfg.isim_x === "number" && typeof cfg.isim_y === "number") {
-      const p = toRenderPx(cfg.isim_x, cfg.isim_y);
-      setNameBox((b) => ({ ...b, x: p.x, y: p.y }));
-    }
-    if (typeof cfg.qr_x === "number" && typeof cfg.qr_y === "number") {
-      const p = toRenderPx(cfg.qr_x, cfg.qr_y);
-      setQrBox((b) => ({ ...b, x: p.x, y: p.y }));
-    }
-    if (typeof cfg.cert_id_x === "number" && typeof cfg.cert_id_y === "number") {
-      const p = toRenderPx(cfg.cert_id_x, cfg.cert_id_y);
-      setCertIdBox((b) => ({ ...b, x: p.x, y: p.y }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imgMetrics, event?.id]);
-
+  /* Save config */
   async function saveConfig() {
+    setSaving(true);
     setErr(null);
     try {
-      const { rx: isim_x, ry: isim_y } = toRealPx(nameBox.x, nameBox.y);
-      const { rx: qr_x, ry: qr_y } = toRealPx(qrBox.x, qrBox.y);
-      const { rx: cert_id_x, ry: cert_id_y } = toRealPx(certIdBox.x, certIdBox.y);
-
       await apiFetch(`/admin/events/${eventId}/config`, {
         method: "PUT",
-        body: JSON.stringify({
-          isim_x, isim_y, qr_x, qr_y,
-          font_size: fontSize, font_color: fontColor,
-          cert_id_x, cert_id_y,
-          cert_id_font_size: certIdFontSize, cert_id_color: certIdColor,
-        }),
+        body: JSON.stringify(cfg),
       });
-
-      alert("Şablon koordinatları ve stil ayarları başarıyla kaydedildi.");
-      await loadEvent();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
       setErr(e?.message || "Kaydetme başarısız.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function uploadTemplate(file: File) {
+  /* Upload background */
+  async function uploadBackground(file: File) {
+    setBgUploading(true);
     setErr(null);
-    setUploading(true);
     try {
       const form = new FormData();
       form.append("file", file);
-      await apiFetch(`/admin/events/${eventId}/template-upload`, {
+      const res = await apiFetch(`/admin/events/${eventId}/template-upload`, {
         method: "POST",
         body: form,
+        headers: {},
       });
-      await loadEvent();
+      const data = await res.json();
+      // backend returns { template_image_url, url, width, height }
+      const bgUrl = data.url || `${API_BASE.replace("/api", "")}/api/files/${data.template_image_url}`;
+      setCfg(c => {
+        const oldW = c.image_width || 1240;
+        const newW = data.width || oldW;
+        const scale = newW / oldW;
+        // Rescale all field positions + font sizes proportionally so they
+        // stay in the same visual location after an image dimension change.
+        return {
+          ...c,
+          background_image: bgUrl,
+          image_width: newW,
+          image_height: data.height || c.image_height,
+          name: {
+            ...c.name,
+            x: Math.round(c.name.x * scale),
+            y: Math.round(c.name.y * scale),
+            font_size: Math.round(c.name.font_size * scale),
+          },
+          cert_id: {
+            ...c.cert_id,
+            x: Math.round(c.cert_id.x * scale),
+            y: Math.round(c.cert_id.y * scale),
+            font_size: Math.round(c.cert_id.font_size * scale),
+          },
+          qr: {
+            ...c.qr,
+            x: Math.round(c.qr.x * scale),
+            y: Math.round(c.qr.y * scale),
+            size: Math.round(c.qr.size * scale),
+          },
+        };
+      });
     } catch (e: any) {
-      setErr(e?.message || "Görsel yüklenemedi.");
+      setErr(e?.message || "Arka plan yüklenemedi.");
     } finally {
-      setUploading(false);
+      setBgUploading(false);
     }
   }
 
-  async function bulkGenerate(excelFile: File) {
-    setErr(null);
+  /* Bulk excel generate */
+  async function generateBulk() {
+    if (!bulkFile) return setErr("Lütfen bir Excel dosyası seçin.");
     setBulkLoading(true);
-    setBulkResult(null);
+    setErr(null);
     try {
       const form = new FormData();
-      form.append("excel", excelFile);
+      form.append("file", bulkFile);
       const res = await apiFetch(`/admin/events/${eventId}/bulk-generate`, {
         method: "POST",
         body: form,
+        headers: {},
       });
-      const data = await res.json();
-      setBulkResult(data);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `certificates-event-${eventId}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e: any) {
-      setErr(e?.message || "Excel işlenirken hata oluştu.");
+      setErr(e?.message || "Toplu üretim başarısız.");
     } finally {
       setBulkLoading(false);
     }
   }
 
-  // Preview Scale Calculation for realistic live view
-  const scaleRatio = imgMetrics ? (imgMetrics.renderW / imgMetrics.naturalW) : 1;
+  /* Drag handlers */
+  const onNameStop = useCallback((_: any, d: { x: number; y: number }) => {
+    setCfg(c => ({
+      ...c,
+      name: { ...c.name, x: Math.round(toRealPx(d.x + RENDER_W / 2, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
+    }));
+  }, []);
+
+  const onCertIdStop = useCallback((_: any, d: { x: number; y: number }) => {
+    setCfg(c => ({
+      ...c,
+      cert_id: { ...c.cert_id, x: Math.round(toRealPx(d.x + RENDER_W / 2, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
+    }));
+  }, []);
+
+  const onQrStop = useCallback((_: any, d: { x: number; y: number }) => {
+    setCfg(c => ({
+      ...c,
+      qr: { ...c.qr, x: Math.round(toRealPx(d.x, c.image_width)), y: Math.round(toRealPx(d.y, c.image_width)) }
+    }));
+  }, []);
+
+  if (loadingCfg) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+      </div>
+    );
+  }
+
+  const nameRX = toRenderPx(cfg.name.x, cfg.image_width) - RENDER_W / 2;
+  const nameRY = toRenderPx(cfg.name.y, cfg.image_width);
+  const certIdRX = toRenderPx(cfg.cert_id.x, cfg.image_width) - RENDER_W / 2;
+  const certIdRY = toRenderPx(cfg.cert_id.y, cfg.image_width);
+  const qrRX = toRenderPx(cfg.qr.x, cfg.image_width);
+  const qrRY = toRenderPx(cfg.qr.y, cfg.image_width);
+  const qrRS = toRenderPx(cfg.qr.size, cfg.image_width);
 
   return (
-    <div className="flex flex-col gap-6 pb-20 pt-6">
-      
-      {/* --- TOP NAVIGATION --- */}
-      <div className="flex items-center justify-between">
-        <Link href="/admin/events" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-200 transition-colors">
-          <ChevronLeft className="h-4 w-4" /> Etkinliklere Dön
-        </Link>
+    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
 
-        <button onClick={saveConfig} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-2.5 text-sm font-black text-slate-950 hover:scale-[1.02] active:scale-95 shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all">
-          <Save className="h-4 w-4" /> Şablonu Kaydet
-        </button>
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white shrink-0">
+        <div className="flex items-center gap-3">
+          <Link href="/admin/events" className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> {t("editor_back")}
+          </Link>
+          <span className="text-gray-200">/</span>
+          <div className="flex items-center gap-1.5 text-sm font-bold text-gray-800">
+            <FileText className="h-4 w-4 text-brand-500" />
+            {t("editor_title")} — Event {eventId}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <AnimatePresence>
+            {saved && (
+              <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                <CheckCircle2 className="h-3.5 w-3.5" /> {t("editor_saved")}
+              </motion.span>
+            )}
+          </AnimatePresence>
+          <button onClick={saveConfig} disabled={saving} className="btn-primary flex items-center gap-2 px-5 py-2 text-sm">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {t("editor_save")}
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        
-        {/* --- LEFT: CANVAS EDITOR --- */}
-        <div className="lg:col-span-8 flex flex-col h-full">
-          <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/40 shadow-2xl backdrop-blur-sm flex flex-col flex-grow">
-            
-            {/* Editor Toolbar */}
-            <div className="bg-slate-900/60 p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
-                <Maximize className="h-4 w-4 text-violet-400" /> Sürükle Bırak Editörü
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* CANVAS AREA — intentionally dark (design tool experience) */}
+        <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-8">
+          <div className="relative" style={{ width: RENDER_W, height: renderH }}>
+
+            {/* Background */}
+            {cfg.background_image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cfg.background_image} alt="bg" className="absolute inset-0 w-full h-full object-cover rounded-lg shadow-2xl" draggable={false} />
+            ) : (
+              <div className="absolute inset-0 rounded-lg border-2 border-dashed border-slate-600 bg-slate-800 flex flex-col items-center justify-center gap-3 cursor-pointer group"
+                onClick={() => bgInputRef.current?.click()}>
+                {bgUploading ? (
+                  <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+                ) : (
+                  <>
+                    <ImagePlus className="h-10 w-10 text-slate-500 group-hover:text-slate-300 transition-colors" />
+                    <span className="text-sm text-slate-400 group-hover:text-slate-200 transition-colors font-medium">{t("editor_upload_bg")}</span>
+                  </>
+                )}
               </div>
+            )}
 
-              <label className="group flex items-center gap-2 cursor-pointer rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin text-amber-400" /> : <UploadCloud className="h-4 w-4 group-hover:text-amber-400 transition-colors" />}
-                {uploading ? "Yükleniyor..." : "Görsel Yükle (Değiştir)"}
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadTemplate(e.target.files[0])} />
-              </label>
-            </div>
+            {/* Upload overlay button */}
+            {cfg.background_image && (
+              <button onClick={() => bgInputRef.current?.click()} title="Değiştir"
+                className="absolute top-3 right-3 z-50 p-2 rounded-xl bg-black/60 text-white hover:bg-black/80 transition-colors backdrop-blur-sm">
+                <RefreshCcw className="h-4 w-4" />
+              </button>
+            )}
 
-            {/* Canvas Area */}
-            <div className="relative flex items-center justify-center bg-[url('https://transparenttextures.com/patterns/cubes.png')] bg-slate-950/80 p-6 flex-grow overflow-auto">
-              {!imgUrl ? (
-                <div className="flex flex-col items-center justify-center py-32 text-slate-600">
-                  <div className="h-20 w-20 rounded-full bg-slate-900 flex items-center justify-center mb-4 border border-slate-800 border-dashed">
-                    <UploadCloud className="h-8 w-8 opacity-50" />
+            <input ref={bgInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { if (e.target.files?.[0]) uploadBackground(e.target.files[0]); }} />
+
+            {/* Name draggable */}
+            {cfg.name.show && (
+              <Draggable key={`name-${cfg.name.x}-${cfg.name.y}`} defaultPosition={{ x: nameRX, y: nameRY }} onStop={onNameStop} bounds="parent">
+                <div className="absolute cursor-move select-none"
+                  style={{
+                    fontSize: toRenderPx(cfg.name.font_size, cfg.image_width),
+                    color: cfg.name.font_color,
+                    fontWeight: cfg.name.font_weight,
+                    fontStyle: cfg.name.font_style,
+                    textAlign: cfg.name.text_align,
+                    whiteSpace: "nowrap",
+                  }}>
+                  <div className="rounded border-2 border-dashed border-brand-400/50 px-2 py-1 hover:border-brand-400 transition-colors">
+                    {t("editor_preview_name")}
                   </div>
-                  <p className="text-sm font-medium text-slate-400">Tasarım yapabilmek için önce bir sertifika şablonu (Boş PDF/PNG) yükleyin.</p>
                 </div>
-              ) : (
-                <div className="relative inline-block border border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                  <img
-                    ref={imgRef}
-                    src={imgUrl}
-                    alt="template"
-                    className="max-w-none w-[800px] h-auto select-none rounded-sm pointer-events-none"
-                    onLoad={() => setImgTick((t) => t + 1)}
-                  />
+              </Draggable>
+            )}
 
-                  {/* 1. Name Draggable */}
-                  <Draggable bounds="parent" position={{ x: nameBox.x, y: nameBox.y }} onDrag={(_, d) => setNameBox(b => ({ ...b, x: d.x, y: d.y }))}>
-                    <div className="absolute top-0 left-0 cursor-move group">
-                      {/* Canlı Önizleme Metni */}
-                      <div className="whitespace-nowrap transition-colors" style={{ fontSize: `${fontSize * scaleRatio}px`, color: fontColor, lineHeight: 1 }}>
-                        Ahmet Yılmaz (Önizleme)
-                      </div>
-                      {/* Çerçeve (Hover/Active durumunda görünür) */}
-                      <div className="absolute inset-0 border-2 border-dashed border-violet-500/0 group-hover:border-violet-500/50 group-active:border-violet-500 group-active:bg-violet-500/10 transition-all rounded" />
-                      {/* Etiket */}
-                      <div className="absolute -top-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity bg-violet-500 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap">İSİM ALANI</div>
-                    </div>
-                  </Draggable>
-
-                  {/* 2. QR Draggable */}
-                  <Draggable bounds="parent" position={{ x: qrBox.x, y: qrBox.y }} onDrag={(_, d) => setQrBox(b => ({ ...b, x: d.x, y: d.y }))}>
-                    <div className="absolute top-0 left-0 cursor-move border-2 border-dashed border-amber-500/50 hover:border-amber-500 hover:bg-amber-500/10 active:bg-amber-500/20 p-2 flex flex-col items-center justify-center transition-all group rounded-lg" style={{ width: 100 * scaleRatio, height: 100 * scaleRatio }}>
-                      <QrCode className="w-full h-full text-amber-500/30 group-hover:text-amber-500/80 transition-colors" />
-                      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500 text-slate-900 text-[9px] font-bold px-2 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap">QR KOD (Otomatik Oluşur)</div>
-                    </div>
-                  </Draggable>
-
-                  {/* 3. CERT ID Draggable */}
-                  <Draggable bounds="parent" position={{ x: certIdBox.x, y: certIdBox.y }} onDrag={(_, d) => setCertIdBox(b => ({ ...b, x: d.x, y: d.y }))}>
-                    <div className="absolute top-0 left-0 cursor-move group">
-                      {/* Canlı Önizleme Metni */}
-                      <div className="whitespace-nowrap font-mono transition-colors" style={{ fontSize: `${certIdFontSize * scaleRatio}px`, color: certIdColor, lineHeight: 1 }}>
-                        ID: c8f3a2-9b1d-4e...
-                      </div>
-                      {/* Çerçeve */}
-                      <div className="absolute inset-0 border-2 border-dashed border-sky-500/0 group-hover:border-sky-500/50 group-active:border-sky-500 group-active:bg-sky-500/10 transition-all rounded" />
-                      {/* Etiket */}
-                      <div className="absolute -top-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity bg-sky-500 text-slate-900 text-[9px] font-bold px-2 py-0.5 rounded shadow-lg pointer-events-none whitespace-nowrap">SERTİFİKA NUMARASI</div>
-                    </div>
-                  </Draggable>
-
+            {/* Cert ID draggable */}
+            {cfg.cert_id.show && (
+              <Draggable key={`certid-${cfg.cert_id.x}-${cfg.cert_id.y}`} defaultPosition={{ x: certIdRX, y: certIdRY }} onStop={onCertIdStop} bounds="parent">
+                <div className="absolute cursor-move select-none"
+                  style={{
+                    fontSize: toRenderPx(cfg.cert_id.font_size, cfg.image_width),
+                    color: cfg.cert_id.font_color,
+                    fontWeight: cfg.cert_id.font_weight,
+                    fontStyle: cfg.cert_id.font_style,
+                    textAlign: cfg.cert_id.text_align,
+                    whiteSpace: "nowrap",
+                  }}>
+                  <div className="rounded border-2 border-dashed border-amber-400/50 px-2 py-1 hover:border-amber-400 transition-colors">
+                    {t("editor_preview_cert_id")}
+                  </div>
                 </div>
-              )}
-            </div>
+              </Draggable>
+            )}
+
+            {/* QR draggable */}
+            {cfg.qr.show && (
+              <Draggable key={`qr-${cfg.qr.x}-${cfg.qr.y}`} defaultPosition={{ x: qrRX, y: qrRY }} onStop={onQrStop} bounds="parent">
+                <div className="absolute cursor-move" style={{ width: qrRS, height: qrRS }}>
+                  <div className="w-full h-full rounded-md border-2 border-dashed border-emerald-400/60 bg-white/10 backdrop-blur flex items-center justify-center hover:border-emerald-400 transition-colors">
+                    <QrCode className="text-emerald-300" style={{ width: "50%", height: "50%" }} />
+                  </div>
+                </div>
+              </Draggable>
+            )}
           </div>
         </div>
 
-        {/* --- RIGHT: CONTROLS & BULK --- */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-          
-          {/* Typography Panel */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-violet-500 opacity-50" />
-            
-            <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-6">
-              <Palette className="h-4 w-4 text-violet-400" /> Stil ve Tipografi
-            </h3>
+        {/* RIGHT PANEL — light theme */}
+        <div className="w-80 flex flex-col overflow-hidden border-l border-gray-100 bg-gray-50">
 
-            <div className="space-y-8">
-              {/* İsim Ayarları */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-violet-400"><Type className="h-3 w-3" /> İsim Alanı</div>
-                <div>
-                  <div className="flex justify-between text-xs text-slate-500 mb-2 font-mono"><span>Boyut</span><span className="text-white">{fontSize}px</span></div>
-                  <input type="range" min="12" max="150" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="w-full accent-violet-500 cursor-pointer" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">Renk Kodu</label>
-                  <div className="flex gap-2">
-                    <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="h-10 w-10 bg-transparent border-none cursor-pointer rounded-lg" />
-                    <input type="text" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="flex-1 rounded-xl border border-slate-700 bg-slate-950/50 px-4 text-sm font-mono text-slate-200 uppercase outline-none focus:border-violet-500/50" />
-                  </div>
-                </div>
-              </div>
-
-              <hr className="border-slate-800/60" />
-
-              {/* ID Ayarları */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400"><Hash className="h-3 w-3" /> Sertifika ID Alanı</div>
-                <div>
-                  <div className="flex justify-between text-xs text-slate-500 mb-2 font-mono"><span>Boyut</span><span className="text-white">{certIdFontSize}px</span></div>
-                  <input type="range" min="8" max="72" value={certIdFontSize} onChange={(e) => setCertIdFontSize(Number(e.target.value))} className="w-full accent-sky-500 cursor-pointer" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">Renk Kodu</label>
-                  <div className="flex gap-2">
-                    <input type="color" value={certIdColor} onChange={(e) => setCertIdColor(e.target.value)} className="h-10 w-10 bg-transparent border-none cursor-pointer rounded-lg" />
-                    <input type="text" value={certIdColor} onChange={(e) => setCertIdColor(e.target.value)} className="flex-1 rounded-xl border border-slate-700 bg-slate-950/50 px-4 text-sm font-mono text-slate-200 uppercase outline-none focus:border-sky-500/50" />
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Panel tabs */}
+          <div className="flex shrink-0 border-b border-gray-100 bg-white">
+            <button onClick={() => setActivePanel("typography")}
+              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "typography" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
+              <Type className="h-3.5 w-3.5" /> {t("editor_tab_typography")}
+            </button>
+            <button onClick={() => setActivePanel("bulk")}
+              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "bulk" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
+              <TableProperties className="h-3.5 w-3.5" /> {t("editor_tab_bulk")}
+            </button>
+            <button onClick={() => setActivePanel("history")}
+              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "history" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
+              <History className="h-3.5 w-3.5" /> Geçmiş
+            </button>
           </div>
 
-          {/* Bulk Generation Panel */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-sm relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500 opacity-50" />
-            
-            <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-2">
-              <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Excel ile Toplu Basım
-            </h3>
-            <p className="text-xs text-slate-500 mb-6 leading-relaxed">Tasarladığınız bu şablonu kullanarak Excel listenizdeki herkes için tek tıkla sertifika üretin.</p>
-            
-            <label className="flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-bold text-white cursor-pointer hover:bg-emerald-500 transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              {bulkLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
-              {bulkLoading ? "Sertifikalar Üretiliyor..." : "Excel Dosyası (.xlsx) Seç"}
-              <input type="file" accept=".xlsx" className="hidden" onChange={(e) => e.target.files?.[0] && bulkGenerate(e.target.files[0])} />
-            </label>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
             <AnimatePresence>
               {err && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4">
-                  <div className="flex items-center gap-2 text-xs font-bold text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">
-                    <AlertCircle className="h-4 w-4 shrink-0" /> {err}
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                  <div className="error-banner flex items-center gap-2 text-xs">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {err}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {activePanel === "typography" && (
+              <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+
+                {/* Canvas dimensions */}
+                <PanelSection icon={<Maximize2 className="h-3.5 w-3.5" />} title={t("editor_dimensions")}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-[10px]">{t("editor_width")} (px)</label>
+                      <input type="number" value={cfg.image_width} onChange={e => setCfg(c => ({ ...c, image_width: +e.target.value }))} className="input-field py-1.5 text-xs" />
+                    </div>
+                    <div>
+                      <label className="label text-[10px]">{t("editor_height")} (px)</label>
+                      <input type="number" value={cfg.image_height} onChange={e => setCfg(c => ({ ...c, image_height: +e.target.value }))} className="input-field py-1.5 text-xs" />
+                    </div>
+                  </div>
+                </PanelSection>
+
+                {/* Name field */}
+                <PanelSection icon={<User className="h-3.5 w-3.5" />} title={t("editor_name_field")}>
+                  <FieldPanel label="Ad Soyad" field={cfg.name} onChange={p => setCfg(c => ({ ...c, name: { ...c.name, ...p } }))} />
+                </PanelSection>
+
+                {/* Cert ID field */}
+                <PanelSection icon={<Hash className="h-3.5 w-3.5" />} title={t("editor_certid_field")}>
+                  <FieldPanel label="Sertifika ID" field={cfg.cert_id} onChange={p => setCfg(c => ({ ...c, cert_id: { ...c.cert_id, ...p } }))} />
+                </PanelSection>
+
+                {/* QR */}
+                <PanelSection icon={<QrCode className="h-3.5 w-3.5" />} title={t("editor_qr_field")}>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-600">QR Kodu</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={cfg.qr.show} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, show: e.target.checked } }))} className="accent-brand-600 h-3.5 w-3.5" />
+                        <span className="text-[11px] font-medium text-gray-500">Göster</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="label text-[10px]">Boyut (px)</label>
+                      <input type="number" value={cfg.qr.size} min={40} max={400}
+                        onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, size: +e.target.value } }))} className="input-field py-1.5 text-xs" />
+                    </div>
+                  </div>
+                </PanelSection>
+
+                {/* HeptaCert Hologram */}
+                <PanelSection icon={<SlidersHorizontal className="h-3.5 w-3.5" />} title="HeptaCert Hologramı">
+                  <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-gray-700">Hologram Damgası</span>
+                        <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+                          Sağ alt köşeye yarı saydam HeptaCert™ mührü basar.
+                        </p>
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer shrink-0 ml-3">
+                        <input
+                          type="checkbox"
+                          checked={(cfg as any).show_hologram !== false}
+                          onChange={e => setCfg(c => ({ ...c, show_hologram: e.target.checked } as any))}
+                          className="accent-brand-600 h-4 w-4"
+                        />
+                        <span className="text-xs font-semibold text-brand-700">Aktif</span>
+                      </label>
+                    </div>
+                  </div>
+                </PanelSection>
+
+                <div className="pt-2">
+                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-3 flex items-start gap-2.5">
+                    <Move className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-gray-400 leading-relaxed">{t("editor_drag_hint")}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activePanel === "bulk" && (
+              <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                <PanelSection icon={<TableProperties className="h-3.5 w-3.5" />} title={t("editor_bulk_title")}>
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-gray-400 leading-relaxed">{t("editor_bulk_desc")}</p>
+                    <label className="flex flex-col gap-1.5 cursor-pointer">
+                      <span className="label">{t("editor_bulk_file")}</span>
+                      <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 p-6 hover:border-brand-300 hover:bg-brand-50/30 transition-all group">
+                        <Upload className="h-6 w-6 text-gray-300 group-hover:text-brand-400 transition-colors" />
+                        <span className="text-xs text-gray-400">
+                          {bulkFile ? bulkFile.name : t("editor_bulk_select")}
+                        </span>
+                        <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                          onChange={e => setBulkFile(e.target.files?.[0] || null)} />
+                      </div>
+                    </label>
+                    <button onClick={generateBulk} disabled={bulkLoading || !bulkFile}
+                      className="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
+                      {bulkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {t("editor_bulk_generate")}
+                    </button>
+                  </div>
+                </PanelSection>
+              </motion.div>
+            )}
+
+            {activePanel === "history" && (
+              <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-gray-700 flex items-center gap-2">
+                    <History className="h-3.5 w-3.5 text-gray-400" /> Şablon Geçmişi
+                  </p>
+                  <button onClick={loadSnapshots} className="text-gray-400 hover:text-gray-700 transition-colors">
+                    <RefreshCcw className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {snapsLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div>
+                ) : snapshots.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-8">Geçmiş snapshot bulunamadı.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {snapshots.map((snap) => (
+                      <div key={snap.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {snap.template_image_url ? (
+                            <img src={snap.template_image_url} alt="" className="h-10 w-16 object-cover rounded border border-gray-200" />
+                          ) : (
+                            <div className="h-10 w-16 rounded border border-gray-200 bg-gray-100 flex items-center justify-center">
+                              <FileText className="h-4 w-4 text-gray-300" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold text-gray-700">#{snap.id}</p>
+                            <p className="text-[10px] text-gray-400">{new Date(snap.created_at).toLocaleString("tr-TR")}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => restoreSnapshot(snap.id)}
+                          disabled={restoringId === snap.id}
+                          className="shrink-0 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                        >
+                          {restoringId === snap.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                          Geri Yükle
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* --- BULK RESULTS FULL WIDTH --- */}
-      <AnimatePresence>
-        {bulkResult && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-8 backdrop-blur-md shadow-2xl">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                <div className="h-14 w-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 border border-emerald-500/30">
-                  <CheckCircle className="h-8 w-8" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-black text-emerald-300">İşlem Tamamlandı</h2>
-                  <p className="text-sm text-emerald-500/60 font-medium">Excel dosyasındaki {bulkResult.created || 0} kayıt başarıyla basıldı.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {bulkResult.certificates?.map((c: any) => (
-                <div key={c.uuid} className="group relative rounded-2xl border border-slate-800 bg-slate-950/60 p-5 hover:border-emerald-500/30 transition-all">
-                  <div className="font-bold text-slate-200 mb-1 truncate group-hover:text-emerald-300 transition-colors">{c.student_name}</div>
-                  <div className="text-[10px] font-mono text-slate-500 mb-4 uppercase flex items-center gap-1.5"><Hash className="h-3 w-3"/> ID: {c.public_id || "-"}</div>
-                  
-                  <div className="flex gap-2">
-                    <a href={`/verify/${c.uuid}`} target="_blank" className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 py-2.5 text-[11px] font-bold text-slate-400 hover:text-white border border-slate-800 transition-colors">
-                      <ExternalLink className="h-3 w-3" /> Doğrula
-                    </a>
-                    <a href={c.pdf_url} target="_blank" className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-2.5 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500 hover:text-slate-900 transition-all border border-emerald-500/20">
-                      <Download className="h-3 w-3" /> PDF
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

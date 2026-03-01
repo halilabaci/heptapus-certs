@@ -1,149 +1,281 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { 
-  ShieldCheck, 
-  Zap, 
-  ArrowRight, 
+import {
+  ShieldCheck,
+  Zap,
+  ArrowRight,
   Search,
   FileCheck,
-  Fingerprint,
-  Cpu
+  QrCode,
+  Users,
+  BarChart3,
+  Lock,
+  ExternalLink,
+  Instagram,
+  Linkedin,
+  Github,
+  Twitter,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8765/api";
+
+type StatsData = {
+  active_orgs: string;
+  certs_issued: string;
+  uptime_pct: string;
+  availability: string;
+};
+
+const in_view = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const stagger = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
 
 export default function LandingPage() {
-  const containerVars = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
-  };
+  const t = useT();
+  const [stats, setStats] = useState<StatsData | null>(null);
 
-  const itemVars = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } }
-  };
+  useEffect(() => {
+    fetch(`${API_BASE}/stats`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setStats(d))
+      .catch(() => {});
+  }, []);
+
+  const features = [
+    { icon: QrCode,    titleKey: "feat_qr_title",       descKey: "feat_qr_desc",       color: "text-brand-600 bg-brand-50" },
+    { icon: FileCheck, titleKey: "feat_excel_title",     descKey: "feat_excel_desc",    color: "text-emerald-600 bg-emerald-50" },
+    { icon: Search,    titleKey: "feat_records_title",   descKey: "feat_records_desc",  color: "text-violet-600 bg-violet-50" },
+    { icon: Users,     titleKey: "feat_events_title",    descKey: "feat_events_desc",   color: "text-amber-600 bg-amber-50" },
+    { icon: Lock,      titleKey: "feat_security_title",  descKey: "feat_security_desc", color: "text-rose-600 bg-rose-50" },
+    { icon: BarChart3, titleKey: "feat_hc_title",        descKey: "feat_hc_desc",       color: "text-sky-600 bg-sky-50" },
+  ] as const;
+
+  const statCards = [
+    { key: "active_orgs",  labelKey: "stats_orgs" },
+    { key: "certs_issued", labelKey: "stats_certs" },
+    { key: "uptime_pct",   labelKey: "stats_uptime" },
+    { key: "availability", labelKey: "stats_availability" },
+  ] as const;
+
+  const steps = [
+    { step: "1", titleKey: "step1_title", descKey: "step1_desc" },
+    { step: "2", titleKey: "step2_title", descKey: "step2_desc" },
+    { step: "3", titleKey: "step3_title", descKey: "step3_desc" },
+  ] as const;
 
   return (
-    <div className="flex flex-col gap-32 pb-20 pt-10">
-      
-      {/* --- HERO SECTION --- */}
-      <motion.section variants={containerVars} initial="hidden" animate="visible" className="relative text-center">
-        <motion.div variants={itemVars} className="mx-auto mb-8 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-slate-900/50 px-4 py-2 text-xs font-semibold text-violet-300 backdrop-blur-md shadow-[0_0_20px_rgba(124,58,237,0.1)]">
+    <div className="flex flex-col gap-28 pb-20 pt-4">
+
+      {/* ── HERO ── */}
+      <motion.section variants={stagger} initial="hidden" animate="show" className="text-center pt-10">
+        <motion.div variants={in_view} className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-1.5 text-xs font-semibold text-brand-700">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
           </span>
-          Heptapus Güvencesiyle Web3 Altyapısı
+          {t("home_hero_badge")}
         </motion.div>
 
-        <motion.h1 variants={itemVars} className="mx-auto max-w-3xl text-5xl font-black tracking-tight text-slate-100 sm:text-7xl leading-[1.1]">
-          Sertifikalarınızı <br />
-          <span className="relative inline-block mt-2">
-            <span className="absolute -inset-1 block rounded-lg bg-gradient-to-r from-violet-600/20 to-amber-500/20 blur-xl" />
-            <span className="relative bg-gradient-to-r from-violet-400 via-white to-amber-300 bg-clip-text text-transparent">
-              Kırılamaz
-            </span>
-          </span> Kılın
+        <motion.h1 variants={in_view} className="mx-auto max-w-3xl text-5xl font-extrabold tracking-tight text-gray-900 sm:text-6xl leading-tight">
+          {t("home_hero_title_1")}{" "}
+          <span className="bg-gradient-to-r from-brand-600 to-violet-500 bg-clip-text text-transparent">
+            {t("home_hero_title_2")}
+          </span>{" "}
+          {t("home_hero_title_3")}
         </motion.h1>
 
-        <motion.p variants={itemVars} className="mx-auto mt-8 max-w-xl text-lg text-slate-400 font-medium leading-relaxed">
-          Kurumunuzun itibarını koruyun. Sahte belgeleri tarihe gömen, anında doğrulanabilir ve tamamen şifrelenmiş akıllı sertifika platformu.
+        <motion.p variants={in_view} className="mx-auto mt-6 max-w-xl text-lg text-gray-600 leading-relaxed">
+          {t("home_hero_subtitle")}
         </motion.p>
 
-        <motion.div variants={itemVars} className="mt-12 flex flex-wrap justify-center gap-5">
-          <Link href="/pricing" className="group flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-violet-500 px-8 py-4 font-bold text-white shadow-[0_0_40px_rgba(124,58,237,0.3)] transition-all hover:shadow-[0_0_60px_rgba(124,58,237,0.5)] hover:scale-105 active:scale-95">
-            Planları İncele <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+        <motion.div variants={in_view} className="mt-10 flex flex-wrap justify-center gap-4">
+          <Link href="/register" className="btn-primary text-base px-7 py-3.5 group">
+            {t("home_cta_register")}
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
-          <Link href="/verify" className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/50 px-8 py-4 font-bold text-slate-300 transition-all hover:bg-slate-800 hover:text-white backdrop-blur-md">
-            Sertifika Doğrula
+          <Link href="/verify" className="btn-secondary text-base px-7 py-3.5">
+            {t("home_cta_verify")}
           </Link>
+        </motion.div>
+
+        <motion.div variants={in_view} className="mt-6 text-sm text-gray-400">
+          {t("home_hero_sub")}
         </motion.div>
       </motion.section>
 
-      {/* --- PREMIUM BENTO GRID (FEATURES) --- */}
-      <section id="features" className="scroll-mt-32">
-        <div className="mb-12 text-center">
-          <h2 className="text-3xl font-black text-slate-100">Neden HeptaCert?</h2>
-          <p className="mt-3 text-slate-400">Sıradan PDF'lerden çok daha fazlası.</p>
-        </div>
+      {/* ── STATS ── */}
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.3 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+      >
+        {statCards.map((s) => (
+          <motion.div key={s.key} variants={in_view} className="card p-6 text-center">
+            <div className="text-3xl font-extrabold text-gray-900">
+              {stats ? stats[s.key] : <span className="inline-block h-8 w-20 animate-pulse rounded-lg bg-gray-100" />}
+            </div>
+            <div className="mt-1 text-sm text-gray-500">{t(s.labelKey)}</div>
+          </motion.div>
+        ))}
+      </motion.section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-[250px]">
-          {/* Box 1 - Geniş Kutu */}
-          <div className="md:col-span-2 rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-950/80 p-8 relative overflow-hidden group hover:border-violet-500/30 transition-colors">
-            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Fingerprint className="h-40 w-40 text-violet-400" />
-            </div>
-            <div className="relative z-10 flex flex-col justify-between h-full">
-              <div className="inline-flex rounded-2xl bg-violet-500/10 p-3 text-violet-400 w-fit">
-                <ShieldCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-slate-100 mb-2">Askeri Düzeyde Güvenlik</h3>
-                <p className="text-slate-400 max-w-sm">Her sertifika benzersiz bir UUID ve kriptografik özet (hash) ile mühürlenir. Geriye dönük manipülasyon imkansızdır.</p>
-              </div>
-            </div>
-          </div>
+      {/* ── FEATURES ── */}
+      <section id="features" className="scroll-mt-24">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="mb-12 text-center"
+        >
+          <h2 className="text-3xl font-bold text-gray-900">{t("home_features_title")}</h2>
+          <p className="mt-3 text-gray-500 max-w-xl mx-auto">{t("home_features_sub")}</p>
+        </motion.div>
 
-          {/* Box 2 - Dar Kutu */}
-          <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-950/80 p-8 relative overflow-hidden group hover:border-amber-500/30 transition-colors">
-            <div className="absolute -bottom-4 -right-4 h-32 w-32 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-colors" />
-            <div className="relative z-10 flex flex-col justify-between h-full">
-              <div className="inline-flex rounded-2xl bg-amber-500/10 p-3 text-amber-400 w-fit">
-                <Search className="h-6 w-6" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.2 }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
+          {features.map((f) => (
+            <motion.div key={f.titleKey} variants={in_view} className="card p-6 group hover:shadow-lifted transition-shadow">
+              <div className={`inline-flex items-center justify-center rounded-xl p-3 ${f.color}`}>
+                <f.icon className="h-5 w-5" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-slate-100 mb-2">Saniyeler İçinde Doğrulama</h3>
-                <p className="text-sm text-slate-400">Karekod okutarak veya ID girerek gerçek zamanlı sorgulama.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Box 3 - Dar Kutu */}
-          <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-950/80 p-8 group hover:border-emerald-500/30 transition-colors">
-            <div className="flex flex-col justify-between h-full">
-              <div className="inline-flex rounded-2xl bg-emerald-500/10 p-3 text-emerald-400 w-fit">
-                <FileCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-slate-100 mb-2">Excel ile Toplu Üretim</h3>
-                <p className="text-sm text-slate-400">Binlerce katılımcıyı tek bir Excel dosyasıyla sisteme aktarın.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Box 4 - Geniş Kutu */}
-          <div className="md:col-span-2 rounded-3xl border border-slate-800 bg-gradient-to-br from-violet-900/20 to-slate-950/80 p-8 relative overflow-hidden flex items-end">
-            <div className="absolute top-8 right-8 flex gap-2">
-              <div className="h-12 w-12 rounded-xl bg-slate-900 border border-slate-700 shadow-xl flex items-center justify-center animate-bounce" style={{ animationDelay: "0ms" }}><Cpu className="h-5 w-5 text-slate-400" /></div>
-              <div className="h-12 w-12 rounded-xl bg-violet-600 shadow-xl flex items-center justify-center animate-bounce" style={{ animationDelay: "150ms" }}><Zap className="h-5 w-5 text-white" /></div>
-            </div>
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/20 px-3 py-1 text-xs font-bold text-violet-300 mb-4">
-                Powered by HeptaCoin (HC)
-              </div>
-              <h3 className="text-2xl font-bold text-slate-100 mb-2">Akıllı Kredi Sistemi</h3>
-              <p className="text-slate-400 max-w-md">Kullandıkça ödeyin veya aylık paketlerle maliyetlerinizi düşürün. Ürettiğiniz her sertifika için şeffaf fiyatlandırma.</p>
-            </div>
-          </div>
-        </div>
+              <h3 className="mt-4 font-semibold text-gray-900">{t(f.titleKey)}</h3>
+              <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">{t(f.descKey)}</p>
+            </motion.div>
+          ))}
+        </motion.div>
       </section>
 
-      {/* --- FOOTER --- */}
-      <footer className="mt-10 flex flex-col items-center justify-between gap-6 border-t border-slate-800/50 pt-10 md:flex-row pb-10">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-amber-500 text-white">
-            <ShieldCheck className="h-3 w-3" />
+      {/* ── HOW IT WORKS ── */}
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5 }}
+        className="rounded-3xl border border-gray-100 bg-white p-10 md:p-14 shadow-card"
+      >
+        <h2 className="text-2xl font-bold text-gray-900 mb-10 text-center">{t("home_how_title")}</h2>
+        <div className="grid md:grid-cols-3 gap-8">
+          {steps.map((item) => (
+            <div key={item.step} className="flex flex-col items-center text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white font-bold text-lg shadow-brand mb-4">
+                {item.step}
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">{t(item.titleKey)}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{t(item.descKey)}</p>
+            </div>
+          ))}
+        </div>
+      </motion.section>
+
+      {/* ── CTA ── */}
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5 }}
+        className="rounded-3xl bg-gradient-to-br from-brand-600 to-violet-600 p-12 text-center text-white relative overflow-hidden"
+      >
+        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top_right,#fff_0%,transparent_60%)]" />
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold mb-6">
+            <Zap className="h-4 w-4" /> {t("home_cta_section_badge")}
           </div>
-          <div className="text-sm font-semibold text-slate-300">
-            Heptapus Group <span className="text-slate-600 font-normal">© {new Date().getFullYear()}</span>
+          <h2 className="text-3xl font-bold mb-4">{t("home_cta_section_title")}</h2>
+          <p className="text-brand-100 max-w-md mx-auto mb-8 text-base">{t("home_cta_section_sub")}</p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/register" className="inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3.5 text-sm font-semibold text-brand-700 shadow-lifted hover:bg-brand-50 transition-colors">
+              {t("home_cta_section_btn1")} <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="/pricing" className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
+              {t("home_cta_section_btn2")}
+            </Link>
           </div>
         </div>
-        <div className="flex gap-8 text-sm font-medium text-slate-500">
-          <Link href="/verify" className="hover:text-violet-400 transition-colors">Doğrulama Merkezi</Link>
-          <Link href="/pricing" className="hover:text-amber-400 transition-colors">Paketler</Link>
-          <Link href="/admin/login" className="hover:text-white transition-colors">Sistem Girişi</Link>
+      </motion.section>
+
+      {/* ── HEPTAPUS GROUP ── */}
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5 }}
+        className="rounded-3xl border border-gray-100 bg-white p-10 shadow-card"
+      >
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-violet-500 text-white shadow-brand">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <span className="text-lg font-black text-gray-900">Heptapus Group</span>
+            </div>
+            <p className="text-sm text-gray-500 max-w-md">{t("heptapus_tagline")}</p>
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs font-medium text-gray-400 mt-1">
+              <a href="https://heptapusgroup.com/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 transition-colors">{t("heptapus_privacy")}</a>
+              <a href="https://heptapusgroup.com/terms" target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 transition-colors">{t("heptapus_terms")}</a>
+              <a href="mailto:contact@heptapusgroup.com" className="hover:text-brand-600 transition-colors">{t("heptapus_contact_label")}: contact@heptapusgroup.com</a>
+            </div>
+          </div>
+          <div className="flex flex-col items-center md:items-end gap-4 shrink-0">
+            <a
+              href="https://heptapusgroup.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-all shadow-soft"
+            >
+              {t("heptapus_visit")} <ExternalLink className="h-4 w-4" />
+            </a>
+            <div className="flex items-center gap-3">
+              {[
+                { href: "https://www.instagram.com/heptapusgroup", Icon: Instagram, label: "Instagram" },
+                { href: "https://www.linkedin.com/company/heptapusgroup", Icon: Linkedin, label: "LinkedIn" },
+                { href: "https://github.com/heptapusgroup", Icon: Github, label: "GitHub" },
+                { href: "https://x.com/heptapusgroup", Icon: Twitter, label: "X" },
+              ].map(({ href, Icon, label }) => (
+                <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label}
+                  className="rounded-lg p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                  <Icon className="h-4 w-4" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.section>
+
+      {/* ── FOOTER ── */}
+      <footer className="flex flex-col items-center justify-between gap-6 border-t border-gray-100 pt-10 pb-6 md:flex-row">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-auto">
+            <Image src="/logo.png" alt="HeptaCert" width={160} height={44} className="h-10 w-auto" unoptimized />
+          </div>
+          <span className="text-sm text-gray-400 font-normal">© {new Date().getFullYear()}</span>
+        </div>
+        <div className="flex gap-6 text-sm font-medium text-gray-500">
+          <Link href="/verify" className="hover:text-brand-600 transition-colors">{t("footer_verify")}</Link>
+          <Link href="/pricing" className="hover:text-brand-600 transition-colors">{t("footer_pricing")}</Link>
+          <Link href="/admin/login" className="hover:text-gray-900 transition-colors">{t("footer_login")}</Link>
         </div>
       </footer>
+
     </div>
   );
 }

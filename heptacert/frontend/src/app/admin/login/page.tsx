@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { apiFetch, setToken, clearToken } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Mail, Loader2, ArrowRight, ShieldCheck, Fingerprint } from "lucide-react";
+import { Lock, Mail, Loader2, ArrowRight, ShieldCheck, KeyRound, Sparkles, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
 
 type MeOut = {
   id: number;
@@ -14,10 +15,22 @@ type MeOut = {
 };
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState("admin1@heptapusgroup.com");
-  const [password, setPassword] = useState("StrongAdminPass123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 2FA state
+  const [step, setStep] = useState<"credentials" | "otp">("credentials");
+  const [partialToken, setPartialToken] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+
+  // Magic link state
+  const [magicMode, setMagicMode] = useState(false);
+  const [magicEmail, setMagicEmail] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  const [magicLoading, setMagicLoading] = useState(false);
+
   const router = useRouter();
 
   async function onSubmit(e: React.FormEvent) {
@@ -32,17 +45,17 @@ export default function AdminLogin() {
       });
 
       const data = await res.json();
+
+      if (data?.requires_2fa) {
+        setPartialToken(data.partial_token);
+        setStep("otp");
+        setLoading(false);
+        return;
+      }
+
       const token = data?.access_token as string | undefined;
       if (!token) throw new Error("Token alınamadı.");
-
-      setToken(token);
-
-      // Role-based redirect
-      const meRes = await apiFetch("/me", { method: "GET" });
-      const me = (await meRes.json()) as MeOut;
-
-      if (me.role === "superadmin") router.push("/admin/superadmin");
-      else router.push("/admin/events");
+      await finishLogin(token);
     } catch (e: any) {
       clearToken();
       setErr(e?.message || "Giriş başarısız oldu. Bilgilerinizi kontrol edin.");
@@ -51,122 +64,262 @@ export default function AdminLogin() {
     }
   }
 
+  async function onOtpSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setLoading(true);
+    try {
+      const res = await apiFetch("/auth/2fa/validate", {
+        method: "POST",
+        body: JSON.stringify({ partial_token: partialToken, code: otpCode }),
+      });
+      const data = await res.json();
+      const token = data?.access_token as string | undefined;
+      if (!token) throw new Error("Doğrulama başarısız.");
+      await finishLogin(token);
+    } catch (e: any) {
+      setErr(e?.message || "Geçersiz kod. Tekrar deneyin.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function finishLogin(token: string) {
+    setToken(token);
+    const meRes = await apiFetch("/me", { method: "GET" });
+    const me = (await meRes.json()) as MeOut;
+    if (me.role === "superadmin") router.push("/admin/superadmin");
+    else router.push("/admin/events");
+  }
+
+  async function sendMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setMagicLoading(true);
+    try {
+      await apiFetch("/auth/magic-link", {
+        method: "POST",
+        body: JSON.stringify({ email: magicEmail }),
+      });
+      setMagicSent(true);
+    } catch (ex: any) {
+      setErr(ex?.message || "Magic link gönderilemedi.");
+    } finally {
+      setMagicLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[75vh] py-10">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-md relative"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        className="card w-full max-w-md p-10"
       >
-        {/* Arka Plan Işıması (Glow) */}
-        <div className="absolute -inset-1 rounded-[2.5rem] bg-gradient-to-br from-violet-500/30 via-transparent to-amber-500/20 blur-2xl opacity-50" />
-
-        <div className="relative overflow-hidden rounded-[2.5rem] border border-slate-800/80 bg-slate-950/80 p-[1px] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-          {/* Üst İnce Çizgi Vurgusu */}
-          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50" />
-
-          <div className="bg-gradient-to-b from-slate-900/60 to-slate-950/90 p-10 md:p-12">
-            
-            {/* Header Kısımı */}
-            <div className="mb-10 text-center relative">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-900/20 text-violet-400 border border-violet-500/30 shadow-[0_0_30px_rgba(124,58,237,0.2)] relative group">
-                <div className="absolute inset-0 rounded-2xl bg-violet-400/20 blur-md group-hover:bg-violet-400/30 transition-colors" />
-                <ShieldCheck className="h-8 w-8 relative z-10" />
+        <AnimatePresence mode="wait">
+          {step === "credentials" ? (
+            <motion.div key="credentials" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {/* Header */}
+              <div className="mb-8 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-brand">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">Giriş Yap</h1>
+                <p className="mt-1.5 text-sm text-gray-500">HeptaCert Yönetim Paneli</p>
               </div>
-              <h1 className="text-3xl font-black tracking-tight text-white">Sisteme Giriş</h1>
-              <p className="mt-2 text-sm font-medium text-slate-500">HeptaCert Kurumsal Yönetim Ağı</p>
-            </div>
 
-            <form onSubmit={onSubmit} className="grid gap-6">
-              
-              {/* Email Input */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">
-                  E-Posta Adresi
-                </label>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-600 group-focus-within:text-violet-400 transition-colors" />
+              <form onSubmit={onSubmit} className="space-y-5">
+                <div>
+                  <label className="label">E-posta Adresi</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      className="input-field pl-10"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="siz@sirket.com"
+                      type="email"
+                      required
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="label mb-0">Şifre</label>
+                    <Link href="/forgot-password" className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                      Şifremi Unuttum
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      className="input-field pl-10"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                    />
+                  </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {err && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                      <div className="error-banner">{err}</div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <button disabled={loading} className="btn-primary w-full justify-center py-3 group">
+                  {loading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Giriş yapılıyor...</>
+                  ) : (
+                    <>Giriş Yap <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-6 text-center text-sm text-gray-500">
+                Hesabınız yok mu?{" "}
+                <Link href="/register" className="font-semibold text-brand-600 hover:text-brand-700">
+                  Ücretsiz Kayıt Ol
+                </Link>
+              </div>
+              {/* Magic link toggle */}
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setMagicMode(true); setErr(null); setMagicSent(false); }}
+                  className="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  <Sparkles className="h-4 w-4" /> Magic link ile giriş yap
+                </button>
+              </div>            </motion.div>
+          ) : (
+            <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
+              {/* 2FA Header */}
+              <div className="mb-8 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-brand">
+                  <KeyRound className="h-6 w-6" />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">İki Faktörlü Doğrulama</h1>
+                <p className="mt-1.5 text-sm text-gray-500">Kimlik doğrulama uygulamanızdaki 6 haneli kodu girin</p>
+              </div>
+
+              <form onSubmit={onOtpSubmit} className="space-y-5">
+                <div>
+                  <label className="label">Doğrulama Kodu</label>
                   <input
-                    className="w-full rounded-2xl border border-slate-800 bg-slate-900/50 py-4 pl-12 pr-4 text-sm font-medium text-slate-200 outline-none ring-violet-500/20 transition-all focus:border-violet-500/50 focus:bg-slate-900/80 focus:ring-4 placeholder:text-slate-600"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@heptapusgroup.com"
-                    type="email"
+                    className="input-field text-center text-2xl tracking-[0.5em] font-mono"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     required
-                    autoComplete="email"
+                    maxLength={6}
                   />
                 </div>
-              </div>
 
-              {/* Şifre Input */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">
-                  Güvenlik Anahtarı
-                </label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-600 group-focus-within:text-amber-400 transition-colors" />
-                  <input
-                    className="w-full rounded-2xl border border-slate-800 bg-slate-900/50 py-4 pl-12 pr-4 text-sm font-medium text-slate-200 outline-none ring-amber-500/20 transition-all focus:border-amber-500/50 focus:bg-slate-900/80 focus:ring-4 placeholder:text-slate-600"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    type="password"
-                    required
-                    autoComplete="current-password"
-                  />
-                </div>
-              </div>
+                <AnimatePresence mode="wait">
+                  {err && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                      <div className="error-banner">{err}</div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-              {/* Hata Mesajı */}
-              <AnimatePresence mode="wait">
-                {err && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, y: -10 }}
-                    animate={{ opacity: 1, height: "auto", y: 0 }}
-                    exit={{ opacity: 0, height: 0, scale: 0.95 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex items-start gap-3 rounded-xl bg-rose-500/10 p-4 text-sm font-medium text-rose-400 border border-rose-500/20">
-                      <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-rose-500 animate-pulse" />
-                      <span className="leading-tight">{err}</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                <button disabled={loading || otpCode.length !== 6} className="btn-primary w-full justify-center py-3 group">
+                  {loading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Doğrulanıyor...</>
+                  ) : (
+                    <>Doğrula <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></>
+                  )}
+                </button>
 
-              {/* Submit Butonu */}
-              <button
-                disabled={loading}
-                className="group relative mt-4 flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-violet-500 py-4 text-sm font-bold text-white transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(124,58,237,0.4)] disabled:opacity-70 disabled:hover:scale-100 active:scale-[0.98]"
-              >
-                {/* Buton içi parlama efekti */}
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                
-                {loading ? (
-                  <div className="flex items-center gap-2 relative z-10">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Kimlik Doğrulanıyor...
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 relative z-10">
-                    Sisteme Giriş Yap
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </div>
-                )}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* Alt Bilgi */}
-        <div className="mt-8 flex flex-col items-center justify-center gap-2 text-slate-500">
-          <Fingerprint className="h-5 w-5 opacity-50" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]">
-            Uçtan Uca Şifreli Bağlantı
-          </p>
-        </div>
+                <button
+                  type="button"
+                  onClick={() => { setStep("credentials"); setErr(null); setOtpCode(""); }}
+                  className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
+                >
+                  ← Geri Dön
+                </button>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
+
+      {/* Magic Link Modal */}
+      <AnimatePresence>
+        {magicMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+            onClick={() => setMagicMode(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="card w-full max-w-md p-8"
+            >
+              <div className="text-center mb-6">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500 text-white shadow-lg">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Magic Link ile Giriş</h2>
+                <p className="text-sm text-gray-500 mt-1">E-postanıza şifresiz giriş bağlantısı göndeririz.</p>
+              </div>
+
+              {magicSent ? (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+                  <p className="font-semibold text-gray-800">Bağlantı gönderildi!</p>
+                  <p className="text-sm text-gray-500">E-postanızı kontrol edin. Bağlantı 15 dakika geçerli.</p>
+                  <button onClick={() => { setMagicMode(false); setMagicSent(false); }} className="mt-2 btn-ghost text-sm">Kapat</button>
+                </div>
+              ) : (
+                <form onSubmit={sendMagicLink} className="space-y-4">
+                  <div>
+                    <label className="label">E-posta Adresi</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input
+                        className="input-field pl-10"
+                        value={magicEmail}
+                        onChange={(e) => setMagicEmail(e.target.value)}
+                        placeholder="siz@sirket.com"
+                        type="email"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {err && <div className="error-banner text-sm">{err}</div>}
+
+                  <button disabled={magicLoading} className="btn-primary w-full justify-center py-3">
+                    {magicLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Gönderiliyor...</> : <><Sparkles className="h-4 w-4" /> Link Gönder</>}
+                  </button>
+                  <button type="button" onClick={() => setMagicMode(false)} className="w-full text-center text-sm text-gray-500 hover:text-gray-700">
+                    ← İptal
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

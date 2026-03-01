@@ -21,13 +21,45 @@ services:
       - ./.env
     environment:
       DATABASE_URL: postgresql+asyncpg://heptacert:heptacert@db:5432/heptacert
-      PUBLIC_BASE_URL: http://localhost:8000
+      ALEMBIC_DATABASE_URL: postgresql://heptacert:heptacert@db:5432/heptacert
+      PUBLIC_BASE_URL: http://localhost:8765
       STORAGE_MODE: local
       LOCAL_STORAGE_DIR: /data
+      # Email / SMTP — .env dosyasından alınır
+      EMAIL_TOKEN_SECRET: ${EMAIL_TOKEN_SECRET:-change-me}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@heptapus.com}
+      # Payments
+      PAYMENT_ENABLED: ${PAYMENT_ENABLED:-false}
+      ACTIVE_PAYMENT_PROVIDER: ${ACTIVE_PAYMENT_PROVIDER:-iyzico}
+      IYZICO_API_KEY: ${IYZICO_API_KEY:-}
+      IYZICO_SECRET_KEY: ${IYZICO_SECRET_KEY:-}
+      IYZICO_BASE_URL: ${IYZICO_BASE_URL:-https://sandbox-api.iyzipay.com}
+      PAYTR_MERCHANT_ID: ${PAYTR_MERCHANT_ID:-}
+      PAYTR_MERCHANT_KEY: ${PAYTR_MERCHANT_KEY:-}
+      PAYTR_MERCHANT_SALT: ${PAYTR_MERCHANT_SALT:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     volumes:
       - heptacert_data:/data
     ports:
-      - "8000:8000"
+      - "8765:8000"
+    command: >
+      sh -c "
+        cd /app &&
+        alembic upgrade head &&
+        uvicorn src.main:app --host 0.0.0.0 --port 8000
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -37,31 +69,54 @@ services:
     build:
       context: ./frontend
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:8000/api
+      NEXT_PUBLIC_API_BASE: http://localhost:8765/api
     ports:
-      - "3000:3000"
+      - "3030:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 
   db_init:
     image: postgres:16
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: heptacert
     volumes:
       - ./backend/migrations:/migrations:ro
     entrypoint: >
       sh -lc "
-      until pg_isready -h db -U ${POSTGRES_USER}; do sleep 1; done;
-      psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f /migrations/001_add_cert_fields.sql;
+      until pg_isready -h db -U heptacert; do sleep 1; done;
+      psql -h db -U heptacert -d heptacert -f /migrations/001_add_cert_fields.sql || true;
+      psql -h db -U heptacert -d heptacert -f /migrations/002_add_user_auth_fields.sql || true;
+      psql -h db -U heptacert -d heptacert -f /migrations/002_add_payments.sql || true;
+      psql -h db -U heptacert -d heptacert -f /migrations/003_enterprise.sql || true;
       echo 'db_init done';
       "
     restart: "no"
 
-    
+  db_backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: heptacert
+    volumes:
+      - backup_data:/backups
+    entrypoint: >
+      sh -c "
+        apk add --no-cache dcron && \
+        echo '0 3 * * * pg_dump -h db -U heptacert -d heptacert | gzip > /backups/heptacert_\$(date +\%Y\%m\%d_\%H\%M).sql.gz && find /backups -name \"*.sql.gz\" -mtime +7 -delete' > /etc/crontabs/root && \
+        crond -f -l 2
+      "
+    restart: unless-stopped
+
+
 volumes:
   db_data:
   heptacert_data:
+  backup_data:

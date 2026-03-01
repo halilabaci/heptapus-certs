@@ -1,264 +1,270 @@
 "use client";
 
-import { motion } from "framer-motion";
-import {
-  Download,
-  AlertTriangle,
-  BadgeCheck,
-  User,
-  Calendar,
-  ShieldCheck,
-  Hash,
-  Clock,
-  Fingerprint,
-  LockKeyhole
-} from "lucide-react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CheckCircle2,
+  ShieldOff,
+  Clock,
+  AlertCircle,
+  Loader2,
+  Download,
+  ExternalLink,
+  Award,
+  Calendar,
+  Hash,
+  User,
+  Building2,
+  ArrowLeft,
+  BadgeCheck,
+  Linkedin,
+  Eye,
+} from "lucide-react";
+import { useT } from "@/lib/i18n";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8765/api";
 
-const container = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { staggerChildren: 0.1 } },
-};
-const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } } };
-
-type VerifyStatus = "active" | "revoked" | "expired";
-
-type VerifyData = {
+type CertData = {
   uuid: string;
   public_id?: string | null;
   student_name: string;
   event_name: string;
-  status: VerifyStatus;
+  event_date?: string | null;
+  status: "active" | "revoked" | "expired";
+  issued_at?: string | null;
   pdf_url?: string | null;
+  hosting_ends_at?: string | null;
+  view_count?: number;
+  linkedin_url?: string | null;
+  branding?: { org_name?: string; brand_logo?: string | null; brand_color?: string | null } | null;
 };
 
-function statusUi(status: VerifyStatus) {
-  if (status === "active") {
-    return {
-      label: "DOĞRULANDI",
-      pill: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]",
-      dot: "bg-emerald-500 animate-pulse",
-      iconBg: "bg-gradient-to-br from-emerald-500/20 to-emerald-900/20 text-emerald-400 border-emerald-500/30",
-      reason: null as string | null,
-    };
-  }
-  if (status === "expired") {
-    return {
-      label: "SÜRESİ DOLDU",
-      pill: "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.2)]",
-      dot: "bg-amber-400",
-      iconBg: "bg-gradient-to-br from-amber-500/20 to-amber-900/20 text-amber-400 border-amber-500/30",
-      reason: "Barındırma süresi dolduğu için PDF erişimi kapalıdır.",
-    };
-  }
-  return {
-    label: "İPTAL EDİLDİ",
-    pill: "bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.2)]",
-    dot: "bg-rose-500",
-    iconBg: "bg-gradient-to-br from-rose-500/20 to-rose-900/20 text-rose-400 border-rose-500/30",
-    reason: "Bu sertifika düzenleyici kurum tarafından iptal edilmiştir.",
-  };
+type PageState = "loading" | "ok" | "not_found" | "error";
+
+function StatusBadge({ status }: { status: CertData["status"] }) {
+  if (status === "active") return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-4 py-1.5 text-sm font-bold text-emerald-700">
+      <CheckCircle2 className="h-4 w-4" /> Geçerli
+    </span>
+  );
+  if (status === "revoked") return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-rose-50 border border-rose-200 px-4 py-1.5 text-sm font-bold text-rose-700">
+      <ShieldOff className="h-4 w-4" /> İptal Edildi
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 border border-amber-200 px-4 py-1.5 text-sm font-bold text-amber-700">
+      <Clock className="h-4 w-4" /> Süresi Doldu
+    </span>
+  );
 }
 
-type FetchState = "loading" | "ok" | "not_found" | "error";
+function statusTopColor(status: CertData["status"]) {
+  if (status === "active") return "bg-emerald-500";
+  if (status === "revoked") return "bg-rose-500";
+  return "bg-amber-500";
+}
 
 export default function VerifyPage({ params }: { params: { uuid: string } }) {
-  const [data, setData] = useState<VerifyData | null>(null);
-  const [state, setState] = useState<FetchState>("loading");
+  const { uuid } = params;
+  const t = useT();
+
+  const [state, setState] = useState<PageState>("loading");
+  const [cert, setCert] = useState<CertData | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    setState("loading");
-    setData(null);
-
-    fetch(`${API_BASE}/verify/${params.uuid}`, { cache: "no-store" })
-      .then(async (res) => {
-        if (!alive) return;
-        if (res.status === 404) {
-          setState("not_found");
-          return;
-        }
-        if (!res.ok) {
-          setState("error");
-          return;
-        }
-        const json = (await res.json()) as VerifyData;
-        setData(json);
+    fetch(`${API_BASE}/verify/${uuid}`)
+      .then(async r => {
+        if (r.status === 404) { setState("not_found"); return; }
+        if (!r.ok) { setState("error"); setErrMsg(`HTTP ${r.status}`); return; }
+        const data = await r.json();
+        setCert(data);
         setState("ok");
       })
-      .catch(() => {
-        if (!alive) return;
+      .catch(e => {
         setState("error");
+        setErrMsg(e?.message || "Ağ hatası.");
       });
+  }, [uuid]);
 
-    return () => { alive = false; };
-  }, [params.uuid]);
-
-  // Yükleme Durumu
-  if (state === "loading") {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 space-y-6">
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-slate-900/50 border border-slate-800 shadow-[0_0_40px_rgba(124,58,237,0.1)]">
-          <div className="absolute inset-0 rounded-full border-t-2 border-violet-500 animate-spin" />
-          <Fingerprint className="h-8 w-8 text-violet-400 animate-pulse" />
-        </div>
-        <p className="text-sm font-bold text-slate-400 tracking-[0.2em] uppercase">Güvenli Ağda Aranıyor...</p>
-      </div>
-    );
-  }
-
-  // Bulunamadı Durumu
-  if (state === "not_found") {
-    return (
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mx-auto max-w-lg rounded-3xl border border-rose-500/20 bg-gradient-to-b from-rose-500/10 to-slate-950/80 p-12 text-center backdrop-blur-xl shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent opacity-50" />
-        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_30px_rgba(244,63,94,0.2)]">
-          <AlertTriangle className="h-10 w-10" />
-        </div>
-        <h1 className="text-3xl font-black text-white tracking-tight">Kayıt Bulunamadı</h1>
-        <p className="mt-3 text-slate-400 leading-relaxed">Girdiğiniz benzersiz kimlik (UUID) Heptapus Group şifreli kayıtlarıyla eşleşmiyor. Lütfen adresi kontrol edin.</p>
-        <button onClick={() => window.location.reload()} className="mt-8 rounded-full bg-slate-900 border border-slate-700 px-8 py-3 text-sm font-bold text-slate-300 transition-all hover:bg-slate-800 hover:text-white active:scale-95">
-          Yeniden Sorgula
-        </button>
-      </motion.div>
-    );
-  }
-
-  // Hata Durumu
-  if (state === "error" || !data) {
-    return (
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mx-auto max-w-lg rounded-3xl border border-slate-700 bg-gradient-to-b from-slate-800/40 to-slate-950/80 p-12 text-center backdrop-blur-xl shadow-2xl">
-        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-800/60 text-slate-300 border border-slate-700">
-          <AlertTriangle className="h-10 w-10" />
-        </div>
-        <h1 className="text-3xl font-black text-white tracking-tight">Bağlantı Hatası</h1>
-        <p className="mt-3 text-slate-400 leading-relaxed">Güvenli sunuculara erişilirken geçici bir kesinti yaşandı. Lütfen ağ bağlantınızı kontrol edin.</p>
-        <button onClick={() => window.location.reload()} className="mt-8 rounded-full bg-violet-600 px-8 py-3 text-sm font-bold text-white transition-all hover:bg-violet-500 active:scale-95 shadow-[0_0_20px_rgba(124,58,237,0.3)]">
-          Tekrar Dene
-        </button>
-      </motion.div>
-    );
-  }
-
-  // BURASI DÜZELTİLDİ: useMemo kaldırıldı, direkt atama yapıldı.
-  // Çünkü normal değişken atamaları "early return"lerden sonra güvenle yapılabilir.
-  const ui = statusUi(data.status);
-  const canDownload = data.status === "active" && !!data.pdf_url;
-
-  // Başarılı Durum (Ana Kart)
   return (
-    <motion.div
-      variants={container} initial="hidden" animate="show"
-      className="relative overflow-hidden rounded-[2.5rem] border border-slate-800 bg-slate-900/40 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
-    >
-      <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-30" />
-      
-      <div className="bg-gradient-to-b from-slate-900/60 to-slate-950/90 p-8 md:p-14">
-        
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <motion.div variants={item} className="flex gap-5">
-            <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border ${ui.iconBg}`}>
-              <BadgeCheck className="h-8 w-8" />
-            </div>
-
-            <div>
-              <h1 className="text-3xl font-black tracking-tight text-white">Doğrulanmış Kayıt</h1>
-              
-              <div className="mt-4 flex flex-col gap-2">
-                <div className="inline-flex items-center gap-2 rounded-lg bg-slate-950/80 px-3 py-1.5 border border-slate-800/80 text-xs font-mono text-slate-300 w-fit">
-                  <ShieldCheck className="h-3.5 w-3.5 text-violet-400" />
-                  <span className="text-slate-500 font-sans uppercase tracking-wider text-[10px] font-bold">Ağ Kimliği:</span> 
-                  {data.uuid}
-                </div>
-
-                {data.public_id && (
-                  <div className="inline-flex items-center gap-2 rounded-lg bg-slate-950/80 px-3 py-1.5 border border-slate-800/80 text-xs font-mono text-slate-300 w-fit">
-                    <Hash className="h-3.5 w-3.5 text-amber-400" />
-                    <span className="text-slate-500 font-sans uppercase tracking-wider text-[10px] font-bold">Sertifika No:</span> 
-                    {data.public_id}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div variants={item} className="shrink-0 pt-2">
-            <span className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold tracking-widest border backdrop-blur-md ${ui.pill}`}>
-              <span className={`h-2.5 w-2.5 rounded-full ${ui.dot}`} />
-              {ui.label}
-            </span>
-          </motion.div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      {/* Minimal header */}
+      <header className="border-b border-gray-100 bg-white">
+        <div className="mx-auto max-w-5xl flex items-center justify-between px-6 py-4">
+          <Link href="/" className="flex items-center gap-2 text-xl font-black text-gray-800">
+            <Award className="h-5 w-5 text-brand-600" /> HeptaCert
+          </Link>
+          <Link href="/" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors font-medium">
+            <ArrowLeft className="h-4 w-4" /> {t("verify_home")}
+          </Link>
         </div>
+      </header>
 
-        <hr className="my-10 border-slate-800/60" />
+      <main className="mx-auto max-w-2xl px-6 py-16">
+        <AnimatePresence mode="wait">
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <motion.div variants={item} className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-6 transition-all hover:border-violet-500/30 hover:bg-slate-900/80">
-            <div className="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-opacity">
-              <User className="h-32 w-32 text-violet-400" />
-            </div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
-                <User className="h-4 w-4 text-violet-400" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Sertifika Sahibi</span>
+          {/* LOADING */}
+          {state === "loading" && (
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-5 py-20">
+              <div className="p-5 rounded-full bg-brand-50">
+                <Loader2 className="h-10 w-10 animate-spin text-brand-500" />
               </div>
-              <div className="text-2xl font-bold text-slate-100 group-hover:text-white transition-colors">
-                {data.student_name}
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div variants={item} className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-6 transition-all hover:border-amber-500/30 hover:bg-slate-900/80">
-            <div className="absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-opacity">
-              <Calendar className="h-32 w-32 text-amber-400" />
-            </div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
-                <Calendar className="h-4 w-4 text-amber-400" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Etkinlik / Program</span>
-              </div>
-              <div className="text-xl font-bold text-slate-100 group-hover:text-white transition-colors leading-tight">
-                {data.event_name}
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        <motion.div variants={item} className="mt-10">
-          {canDownload ? (
-            <a
-              href={data.pdf_url!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 px-8 py-5 text-sm font-black text-slate-950 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(245,158,11,0.2)]"
-            >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-              <Download className="h-5 w-5 relative z-10" />
-              <span className="relative z-10 tracking-wider">ORİJİNAL PDF İNDİR</span>
-            </a>
-          ) : (
-            <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-6 relative overflow-hidden">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500/50" />
-              <div className="flex items-start gap-4 text-slate-300">
-                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
-                  <LockKeyhole className="h-6 w-6 text-slate-500" />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-200">Kriptografik Belge Kilitli</div>
-                  <div className="mt-1 text-sm text-slate-500 leading-relaxed">{ui.reason || "Sistem politikaları gereği PDF bağlantısı koruma altındadır."}</div>
-                </div>
-              </div>
-            </div>
+              <p className="text-gray-500 font-medium">{t("verify_loading")}</p>
+            </motion.div>
           )}
 
-          <p className="mt-8 text-center text-[10px] font-bold text-slate-600 uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-            <ShieldCheck className="h-3 w-3" />
-            Heptapus Secure Infrastructure
-          </p>
-        </motion.div>
-      </div>
-    </motion.div>
+          {/* NOT FOUND */}
+          {state === "not_found" && (
+            <motion.div key="not_found" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="card overflow-hidden text-center">
+              <div className="h-2 bg-gray-300" />
+              <div className="p-12 flex flex-col items-center gap-4">
+                <div className="p-5 rounded-full bg-gray-50">
+                  <Hash className="h-10 w-10 text-gray-300" />
+                </div>
+                <h1 className="text-2xl font-black text-gray-800">{t("verify_not_found_title")}</h1>
+                <p className="text-gray-500 text-sm max-w-sm">{t("verify_not_found_desc")}</p>
+                <div className="mt-2 rounded-xl bg-gray-50 border border-gray-100 px-5 py-3">
+                  <code className="text-xs font-mono text-gray-400 break-all">{uuid}</code>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ERROR */}
+          {state === "error" && (
+            <motion.div key="error" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="card overflow-hidden text-center">
+              <div className="h-2 bg-rose-400" />
+              <div className="p-12 flex flex-col items-center gap-4">
+                <div className="p-5 rounded-full bg-rose-50">
+                  <AlertCircle className="h-10 w-10 text-rose-400" />
+                </div>
+                <h1 className="text-2xl font-black text-gray-800">{t("verify_error_title")}</h1>
+                <p className="text-gray-500 text-sm">{t("verify_error_desc")}</p>
+                {errMsg && <code className="text-xs text-rose-400 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{errMsg}</code>}
+              </div>
+            </motion.div>
+          )}
+
+          {/* OK */}
+          {state === "ok" && cert && (
+            <motion.div key="ok" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="card overflow-hidden">
+
+              {/* Status color bar — use brand color if available */}
+              <div className={`h-1.5 ${statusTopColor(cert.status)}`}
+                style={cert.branding?.brand_color && cert.status === "active" ? { backgroundColor: cert.branding.brand_color } : {}} />
+
+              <div className="p-8 md:p-10">
+
+                {/* Branding header (white-label) */}
+                {cert.branding && (
+                  <div className="flex items-center gap-3 mb-6 pb-5 border-b border-gray-100">
+                    {cert.branding.brand_logo
+                      ? <img src={cert.branding.brand_logo} alt={cert.branding.org_name || ""} className="h-8 w-auto object-contain" />
+                      : <Award className="h-6 w-6" style={cert.branding.brand_color ? { color: cert.branding.brand_color } : {}} />}
+                    {cert.branding.org_name && <span className="font-bold text-gray-800">{cert.branding.org_name}</span>}
+                  </div>
+                )}
+
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-gray-400 mb-2">
+                      <BadgeCheck className="h-3.5 w-3.5 text-brand-400" />
+                      {t("verify_title")}
+                    </div>
+                    <h1 className="text-3xl font-black text-gray-900 mb-1">{cert.student_name}</h1>
+                    <p className="text-gray-500 font-medium">{cert.event_name}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <StatusBadge status={cert.status} />
+                    {cert.view_count !== undefined && cert.view_count > 0 && (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                        <Eye className="h-3.5 w-3.5" /> {cert.view_count.toLocaleString()} görüntüleme
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Details grid */}
+                <div className="grid sm:grid-cols-2 gap-4 mb-8">
+                  {cert.public_id && (
+                    <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">
+                        <Hash className="h-3 w-3" /> {t("verify_cert_id")}
+                      </div>
+                      <code className="text-sm font-mono font-bold text-gray-700">{cert.public_id}</code>
+                    </div>
+                  )}
+                  {cert.issued_at && (
+                    <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">
+                        <Calendar className="h-3 w-3" /> {t("verify_issued_at")}
+                      </div>
+                      <span className="text-sm font-bold text-gray-700">
+                        {new Date(cert.issued_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}
+                      </span>
+                    </div>
+                  )}
+                  {cert.event_date && (
+                    <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">
+                        <Building2 className="h-3 w-3" /> {t("verify_event_date")}
+                      </div>
+                      <span className="text-sm font-bold text-gray-700">
+                        {new Date(cert.event_date).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}
+                      </span>
+                    </div>
+                  )}
+                  <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">
+                      <User className="h-3 w-3" /> UUID
+                    </div>
+                    <code className="text-[11px] font-mono text-gray-400 break-all">{cert.uuid}</code>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
+                  {cert.status === "active" && cert.pdf_url && (
+                    <a href={cert.pdf_url} target="_blank" rel="noopener noreferrer"
+                      className="btn-primary flex items-center gap-2 px-6 py-3">
+                      <Download className="h-4 w-4" /> {t("verify_download")}
+                    </a>
+                  )}
+                  {cert.status === "active" && cert.linkedin_url && (
+                    <a href={cert.linkedin_url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-xl border border-[#0077B5] bg-[#0077B5] px-5 py-3 text-sm font-bold text-white hover:bg-[#005885] shadow-sm transition-colors">
+                      <Linkedin className="h-4 w-4" /> LinkedIn&apos;e Ekle
+                    </a>
+                  )}
+                  <a href={`/verify/${cert.uuid}`} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 shadow-sm transition-colors">
+                    <ExternalLink className="h-4 w-4" /> {t("verify_link")}
+                  </a>
+                </div>
+
+                {cert.status !== "active" && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className={`mt-4 rounded-xl p-4 flex items-start gap-3 border ${cert.status === "revoked" ? "bg-rose-50 border-rose-200" : "bg-amber-50 border-amber-200"}`}>
+                    <AlertCircle className={`h-4 w-4 shrink-0 mt-0.5 ${cert.status === "revoked" ? "text-rose-500" : "text-amber-500"}`} />
+                    <p className={`text-sm font-medium ${cert.status === "revoked" ? "text-rose-700" : "text-amber-700"}`}>
+                      {cert.status === "revoked" ? t("verify_revoked_notice") : t("verify_expired_notice")}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
+      </main>
+    </div>
   );
 }
