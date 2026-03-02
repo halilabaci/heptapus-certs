@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 interface EmailTemplate {
   id: number;
@@ -46,26 +47,18 @@ export default function ScheduleEmailPage() {
   const fetchData = async () => {
     try {
       const [templatesRes, scheduledRes] = await Promise.all([
-        fetch(`/api/admin/events/${eventId}/email-templates`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        }),
-        fetch(`/api/admin/events/${eventId}/scheduled-emails`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        }),
+        apiFetch(`/admin/events/${eventId}/email-templates`),
+        apiFetch(`/admin/events/${eventId}/scheduled-emails`),
       ]);
 
-      if (templatesRes.ok) {
-        const data = await templatesRes.json();
-        setTemplates(data);
-        if (data.length > 0) {
-          setFormData(prev => ({ ...prev, email_template_id: data[0].id }));
-        }
+      const templatesData = await templatesRes.json();
+      setTemplates(templatesData);
+      if (templatesData.length > 0) {
+        setFormData(prev => ({ ...prev, email_template_id: templatesData[0].id }));
       }
 
-      if (scheduledRes.ok) {
-        const data = await scheduledRes.json();
-        setScheduledEmails(data);
-      }
+      const scheduledData = await scheduledRes.json();
+      setScheduledEmails(scheduledData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -91,30 +84,20 @@ export default function ScheduleEmailPage() {
 
     setScheduling(true);
     try {
-      const res = await fetch(`/api/admin/events/${eventId}/scheduled-email`, {
+      const res = await apiFetch(`/admin/events/${eventId}/scheduled-email`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify(formData),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        alert(`Email başarıyla zamanlandı: ${data.message}`);
-        await fetchData();
-        setFormData(prev => ({
-          ...prev,
-          scheduled_datetime: '',
-          cron_expression: '',
-        }));
-      } else {
-        const error = await res.json();
-        alert(`Hata: ${error.detail}`);
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      const data = await res.json();
+      alert(`Email başarıyla zamanlandı: ${data.message}`);
+      await fetchData();
+      setFormData(prev => ({
+        ...prev,
+        scheduled_datetime: '',
+        cron_expression: '',
+      }));
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     } finally {
       setScheduling(false);
     }
@@ -122,26 +105,12 @@ export default function ScheduleEmailPage() {
 
   const handleCancel = async (jobId: number) => {
     if (!confirm('Bu iş iptal edilsin mi?')) return;
-
     try {
-      const res = await fetch(
-        `/api/admin/events/${eventId}/bulk-emails-cancel/${jobId}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-
-      if (res.ok) {
-        alert('İş başarıyla iptal edildi');
-        await fetchData();
-      } else {
-        alert('İş iptal edilemedi');
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      await apiFetch(`/admin/events/${eventId}/bulk-emails-cancel/${jobId}`, { method: 'POST' });
+      alert('İş başarıyla iptal edildi');
+      await fetchData();
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     }
   };
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 interface Webhook {
   id: number;
@@ -39,13 +40,9 @@ export default function WebhooksPage() {
 
   const fetchWebhooks = async () => {
     try {
-      const res = await fetch('/api/admin/webhooks', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setWebhooks(data);
-      }
+      const res = await apiFetch('/admin/webhooks');
+      const data = await res.json();
+      setWebhooks(data);
     } catch (error) {
       console.error('Error fetching webhooks:', error);
     } finally {
@@ -65,27 +62,17 @@ export default function WebhooksPage() {
 
     setCreating(true);
     try {
-      const res = await fetch('/api/admin/webhooks', {
+      const res = await apiFetch('/admin/webhooks', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify(formData),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setWebhooks([...webhooks, data]);
-        setFormData({ event_type: 'email.sent', url: '', secret: '' });
-        setShowForm(false);
-        alert('Webhook oluşturuldu');
-      } else {
-        const error = await res.json();
-        alert(`Hata: ${error.detail}`);
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      const data = await res.json();
+      setWebhooks([...webhooks, data]);
+      setFormData({ event_type: 'email.sent', url: '', secret: '' });
+      setShowForm(false);
+      alert('Webhook oluşturuldu');
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     } finally {
       setCreating(false);
     }
@@ -93,60 +80,40 @@ export default function WebhooksPage() {
 
   const handleToggle = async (webhook: Webhook) => {
     try {
-      const res = await fetch(`/api/admin/webhooks/${webhook.id}`, {
+      const res = await apiFetch(`/admin/webhooks/${webhook.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify({ is_active: !webhook.is_active }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setWebhooks(webhooks.map(w => (w.id === webhook.id ? data : w)));
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      const data = await res.json();
+      setWebhooks(webhooks.map(w => (w.id === webhook.id ? data : w)));
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     }
   };
 
   const handleDelete = async (webhookId: number) => {
     if (!confirm('Bu webhook silinsin mi?')) return;
-
     try {
-      const res = await fetch(`/api/admin/webhooks/${webhookId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-
-      if (res.ok) {
-        setWebhooks(webhooks.filter(w => w.id !== webhookId));
-        alert('Webhook silindi');
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      await apiFetch(`/admin/webhooks/${webhookId}`, { method: 'DELETE' });
+      setWebhooks(webhooks.filter(w => w.id !== webhookId));
+      alert('Webhook silindi');
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     }
   };
 
   const handleTest = async (webhookId: number) => {
     setTesting(webhookId);
     try {
-      const res = await fetch(`/api/admin/webhooks/${webhookId}/test`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        alert(
-          data.status === 'sent'
-            ? `Test başarılı! Endpoint ${data.http_status} döndü.`
-            : `Hata: ${data.message}`
-        );
-      }
-    } catch (error) {
-      alert(`Hata: ${error}`);
+      const res = await apiFetch(`/admin/webhooks/${webhookId}/test`, { method: 'POST' });
+      const data = await res.json();
+      alert(
+        data.status === 'sent'
+          ? `Test başarılı! Endpoint ${data.http_status} döndü.`
+          : `Hata: ${data.message}`
+      );
+    } catch (error: any) {
+      alert(`Hata: ${error?.message || error}`);
     } finally {
       setTesting(null);
     }

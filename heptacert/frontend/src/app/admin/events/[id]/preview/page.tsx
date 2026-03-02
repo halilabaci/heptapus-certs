@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 interface EmailTemplate {
   id: number;
@@ -40,18 +41,9 @@ export default function EmailTemplatePreviewPage() {
 
   const fetchTemplate = async () => {
     try {
-      const res = await fetch(
-        `/api/admin/events/${eventId}/email-templates/${templateId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setTemplate(data);
-      }
+      const res = await apiFetch(`/admin/events/${eventId}/email-templates/${templateId}`);
+      const data = await res.json();
+      setTemplate(data);
     } catch (error) {
       console.error('Error fetching template:', error);
     } finally {
@@ -62,24 +54,18 @@ export default function EmailTemplatePreviewPage() {
   const generatePreview = async () => {
     setGenerating(true);
     try {
-      const res = await fetch(
-        `/api/admin/events/${eventId}/email-templates/${templateId}/preview`,
+      const res = await apiFetch(
+        `/admin/events/${eventId}/email-templates/${templateId}/preview`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
           body: JSON.stringify({
             language,
             sample_attendee: sampleData,
           }),
         }
       );
-      if (res.ok) {
-        const data = await res.json();
-        setPreview(data);
-      }
+      const data = await res.json();
+      setPreview(data);
     } catch (error) {
       console.error('Error generating preview:', error);
     } finally {

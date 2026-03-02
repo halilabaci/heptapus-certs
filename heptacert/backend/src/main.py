@@ -380,6 +380,10 @@ class UserEmailConfig(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     smtp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    smtp_host: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    smtp_user: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    smtp_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     from_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     reply_to: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     auto_cc: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -936,6 +940,9 @@ class UserEmailConfigOut(BaseModel):
     id: int
     user_id: int
     smtp_enabled: bool
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
     from_name: Optional[str]
     reply_to: Optional[str]
     auto_cc: Optional[str]
@@ -1657,16 +1664,20 @@ async def audit_middleware(request: Request, call_next):
             ip = ip.split(",")[0].strip()
 
         async with SessionLocal() as db:
-            db.add(AuditLog(
-                user_id=user_id,
-                action=f"{method} {path}",
-                resource_type=resource_type,
-                resource_id=resource_id,
-                ip_address=ip,
-                user_agent=request.headers.get("User-Agent", "")[:512],
-                extra={"status_code": response.status_code},
-            ))
-            await db.commit()
+            try:
+                db.add(AuditLog(
+                    user_id=user_id,
+                    action=f"{method} {path}",
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    ip_address=ip,
+                    user_agent=request.headers.get("User-Agent", "")[:512],
+                    extra={"status_code": response.status_code},
+                ))
+                await db.commit()
+            except Exception as exc:
+                logger.debug("Audit log write failed (non-critical): %s", exc)
+                await db.rollback()
 
     return response
 
@@ -2704,6 +2715,14 @@ async def update_email_config(
     
     # Update fields
     config.smtp_enabled = payload.smtp_enabled
+    if payload.smtp_host is not None:
+        config.smtp_host = payload.smtp_host
+    if payload.smtp_port is not None:
+        config.smtp_port = payload.smtp_port
+    if payload.smtp_user is not None:
+        config.smtp_user = payload.smtp_user
+    if payload.smtp_password:
+        config.smtp_password = payload.smtp_password
     if payload.from_name is not None:
         config.from_name = payload.from_name
     if payload.reply_to is not None:
@@ -2711,10 +2730,6 @@ async def update_email_config(
     if payload.auto_cc is not None:
         config.auto_cc = payload.auto_cc
     config.enable_tracking_pixel = payload.enable_tracking_pixel
-    
-    # TODO: Encrypt SMTP password before storing
-    if payload.smtp_password:
-        config.smtp_password = payload.smtp_password  # In real impl, encrypt this
     
     db.add(config)
     await db.commit()

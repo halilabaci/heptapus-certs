@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/api';
 
 export default function EmailDashboard() {
   const router = useRouter();
@@ -16,27 +17,17 @@ export default function EmailDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const auth = localStorage.getItem('auth_token');
-        
         // Fetch stats from various endpoints
         const [templatesRes, webhooksRes] = await Promise.all([
-          fetch('/api/admin/email-templates', {
-            headers: { Authorization: `Bearer ${auth}` }
-          }),
-          fetch('/api/admin/webhooks', {
-            headers: { Authorization: `Bearer ${auth}` }
-          })
+          apiFetch('/system/email-templates'),
+          apiFetch('/admin/webhooks'),
         ]);
 
-        if (templatesRes.ok) {
-          const data = await templatesRes.json();
-          setStats(s => ({ ...s, templates: Array.isArray(data) ? data.length : 0 }));
-        }
+        const templatesData = await templatesRes.json();
+        setStats(s => ({ ...s, templates: Array.isArray(templatesData) ? templatesData.length : 0 }));
 
-        if (webhooksRes.ok) {
-          const data = await webhooksRes.json();
-          setStats(s => ({ ...s, webhooks: Array.isArray(data) ? data.length : 0 }));
-        }
+        const webhooksData = await webhooksRes.json();
+        setStats(s => ({ ...s, webhooks: Array.isArray(webhooksData) ? webhooksData.length : 0 }));
       } catch (error) {
         console.error('Failed to fetch stats:', error);
       } finally {

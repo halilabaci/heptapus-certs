@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 type SMTPPreset = {
   name: string;
@@ -73,23 +74,20 @@ export default function EmailSettingsPage() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/admin/email-config', {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        setFormData(prev => ({
-          ...prev,
-          from_name: data.from_name || '',
-          reply_to: data.reply_to || '',
-          auto_cc: data.auto_cc || '',
-          enable_tracking_pixel: data.enable_tracking_pixel || false,
-          smtp_enabled: data.smtp_enabled || false,
-        }));
-      }
+      const res = await apiFetch('/admin/email-config');
+      const data = await res.json();
+      setConfig(data);
+      setFormData(prev => ({
+        ...prev,
+        from_name: data.from_name || '',
+        reply_to: data.reply_to || '',
+        auto_cc: data.auto_cc || '',
+        enable_tracking_pixel: data.enable_tracking_pixel || false,
+        smtp_enabled: data.smtp_enabled || false,
+        smtp_host: data.smtp_host || '',
+        smtp_port: data.smtp_port || 587,
+        smtp_user: data.smtp_user || '',
+      }));
     } catch (error) {
       console.error('Error fetching config:', error);
     } finally {
@@ -117,12 +115,8 @@ export default function EmailSettingsPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/admin/email-config/test-connection', {
+      const res = await apiFetch('/admin/email-config/test-connection', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify({
           smtp_host: formData.smtp_host,
           smtp_port: parseInt(formData.smtp_port.toString()),
@@ -146,21 +140,13 @@ export default function EmailSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/email-config', {
+      const res = await apiFetch('/admin/email-config', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify(formData),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        alert('Email ayarları kaydedildi');
-      } else {
-        alert('Kaydedilirken hata oluştu');
-      }
+      const data = await res.json();
+      setConfig(data);
+      alert('Email ayarları kaydedildi');
     } catch (error) {
       alert(`Hata: ${error}`);
     } finally {

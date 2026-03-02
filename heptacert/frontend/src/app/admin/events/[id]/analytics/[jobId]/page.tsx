@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 interface DeliveryStats {
   job_id: number;
@@ -51,33 +52,21 @@ export default function DeliveryAnalyticsPage() {
   const fetchData = async () => {
     try {
       const [statsRes, logsRes] = await Promise.all([
-        fetch(
-          `/api/admin/events/${eventId}/bulk-email-jobs/${jobId}/delivery-stats`,
-          {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-          }
-        ),
-        fetch(
-          `/api/admin/events/${eventId}/bulk-email-jobs/${jobId}/delivery-logs?${new URLSearchParams({
+        apiFetch(`/admin/events/${eventId}/bulk-email-jobs/${jobId}/delivery-stats`),
+        apiFetch(
+          `/admin/events/${eventId}/bulk-email-jobs/${jobId}/delivery-logs?${new URLSearchParams({
             ...(statusFilter && { status: statusFilter }),
             page: page.toString(),
             limit: '50',
-          })}`,
-          {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-          }
+          })}`
         ),
       ]);
 
-      if (statsRes.ok) {
-        const data = await statsRes.json();
-        setStats(data);
-      }
+      const statsData = await statsRes.json();
+      setStats(statsData);
 
-      if (logsRes.ok) {
-        const data = await logsRes.json();
-        setLogs(data);
-      }
+      const logsData = await logsRes.json();
+      setLogs(logsData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
