@@ -1,15 +1,15 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  ChevronLeft, Save, Plus, X, Loader2, CheckCircle2, AlertCircle,
-  Trophy, Zap, Star, Target, Sparkles, BarChart3, CalendarDays, User,
-  UserCheck, QrCode, LockKeyhole, Mail,
+  Save, Plus, X, Loader2, CheckCircle2, AlertCircle,
+  Trophy, Zap, Star, Target, Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import EventAdminNav from "@/components/Admin/EventAdminNav";
 
 type BadgeDefinition = {
   type: string;
@@ -53,6 +53,7 @@ export default function GamificationPage() {
   const params = useParams();
   const eventId = params.id as string;
 
+  const [eventName, setEventName] = useState("");
   const [badgeRules, setBadgeRules] = useState<BadgeRules | null>(null);
   const [awardedBadges, setAwardedBadges] = useState<ParticipantBadge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,17 +74,30 @@ export default function GamificationPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [rulesRes, badgesRes] = await Promise.all([
+      const [rulesRes, badgesRes, eventRes] = await Promise.all([
         apiFetch(`/admin/events/${eventId}/badge-rules`, { method: "GET" }),
         apiFetch(`/admin/events/${eventId}/badges`, { method: "GET" }),
+        apiFetch(`/admin/events/${eventId}`, { method: "GET" }),
       ]);
+
+      if (eventRes) {
+        const eventData = await eventRes.json();
+        setEventName(eventData?.name || "");
+      }
 
       if (rulesRes) {
         const rulesData = await rulesRes.json();
-        setBadgeRules(rulesData);
-        setEditingBadges(rulesData.badge_definitions || []);
-        setEnabled(rulesData.enabled);
+        if (rulesData) {
+          setBadgeRules(rulesData);
+          setEditingBadges(rulesData.badge_definitions || []);
+          setEnabled(Boolean(rulesData.enabled));
+        } else {
+          setBadgeRules(null);
+          setEditingBadges([]);
+          setEnabled(true);
+        }
       } else {
+        setBadgeRules(null);
         setEditingBadges([]);
         setEnabled(true);
       }
@@ -171,53 +185,11 @@ export default function GamificationPage() {
       transition={{ duration: 0.3 }}
       className="space-y-6"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href={`/admin/events/${eventId}`}>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="rounded-lg p-2 hover:bg-gray-100"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </motion.button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Rozet Sistemi</h1>
-            <p className="text-gray-500 text-sm mt-1">Katılımcıları başarılarıyla ödüllendirin</p>
-          </div>
-        </div>
-      </div>
+      <EventAdminNav eventId={eventId} eventName={eventName} active="gamification" className="mb-2 flex flex-col gap-2" />
 
-      <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-gray-200 pb-4">
-        <Link href={`/admin/events/${eventId}/certificates`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <BarChart3 className="h-3.5 w-3.5" /> Sertifikalar
-        </Link>
-        <Link href={`/admin/events/${eventId}/sessions`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <CalendarDays className="h-3.5 w-3.5" /> Oturumlar
-        </Link>
-        <Link href={`/admin/events/${eventId}/attendees`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <User className="h-3.5 w-3.5" /> Katılımcılar
-        </Link>
-        <Link href={`/admin/events/${eventId}/checkin`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <QrCode className="h-3.5 w-3.5" /> Check-in
-        </Link>
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700">
-          <Target className="h-3.5 w-3.5" /> Gamification
-        </span>
-        <Link href={`/admin/events/${eventId}/surveys`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <UserCheck className="h-3.5 w-3.5" /> Anketler
-        </Link>
-        <Link href={`/admin/events/${eventId}/advanced-analytics`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <BarChart3 className="h-3.5 w-3.5" /> Analitik
-        </Link>
-        <Link href={`/admin/events/${eventId}/email-templates`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <Mail className="h-3.5 w-3.5" /> Email
-        </Link>
-        <Link href={`/admin/events/${eventId}/settings`} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-          <LockKeyhole className="h-3.5 w-3.5" /> Ayarlar
-        </Link>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Rozet Sistemi</h1>
+        <p className="text-gray-500 text-sm mt-1">Katılımcıları başarılarıyla ödüllendirin</p>
       </div>
 
       {/* Tabs */}
@@ -512,7 +484,7 @@ export default function GamificationPage() {
                   }}
                   className="px-3 py-1 rounded-full border font-semibold text-sm"
                 >
-                  ✓ Verildi
+                  Ô£ô Verildi
                 </div>
               </motion.div>
             ))

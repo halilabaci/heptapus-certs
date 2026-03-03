@@ -47,7 +47,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import (
     Boolean, String, Integer, BigInteger, DateTime, ForeignKey, Text,
-    Enum as SAEnum, UniqueConstraint, Index, select, func, update, Date as sa_Date, Time as sa_Time
+    Enum as SAEnum, UniqueConstraint, Index, select, func, distinct, update, Date as sa_Date, Time as sa_Time
 )
 from sqlalchemy import JSON as _JSON
 from sqlalchemy.dialects.postgresql import JSONB as _PgJSONB, INET as _PgINET, insert as _pg_insert
@@ -947,7 +947,7 @@ class BadgeRulesOut(BaseModel):
     event_id: int
     badge_definitions: List[Dict[str, Any]]
     enabled: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: datetime
 
 
@@ -7638,6 +7638,20 @@ async def public_event_info(event_id: int, db: AsyncSession = Depends(get_db)):
         select(EventSession).where(EventSession.event_id == event_id).order_by(EventSession.session_date, EventSession.session_start)
     )
     sessions = sess_res.scalars().all()
+    survey_res = await db.execute(select(EventSurvey).where(EventSurvey.event_id == event_id))
+    survey = survey_res.scalar_one_or_none()
+
+    survey_info: Optional[Dict[str, Any]] = None
+    if survey:
+        builtin_questions = survey.builtin_questions or []
+        survey_info = {
+            "is_required": bool(survey.is_required),
+            "survey_type": survey.survey_type,
+            "external_url": survey.external_url,
+            "has_builtin_questions": len(builtin_questions) > 0,
+            "builtin_questions": builtin_questions,
+        }
+
     return {
         "id": ev.id,
         "name": ev.name,
@@ -7646,6 +7660,7 @@ async def public_event_info(event_id: int, db: AsyncSession = Depends(get_db)):
         "event_location": ev.event_location,
         "min_sessions_required": ev.min_sessions_required,
         "event_banner_url": ev.event_banner_url,
+        "survey": survey_info,
         "sessions": [
             {
                 "id": s.id,

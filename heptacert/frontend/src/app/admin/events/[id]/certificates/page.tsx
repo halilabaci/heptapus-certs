@@ -30,6 +30,7 @@ import {
   Users,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import EventAdminNav from "@/components/Admin/EventAdminNav";
 
 type CertStatus = "active" | "revoked" | "expired";
 
@@ -190,7 +191,7 @@ export default function CertificatesPage({ params }: { params: { id: string } })
   async function bulkAction(action: "revoke" | "expire" | "delete") {
     if (selectedIds.size === 0) return;
     const label = action === "delete" ? "sil" : action === "revoke" ? "revoke et" : "expire et";
-    if (!confirm(`SeÃ§ili ${selectedIds.size} sertifikayÄ± ${label}mek istediginize emin misiniz?`)) return;
+    if (!confirm(`Seçili ${selectedIds.size} sertifikayı ${label}mek istediğinize emin misiniz?`)) return;
     setBulkLoading(true);
     setErr(null);
     try {
@@ -201,7 +202,7 @@ export default function CertificatesPage({ params }: { params: { id: string } })
       setSelectedIds(new Set());
       await load();
     } catch (e: any) {
-      setErr(e?.message || "Toplu iÅŸlem baÅŸarÄ±sÄ±z.");
+      setErr(e?.message || "Toplu işlem başarısız.");
     } finally {
       setBulkLoading(false);
     }
@@ -220,7 +221,7 @@ export default function CertificatesPage({ params }: { params: { id: string } })
         a.click();
         URL.revokeObjectURL(a.href);
       })
-      .catch(() => setErr("Export baÅŸarÄ±sÄ±z."));
+      .catch(() => setErr("Export başarısız."));
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -230,42 +231,7 @@ export default function CertificatesPage({ params }: { params: { id: string } })
   return (
     <div className="flex flex-col gap-6 pb-20 pt-6">
 
-      {/* TOP NAV */}
-      {/* Breadcrumb + Event Tab Nav */}
-      <div className="flex flex-col gap-3">
-        <Link href="/admin/events" className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors w-fit">
-          <ChevronLeft className="h-3.5 w-3.5" /> Tüm Etkinlikler
-        </Link>
-        <div className="flex items-center gap-1 flex-wrap">
-          <Link href={`/admin/events/${eventId}/certificates`} className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm">
-            <LockKeyhole className="h-3.5 w-3.5" /> Sertifikalar
-          </Link>
-          <Link href={`/admin/events/${eventId}/sessions`} className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 shadow-sm transition-colors">
-            <QrCode className="h-3.5 w-3.5" /> Oturumlar
-          </Link>
-          <Link href={`/admin/events/${eventId}/attendees`} className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3.5 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
-            <Users className="h-3.5 w-3.5" /> Katılımcılar
-          </Link>
-          <Link href={`/admin/events/${eventId}/checkin`} className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 shadow-sm transition-colors">
-            <Hash className="h-3.5 w-3.5" /> Check-in
-          </Link>
-          <Link href={`/admin/events/${eventId}/gamification`} className="flex items-center gap-1.5 rounded-lg border border-fuchsia-200 bg-white px-3.5 py-1.5 text-xs font-bold text-fuchsia-700 hover:bg-fuchsia-50 shadow-sm transition-colors">
-            Gamification
-          </Link>
-          <Link href={`/admin/events/${eventId}/surveys`} className="flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 shadow-sm transition-colors">
-            Anket
-          </Link>
-          <Link href={`/admin/events/${eventId}/advanced-analytics`} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-colors">
-            İleri Analitik
-          </Link>
-          <Link href={`/admin/events/${eventId}/editor`} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-colors">
-            Editör
-          </Link>
-          <Link href={`/admin/events/${eventId}/email-templates`} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-colors">
-            Email
-          </Link>
-        </div>
-      </div>
+      <EventAdminNav eventId={eventId} active="certificates" className="flex flex-col gap-3" />
       <div className="flex items-center gap-2 flex-wrap">
           <div className="w-px h-5 bg-gray-200" />
           <button onClick={() => exportCerts("csv")} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 shadow-sm transition-colors">

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { listSessions, adminManualCheckin, apiFetch, getMySubscription, type SessionOut, type SubscriptionInfo } from "@/lib/api";
 import Link from "next/link";
+import EventAdminNav from "@/components/Admin/EventAdminNav";
 import { ChevronLeft, UserCheck, Loader2, CheckCircle2, XCircle, Search, Users, ToggleLeft, ToggleRight, QrCode, LockKeyhole, Hash, ShieldAlert, Sparkles } from "lucide-react";
 
 interface CheckinEntry {
@@ -99,44 +100,7 @@ export default function AdminCheckinPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
-        {/* Breadcrumb + Event Tab Nav */}
-        <div className="mb-6 flex flex-col gap-2">
-          <Link href="/admin/events" className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors w-fit">
-            <ChevronLeft className="w-3.5 h-3.5" /> Tüm Etkinlikler
-          </Link>
-          <div>
-            <p className="text-xs text-gray-500 mb-2">{eventName}</p>
-            <div className="flex items-center gap-1 flex-wrap">
-              <Link href={`/admin/events/${eventId}/certificates`} className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 shadow-sm transition-colors">
-                <LockKeyhole className="w-3.5 h-3.5" /> Sertifikalar
-              </Link>
-              <Link href={`/admin/events/${eventId}/sessions`} className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 shadow-sm transition-colors">
-                <QrCode className="w-3.5 h-3.5" /> Oturumlar
-              </Link>
-              <Link href={`/admin/events/${eventId}/attendees`} className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-3.5 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
-                <Users className="w-3.5 h-3.5" /> Katılımcılar
-              </Link>
-              <Link href={`/admin/events/${eventId}/checkin`} className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm">
-                <UserCheck className="w-3.5 h-3.5" /> Check-in
-              </Link>
-              <Link href={`/admin/events/${eventId}/gamification`} className="flex items-center gap-1.5 rounded-lg border border-fuchsia-200 bg-white px-3.5 py-1.5 text-xs font-bold text-fuchsia-700 hover:bg-fuchsia-50 shadow-sm transition-colors">
-                Gamification
-              </Link>
-              <Link href={`/admin/events/${eventId}/surveys`} className="flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 shadow-sm transition-colors">
-                Anket
-              </Link>
-              <Link href={`/admin/events/${eventId}/advanced-analytics`} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-colors">
-                İleri Analitik
-              </Link>
-              <Link href={`/admin/events/${eventId}/editor`} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-colors">
-                Editör
-              </Link>
-              <Link href={`/admin/events/${eventId}/email-templates`} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-colors">
-                Email
-              </Link>
-            </div>
-          </div>
-        </div>
+        <EventAdminNav eventId={eventId} eventName={eventName} active="checkin" className="mb-6 flex flex-col gap-2" />
 
         {/* Plan gate */}
         {planOk === false && (

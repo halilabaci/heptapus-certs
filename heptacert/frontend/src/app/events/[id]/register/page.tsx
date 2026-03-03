@@ -14,6 +14,12 @@ interface EventInfo {
   event_location: string | null;
   event_banner_url: string | null;
   min_sessions_required: number;
+  survey?: {
+    is_required: boolean;
+    survey_type: "builtin" | "external" | "both";
+    external_url?: string | null;
+    has_builtin_questions: boolean;
+  } | null;
   sessions: Array<{ id: number; name: string; session_date: string | null; session_start: string | null; session_location: string | null }>;
 }
 
@@ -29,6 +35,7 @@ export default function EventRegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [attendeeId, setAttendeeId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!eventId) return;
@@ -43,7 +50,11 @@ export default function EventRegisterPage() {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await publicRegisterAttendee(eventId, { name: name.trim(), email: email.trim().toLowerCase() });
+      const registered = await publicRegisterAttendee(eventId, { name: name.trim(), email: email.trim().toLowerCase() });
+      setAttendeeId(registered.attendee_id);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`heptacert_attendee_${eventId}`, String(registered.attendee_id));
+      }
       setSuccess(true);
     } catch (err: any) {
       setSubmitError(err.message || "Kayıt başarısız");
@@ -206,6 +217,35 @@ export default function EventRegisterPage() {
                     <span className="text-white font-semibold">{name}</span>, etkinliğe başarıyla kaydoldunuz.
                     Etkinlik günü QR kodu okutarak check-in yapabilirsiniz.
                   </p>
+                  {event.survey?.is_required && (
+                    <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-left max-w-md mx-auto">
+                      <p className="text-sm text-amber-200 font-semibold">Anket zorunlu</p>
+                      <p className="text-xs text-amber-100/90 mt-1 leading-relaxed">
+                        Sertifikanızı indirebilmek için anketi check-in sonrasında, sertifika adımına geçmeden önce doldurmanız gerekiyor.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {event.survey.external_url ? (
+                          <a
+                            href={event.survey.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 text-black font-semibold px-3 py-2 text-xs hover:bg-amber-400 transition-colors"
+                          >
+                            Anketi Aç
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </a>
+                        ) : (
+                          <a
+                            href={`/events/${event.id}/survey${attendeeId ? `?attendee_id=${attendeeId}` : ""}`}
+                            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 text-black font-semibold px-3 py-2 text-xs hover:bg-amber-400 transition-colors"
+                          >
+                            Anketi Doldur
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               ) : (
                 <motion.div

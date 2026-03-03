@@ -326,7 +326,7 @@ export async function getPublicEventInfo(eventId: number) {
 export async function publicRegisterAttendee(
   eventId: number,
   data: { name: string; email: string }
-) {
+): Promise<{ ok: boolean; message: string; attendee_id: number }> {
   const res = await fetch(`${API_BASE}/events/${eventId}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -336,6 +336,31 @@ export async function publicRegisterAttendee(
     const j = await res.json().catch(() => ({}));
     throw new Error(j?.detail || "Kayıt başarısız");
   }
+  return res.json();
+}
+
+export async function submitBuiltinSurvey(
+  eventId: number,
+  attendeeId: number,
+  answers: Record<string, unknown>,
+) {
+  const res = await fetch(`${API_BASE}/surveys/${eventId}/submit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      attendee_id: String(attendeeId),
+    },
+    body: JSON.stringify({
+      survey_type: "builtin",
+      answers,
+    }),
+  });
+
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j?.detail || "Anket gönderilemedi");
+  }
+
   return res.json();
 }
 
