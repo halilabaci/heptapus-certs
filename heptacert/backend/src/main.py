@@ -8433,6 +8433,77 @@ async def bulk_certify_attendees(
     )
 
 
+@app.post(
+    "/api/admin/events/{event_id}/bulk-certify-queue",
+    response_model=BulkCertificateJobOut,
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def bulk_certify_attendees_queue(
+    event_id: int,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates a background bulk certificate job for all eligible attendees.
+
+    Uses the existing job queue (BulkCertificateJob) so the request returns
+    immediately and heavy PDF rendering happens asynchronously, preventing
+    HTTP timeouts for large attendee lists.
+    """
+    ev = await _get_event_for_admin(event_id, me, db)
+    if not ev.config or ev.template_image_url in ("", "placeholder"):
+        raise HTTPException(status_code=400, detail="Etkinlik şablon yapılandırması eksik")
+
+    # Fetch all attendees
+    att_res = await db.execute(select(Attendee).where(Attendee.event_id == event_id))
+    attendees = att_res.scalars().all()
+    if not attendees:
+        raise HTTPException(status_code=400, detail="Katılımcı listesi boş")
+
+    # Count attendance per attendee
+    rec_res = await db.execute(
+        select(AttendanceRecord.attendee_id, func.count().label("cnt"))
+        .where(AttendanceRecord.attendee_id.in_([a.id for a in attendees]))
+        .group_by(AttendanceRecord.attendee_id)
+    )
+    attend_counts: dict[int, int] = {r.attendee_id: r.cnt for r in rec_res.all()}
+
+    eligible = [a for a in attendees if attend_counts.get(a.id, 0) >= ev.min_sessions_required]
+    if not eligible:
+        raise HTTPException(status_code=400, detail="Eşiği geçen katılımcı bulunamadı")
+
+    names = [a.name for a in eligible]
+
+    # Early balance check
+    res_u = await db.execute(select(User).where(User.id == me.id))
+    user = res_u.scalar_one()
+    ISSUE_UNITS_PER_CERT = 10
+    HOSTING_ESTIMATE_UNITS = 20
+    estimated_total = len(names) * (ISSUE_UNITS_PER_CERT + HOSTING_ESTIMATE_UNITS)
+    if user.heptacoin_balance < estimated_total:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Yetersiz HeptaCoin. Tahmini Gereksinim={estimated_total}, Bakiye={user.heptacoin_balance}",
+        )
+
+    chunk_size = 5 if len(names) >= 500 else 10
+    job = BulkCertificateJob(
+        event_id=ev.id,
+        created_by=me.id,
+        names=names,
+        chunk_size=chunk_size,
+        total_count=len(names),
+        status="pending",
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    # Nudge the background processor to start quickly
+    asyncio.create_task(_process_bulk_certificate_jobs())
+
+    return job
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Admin: Transaction list (paginated)
 # ═══════════════════════════════════════════════════════════════════════════════
