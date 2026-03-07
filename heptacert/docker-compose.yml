@@ -64,6 +64,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - default
+      - caddy_net
     restart: unless-stopped
 
   frontend:
@@ -78,6 +81,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - default
+      - caddy_net
     restart: unless-stopped
 
 
@@ -125,3 +131,7 @@ volumes:
   db_data:
   heptacert_data:
   backup_data:
+
+networks:
+  caddy_net:
+    name: ${CADDY_NETWORK_NAME:-worldpass-real_default}
