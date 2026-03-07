@@ -4,14 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { Theme, getStoredTheme, setStoredTheme, applyTheme, getEffectiveTheme, watchSystemTheme } from '@/lib/theme';
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('system');
+  const [theme, setTheme] = useState<Theme>('light');
   const [mounted, setMounted] = useState(false);
 
   // Initialize theme from storage on mount
   useEffect(() => {
     setMounted(true);
-    const stored = getStoredTheme();
-    setTheme(stored || 'system');
+    setTheme('light');
   }, []);
 
   // Apply theme whenever it changes
@@ -23,22 +22,15 @@ export function useTheme() {
 
   // Watch for system theme changes
   useEffect(() => {
-    if (theme !== 'system') return;
-    return watchSystemTheme(() => {
-      applyTheme(theme);
-    });
+    return;
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      if (current === 'light') return 'dark';
-      if (current === 'dark') return 'system';
-      return 'light';
-    });
+    setTheme('light');
   }, []);
 
   const setThemeValue = useCallback((newTheme: Theme) => {
-    setTheme(newTheme);
+    setTheme('light');
   }, []);
 
   const effectiveTheme = mounted ? getEffectiveTheme(theme) : 'light';
