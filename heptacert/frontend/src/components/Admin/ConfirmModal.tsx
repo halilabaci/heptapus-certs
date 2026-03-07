@@ -97,3 +97,5 @@ export function ConfirmModal({
     </AnimatePresence>
   );
 }
+
+export default ConfirmModal;

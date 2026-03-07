@@ -13,7 +13,7 @@ import {
   KeyRound,
   Mail,
   MailCheck,
-  MailCog,
+  MailOpen,
   Settings,
   Shield,
   Webhook,
@@ -48,7 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/email-dashboard", label: "Email Merkezi", icon: Mail },
       { href: "/admin/email-analytics", label: "Email Analitik", icon: ChartNoAxesCombined },
-      { href: "/admin/email-settings/smtp-config", label: "SMTP Ayarları", icon: MailCog },
+      { href: "/admin/email-settings/smtp-config", label: "SMTP Ayarları", icon: MailOpen },
     ],
   },
   {
