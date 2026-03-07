@@ -95,15 +95,31 @@ export default function SurveysPage() {
 
       if (configRes) {
         const configData = await configRes.json();
-        setConfig(configData);
-        setIsRequired(configData.is_required);
-        setSurveyType(configData.survey_type);
-        setBuiltinQuestions(configData.builtin_questions || []);
-        setExternalProvider(configData.external_provider || "");
-        setExternalUrl(configData.external_url || "");
-        setExternalWebhookKey(configData.external_webhook_key || "");
+        if (configData) {
+          setConfig(configData);
+          setIsRequired(Boolean(configData.is_required));
+          setSurveyType((configData.survey_type || "builtin") as "builtin" | "external" | "both");
+          setBuiltinQuestions(configData.builtin_questions || []);
+          setExternalProvider(configData.external_provider || "");
+          setExternalUrl(configData.external_url || "");
+          setExternalWebhookKey(configData.external_webhook_key || "");
+        } else {
+          setConfig(null);
+          setIsRequired(true);
+          setSurveyType("builtin");
+          setBuiltinQuestions([]);
+          setExternalProvider("");
+          setExternalUrl("");
+          setExternalWebhookKey("");
+        }
       } else {
+        setConfig(null);
+        setIsRequired(true);
+        setSurveyType("builtin");
         setBuiltinQuestions([]);
+        setExternalProvider("");
+        setExternalUrl("");
+        setExternalWebhookKey("");
       }
 
       if (responsesRes) {

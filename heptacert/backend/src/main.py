@@ -2372,6 +2372,22 @@ async def startup():
                             db_bulk.add(job)
                             await db_bulk.commit()
                             continue
+
+                        # Build attendee-name -> latest certificate UUID map for template variables
+                        cert_res = await db_bulk.execute(
+                            select(Certificate)
+                            .where(
+                                Certificate.event_id == job.event_id,
+                                Certificate.status == CertStatus.active,
+                            )
+                            .order_by(Certificate.created_at.desc())
+                        )
+                        cert_rows = cert_res.scalars().all()
+                        cert_uuid_by_name: Dict[str, str] = {}
+                        for cert in cert_rows:
+                            name_key = (cert.student_name or "").strip().lower()
+                            if name_key and name_key not in cert_uuid_by_name:
+                                cert_uuid_by_name[name_key] = cert.uuid
                         
                         # Process in batches for rate limiting
                         batch_size = 50
@@ -2390,7 +2406,11 @@ async def startup():
                                         "event_name": event.name,
                                         "event_date": event.event_date.isoformat() if event.event_date else "TBD",
                                         "event_location": event.event_location or "Online",
-                                        "certificate_link": f"{settings.public_base_url}/verify",
+                                        "certificate_link": (
+                                            f"{settings.public_base_url}/verify/{cert_uuid_by_name[(attendee.name or '').strip().lower()]}"
+                                            if (attendee.name or "").strip().lower() in cert_uuid_by_name
+                                            else f"{settings.public_base_url}/events/{event.id}/register"
+                                        ),
                                         "event_link": f"{settings.public_base_url}/events/{event.id}/register",
                                     }
                                     
