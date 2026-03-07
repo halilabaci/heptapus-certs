@@ -19,7 +19,7 @@ The HeptaCert admin platform has been successfully rebuilt with modern technolog
 | **Routes** | 40+ verified |
 | **Type Safety** | 100% (strict mode) |
 | **Accessibility** | WCAG 2.1 AA ready |
-| **Dark Mode** | Full coverage |
+| **Theme Policy** | Light-only enforced |
 | **Features** | 8/8 completed |
 | **Code Lines** | 3,100+ new |
 | **Components** | 8 new |
@@ -68,7 +68,7 @@ The HeptaCert admin platform has been successfully rebuilt with modern technolog
    - Better accessibility
 
 3. **Email Dashboard** (`/admin/email-dashboard`)
-   - Complete dark mode support
+   - Light-only compatible UI
    - Link to new analytics page
    - Reorganized quick start guide
 
@@ -79,7 +79,7 @@ The HeptaCert admin platform has been successfully rebuilt with modern technolog
    - CSV export
    - Row selection
    - Full accessibility
-   - Dark mode support
+   - Light-mode optimized styling
 
 2. **ErrorBoundary** (65 lines)
    - Error catching

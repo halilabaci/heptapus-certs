@@ -27,7 +27,7 @@
 - Expired certificate warnings
 - Active certificate percentage bar
 - Per-event activity timeline
-- Dark mode throughout
+- Light-only admin theme policy
 
 ✅ **Phase 3b: Advanced Table Features** (406 lines)
 - TanStack React Table integration
@@ -37,7 +37,7 @@
 - Bulk selection with checkboxes
 - CSV export with proper escaping
 - Column visibility toggle
-- Full dark mode support
+- Light-mode optimized visuals
 
 ✅ **Phase 3c: Email Analytics Dashboard** (310 lines)
 - Email delivery tracking
@@ -68,7 +68,7 @@
 - ErrorBoundary component
   - Error catching and recovery
   - User-friendly fallback UI
-  - Dark mode support
+  - Light-mode compatible styling
 
 - LoadingSkeleton utilities
   - Generic, table, and card variants
@@ -224,12 +224,12 @@ docs/
 ✅ Required field indicators
 ✅ Form submission handling
 
-### Dark Mode
-✅ System preference detection
-✅ Manual toggle (if implemented)
-✅ Persistent to localStorage (via Zustand)
-✅ All components updated
-✅ Focus rings adapted
+### Theme Policy
+✅ Light-only mode enforced
+✅ Manual dark toggle disabled
+✅ Theme initializer removes dark class
+✅ Light color scheme forced
+✅ Focus rings adapted for light mode
 
 ### Accessibility
 ✅ Keyboard navigation (Tab, Enter, Space, Escape)
@@ -246,7 +246,6 @@ docs/
 ### State Management
 **Zustand** - Lightweight, performant, minimal boilerplate
 - Toast notification state
-- Dark mode preference
 - User auth state
 
 ### Data Tables
@@ -257,7 +256,7 @@ docs/
 
 ### Styling
 **Tailwind CSS** - Utility-first CSS framework
-- Dark mode with `dark:` prefix
+- Light-only runtime theme policy
 - Focus indicators: `focus:ring-2`
 - Responsive design: `sm:`, `md:`, `lg:` prefixes
 
@@ -265,7 +264,7 @@ docs/
 **Lucide React** - Modern icon library
 - Consistent 24px size
 - Proper aria-hidden on decorative icons
-- Dark mode support
+- Light-mode optimized usage
 
 ### Internationalization
 **next-intl** - Next.js 13+ App Router support
@@ -302,7 +301,7 @@ docs/
 ✅ Tables display sample data
 ✅ Forms accept input
 ✅ Buttons trigger actions
-✅ Dark mode toggles correctly
+✅ Light-only mode remains stable
 ✅ Search filters work
 ✅ Export generates valid CSV
 ```

@@ -47,7 +47,7 @@
 - [ ] Delivery logs visible with status badges
 - [ ] Open/bounce/failure rates calculated
 - [ ] CSV export includes all columns
-- [ ] Dark mode renders correctly
+- [x] Light-only mode remains enforced
 
 ### Admin Features
 - [ ] Audit logs show all 7 columns
@@ -90,7 +90,7 @@
 - [ ] Color contrast ≥ 4.5:1 (normal text)
 - [ ] Color contrast ≥ 3:1 (large text)
 - [ ] Focus rings visible in light mode
-- [ ] Focus rings visible in dark mode
+- [ ] Focus rings visible across all admin pages
 - [ ] No reliance on color alone for info
 - [ ] Status badges have icons + color
 - [ ] Placeholder text not sole label
@@ -106,23 +106,23 @@
 
 ---
 
-## Dark Mode Testing
+## Theme Policy Testing
 
 ### Components Verified
-- [x] DataTable - dark:bg-gray-800 applied
-- [x] Cards - dark:border-gray-700 applied
-- [x] Forms - dark:text-gray-100 applied
-- [x] Buttons - dark:hover:bg-gray-800 applied
+- [x] Theme initializer forces light mode
+- [x] `dark` class is removed from root at boot
+- [x] Theme toggle interaction is disabled
 - [ ] Tables - stripe styling visible
-- [ ] Focus rings - offset in dark mode
+- [ ] Focus rings - offset and visibility verified
 - [ ] Badge colors readable (contrast check)
 
-### Specific Pages
+### Admin Sidebar Pages
 - [ ] Dashboard: Quick action cards visible
 - [ ] Email analytics: Stat cards readable
 - [ ] Webhook logs: Delivery table clear
 - [ ] API keys: Key display modal visible
 - [ ] Transactions: Amount formatting clear
+- [ ] Event detail pages: Sidebar navigation visible and stable
 
 ---
 

@@ -6,9 +6,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ChevronLeft, Settings, Save, Upload, AlertCircle, Loader2,
+  Settings, Save, Upload, AlertCircle, Loader2,
   CheckCircle2, Mail, Image as ImageIcon, Lock, Eye, FileText,
-  Eye as EyeIcon, Send,
+  Eye as EyeIcon,
 } from "lucide-react";
 
 type EventOut = {
@@ -170,38 +170,12 @@ export default function EventSettingsPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-4xl px-4">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href={`/admin/events/${eventId}/editor`} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ChevronLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                <Settings className="w-8 h-8 text-brand-600" />
-                Etkinlik Ayarları
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">Etkinlik bilgilerini ve özelliklerini yönetin</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Link href={`/admin/events/${eventId}/email-templates`} title="Email Şablonları" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-              <Mail className="h-4 w-4" />
-              Email
-            </Link>
-            <Link href={`/admin/events/${eventId}/bulk-emails`} title="Toplu Email" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-              <Send className="h-4 w-4" />
-              Kampanya
-            </Link>
-            <Link href={`/admin/events/${eventId}/gamification`} title="Gamification" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-              Gamification
-            </Link>
-            <Link href={`/admin/events/${eventId}/surveys`} title="Anket" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-              Anket
-            </Link>
-            <Link href={`/admin/events/${eventId}/advanced-analytics`} title="İleri Analitik" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-              İleri Analitik
-            </Link>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <Settings className="w-8 h-8 text-brand-600" />
+            Etkinlik Ayarları
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Etkinlik bilgilerini ve özelliklerini yönetin</p>
         </div>
 
         {error && (
