@@ -520,6 +520,8 @@ export default function AdminAttendeesPage() {
             )}
           </>
         )}
+          </>
+        )}
           <ConfirmModal
             open={pendingDeleteId !== null}
             title="Katılımcıyı sil"
