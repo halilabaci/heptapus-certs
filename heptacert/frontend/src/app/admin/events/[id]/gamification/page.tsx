@@ -1,15 +1,225 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Save, Plus, X, Loader2, CheckCircle2, AlertCircle,
-  Trophy, Zap, Star, Target, Sparkles,
+  Trophy, ChevronDown, Hash, Percent, ToggleLeft, Users, Award,
 } from "lucide-react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import EventAdminNav from "@/components/Admin/EventAdminNav";
+
+// ── Predefined criteria catalogue ────────────────────────────────────────────
+type CriteriaType = "number" | "boolean";
+
+interface CriteriaDef {
+  key: string;
+  label: string;
+  description: string;
+  type: CriteriaType;
+  icon: React.ReactNode;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  unit?: string;
+}
+
+const CRITERIA_CATALOGUE: CriteriaDef[] = [
+  {
+    key: "min_sessions",
+    label: "Minimum Oturum Katılımı",
+    description: "Katılımcının check-in yaptığı oturum sayısı en az bu kadar olmalı",
+    type: "number",
+    icon: <Hash className="h-4 w-4" />,
+    placeholder: "2",
+    min: 1,
+    unit: "oturum",
+  },
+  {
+    key: "attendance_rate",
+    label: "Minimum Katılım Oranı",
+    description: "Tüm oturumlara göre katılım yüzdesi (toplam oturum sayısı üzerinden)",
+    type: "number",
+    icon: <Percent className="h-4 w-4" />,
+    placeholder: "80",
+    min: 0,
+    max: 100,
+    unit: "%",
+  },
+  {
+    key: "registered_rank_max",
+    label: "Erken Kayıt Limiti",
+    description: "Etkinliğe kayıt sırasında ilk N kişi arasında olmalı (erken kuş rozeti için)",
+    type: "number",
+    icon: <Users className="h-4 w-4" />,
+    placeholder: "50",
+    min: 1,
+    unit: "kişi",
+  },
+  {
+    key: "survey_completed",
+    label: "Anket Tamamlandı",
+    description: "Katılımcı etkinlik anketini tamamlamış olmalı",
+    type: "boolean",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  {
+    key: "can_download_cert",
+    label: "Sertifika İzni Var",
+    description: "Sertifika indirme yetkisi olan katılımcılara verilir",
+    type: "boolean",
+    icon: <Award className="h-4 w-4" />,
+  },
+];
+
+function getCriteriaDef(key: string): CriteriaDef | undefined {
+  return CRITERIA_CATALOGUE.find((c) => c.key === key);
+}
+
+// ── CriteriaEditor sub-component ─────────────────────────────────────────────
+function CriteriaEditor({
+  criteria,
+  onChange,
+}: {
+  criteria: Record<string, any>;
+  onChange: (updated: Record<string, any>) => void;
+}) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const selectedKeys = Object.keys(criteria);
+  const availableToAdd = CRITERIA_CATALOGUE.filter((c) => !selectedKeys.includes(c.key));
+
+  const addCriteria = (key: string) => {
+    const def = getCriteriaDef(key);
+    const defaultVal = def?.type === "boolean" ? true : (def?.min ?? 1);
+    onChange({ ...criteria, [key]: defaultVal });
+    setShowDropdown(false);
+  };
+
+  const removeCriteria = (key: string) => {
+    const next = { ...criteria };
+    delete next[key];
+    onChange(next);
+  };
+
+  const updateValue = (key: string, raw: string) => {
+    const def = getCriteriaDef(key);
+    if (def?.type === "boolean") {
+      onChange({ ...criteria, [key]: raw === "true" });
+    } else {
+      const num = parseFloat(raw);
+      onChange({ ...criteria, [key]: isNaN(num) ? raw : num });
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {selectedKeys.map((key) => {
+        const def = getCriteriaDef(key);
+        const value = criteria[key];
+        return (
+          <div
+            key={key}
+            className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5"
+          >
+            <div className="mt-0.5 text-brand-500 shrink-0">{def?.icon ?? <Hash className="h-4 w-4" />}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-800">
+                  {def?.label ?? key}
+                </span>
+                <code className="text-xs text-gray-400 font-mono">{key}</code>
+              </div>
+              {def?.description && (
+                <p className="text-xs text-gray-500 mt-0.5">{def.description}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 mt-0.5">
+              {def?.type === "boolean" ? (
+                <select
+                  value={String(value)}
+                  onChange={(e) => updateValue(key, e.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                >
+                  <option value="true">Evet</option>
+                  <option value="false">Hayır</option>
+                </select>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={String(value)}
+                    min={def?.min}
+                    max={def?.max}
+                    onChange={(e) => updateValue(key, e.target.value)}
+                    className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
+                  />
+                  {def?.unit && (
+                    <span className="text-xs text-gray-500">{def.unit}</span>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeCriteria(key)}
+                className="p-1 hover:bg-red-100 rounded text-red-400"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {availableToAdd.length > 0 && (
+        <div className="relative" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={() => setShowDropdown((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-semibold py-1"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Kriter Ekle
+            <ChevronDown className="h-3 w-3" />
+          </button>
+
+          <AnimatePresence>
+            {showDropdown && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.12 }}
+                className="absolute left-0 top-full mt-1 z-20 bg-white rounded-xl border border-gray-200 shadow-lg min-w-[300px]"
+              >
+                {availableToAdd.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => addCriteria(c.key)}
+                    className="w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors first:rounded-t-xl last:rounded-b-xl"
+                  >
+                    <div className="mt-0.5 text-brand-500 shrink-0">{c.icon}</div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{c.label}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{c.description}</div>
+                    </div>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {selectedKeys.length === 0 && (
+        <p className="text-xs text-gray-400 italic">Henüz kriter eklenmedi — rozet tüm katılımcılara verilir</p>
+      )}
+    </div>
+  );
+}
 
 type BadgeDefinition = {
   type: string;
@@ -41,13 +251,7 @@ type ParticipantBadge = {
   metadata?: Record<string, any>;
 };
 
-const Badge_Icons = {
-  trophy: Trophy,
-  zap: Zap,
-  star: Star,
-  target: Target,
-  sparkles: Sparkles,
-};
+
 
 export default function GamificationPage() {
   const params = useParams();
@@ -321,6 +525,21 @@ export default function GamificationPage() {
                       />
                     </div>
 
+                    {/* Criteria editor */}
+                    <div className="mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Kriter Kuralları
+                      </label>
+                      <CriteriaEditor
+                        criteria={badge.criteria || {}}
+                        onChange={(updated) => {
+                          const next = [...editingBadges];
+                          next[idx] = { ...next[idx], criteria: updated };
+                          setEditingBadges(next);
+                        }}
+                      />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -384,7 +603,7 @@ export default function GamificationPage() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <input
                   type="text"
-                  placeholder="Rozet Türü"
+                  placeholder="Rozet Türü (örn: early_bird)"
                   value={newBadge?.type || ""}
                   onChange={(e) =>
                     setNewBadge({
@@ -398,7 +617,7 @@ export default function GamificationPage() {
                 />
                 <input
                   type="text"
-                  placeholder="Rozet Adı"
+                  placeholder="Rozet Adı (örn: Erken Katılımcı)"
                   value={newBadge?.name || ""}
                   onChange={(e) =>
                     setNewBadge({
@@ -411,6 +630,24 @@ export default function GamificationPage() {
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
+
+              {/* New badge criteria */}
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Kriter Kuralları
+                </label>
+                <CriteriaEditor
+                  criteria={newBadge?.criteria || {}}
+                  onChange={(updated) =>
+                    setNewBadge({
+                      type: newBadge?.type || "",
+                      name: newBadge?.name || "",
+                      criteria: updated,
+                    })
+                  }
+                />
+              </div>
+
               <button
                 onClick={addBadge}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-brand-600 text-white font-semibold py-2 hover:bg-brand-700 transition-colors"

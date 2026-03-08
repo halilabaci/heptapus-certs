@@ -21,10 +21,6 @@ import {
   CheckCircle2,
   QrCode,
   User,
-  Users,
-  UserCheck,
-  LockKeyhole,
-  CreditCard,
   Download,
   Upload,
   RefreshCcw,
@@ -37,6 +33,14 @@ import {
   Mail,
   Send,
   Settings,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Eye,
+  EyeOff,
+  Minus,
+  Plus,
+  Crosshair,
 } from "lucide-react";
 import EventAdminNav from "@/components/Admin/EventAdminNav";
 import { useT } from "@/lib/i18n";
@@ -94,15 +98,17 @@ const DEFAULT_CFG: EditorConfig = {
 /* ─── Panel wrappers ─────────────────────────────────────── */
 function PanelSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="card p-5">
-      <div className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-800">
+    <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50 bg-gray-50/70">
         <span className="p-1.5 rounded-lg bg-brand-50 text-brand-600">{icon}</span>
-        {title}
+        <span className="text-xs font-bold text-gray-700 tracking-wide uppercase">{title}</span>
       </div>
-      {children}
+      <div className="p-4">{children}</div>
     </div>
   );
 }
+
+const FONT_PRESETS = [20, 28, 36, 48, 64];
 
 function FieldPanel({ label, field, onChange }: {
   label: string;
@@ -110,58 +116,173 @@ function FieldPanel({ label, field, onChange }: {
   onChange: (patch: Partial<FieldConfig>) => void;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+    <div className="space-y-4">
+      {/* Visibility */}
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-gray-600">{label}</span>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={field.show} onChange={e => onChange({ show: e.target.checked })} className="accent-brand-600 h-3.5 w-3.5" />
-          <span className="text-[11px] font-medium text-gray-500">Göster</span>
-        </label>
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}</span>
+        <button
+          type="button"
+          onClick={() => onChange({ show: !field.show })}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+            field.show ? "bg-brand-50 text-brand-600" : "bg-gray-100 text-gray-400"
+          }`}
+        >
+          {field.show ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          {field.show ? "Görünür" : "Gizli"}
+        </button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="label text-[10px]">Yazı Boyutu</label>
-          <input type="number" value={field.font_size} min={8} max={200} onChange={e => onChange({ font_size: +e.target.value })} className="input-field py-1.5 text-xs" />
-        </div>
-        <div>
-          <label className="label text-[10px]">Renk</label>
-          <input type="color" value={field.font_color} onChange={e => onChange({ font_color: e.target.value })} className="h-9 w-full cursor-pointer rounded-lg border border-gray-200 bg-white p-1" />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="label text-[10px]">Kalınlık</label>
-          <select value={field.font_weight} onChange={e => onChange({ font_weight: e.target.value as any })} className="input-field py-1.5 text-xs">
-            <option value="normal">Normal</option>
-            <option value="bold">Bold</option>
-          </select>
-        </div>
-        <div>
-          <label className="label text-[10px]">Stil</label>
-          <select value={field.font_style} onChange={e => onChange({ font_style: e.target.value as any })} className="input-field py-1.5 text-xs">
-            <option value="normal">Normal</option>
-            <option value="italic">İtalik</option>
-          </select>
-        </div>
-      </div>
+
+      {/* Font size stepper + presets */}
       <div>
-        <label className="label text-[10px]">Hizalama</label>
-        <select value={field.text_align} onChange={e => onChange({ text_align: e.target.value as any })} className="input-field py-1.5 text-xs">
-          <option value="left">Sol</option>
-          <option value="center">Orta</option>
-          <option value="right">Sağ</option>
-        </select>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="label text-[10px]">
-            X (px)
-          </label>
-          <input type="number" value={field.x} min={0} onChange={e => onChange({ x: +e.target.value })} className="input-field py-1.5 text-xs" />
+        <label className="label text-[10px] mb-1.5">Yazı Boyutu</label>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onChange({ font_size: Math.max(8, field.font_size - 2) })}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors"
+          >
+            <Minus className="h-3 w-3" />
+          </button>
+          <input
+            type="number"
+            value={field.font_size}
+            min={8}
+            max={300}
+            onChange={e => onChange({ font_size: +e.target.value })}
+            className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-mono font-semibold text-gray-800"
+          />
+          <button
+            type="button"
+            onClick={() => onChange({ font_size: field.font_size + 2 })}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
         </div>
-        <div>
-          <label className="label text-[10px]">Y (px)</label>
-          <input type="number" value={field.y} min={0} onChange={e => onChange({ y: +e.target.value })} className="input-field py-1.5 text-xs" />
+        <div className="mt-2 flex gap-1">
+          {FONT_PRESETS.map(size => (
+            <button
+              key={size}
+              type="button"
+              onClick={() => onChange({ font_size: size })}
+              className={`flex-1 rounded-md py-1 text-[10px] font-bold transition-colors ${
+                field.font_size === size
+                  ? "bg-brand-500 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Color */}
+      <div>
+        <label className="label text-[10px] mb-1.5">Renk</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={field.font_color}
+            onChange={e => onChange({ font_color: e.target.value })}
+            className="h-9 w-9 cursor-pointer rounded-lg border border-gray-200 p-0.5"
+          />
+          <input
+            type="text"
+            value={field.font_color}
+            onChange={e => {
+              if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) onChange({ font_color: e.target.value });
+            }}
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs font-semibold uppercase text-gray-700"
+            maxLength={7}
+          />
+        </div>
+      </div>
+
+      {/* Style toggles */}
+      <div>
+        <label className="label text-[10px] mb-1.5">Stil ve Hizalama</label>
+        <div className="flex items-center justify-between gap-2">
+          {/* Bold + Italic */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => onChange({ font_weight: field.font_weight === "bold" ? "normal" : "bold" })}
+              title="Kalın"
+              className={`h-8 w-8 rounded-lg text-sm font-black transition-colors ${
+                field.font_weight === "bold"
+                  ? "bg-brand-500 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ font_style: field.font_style === "italic" ? "normal" : "italic" })}
+              title="İtalik"
+              className={`h-8 w-8 rounded-lg text-sm italic font-semibold transition-colors ${
+                field.font_style === "italic"
+                  ? "bg-brand-500 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              I
+            </button>
+          </div>
+          {/* Alignment */}
+          <div className="flex gap-1">
+            {(["left", "center", "right"] as const).map(align => (
+              <button
+                key={align}
+                type="button"
+                onClick={() => onChange({ text_align: align })}
+                title={align === "left" ? "Sola hizala" : align === "center" ? "Ortala" : "Sağa hizala"}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  field.text_align === align
+                    ? "bg-brand-500 text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+              >
+                {align === "left" ? <AlignLeft className="h-3.5 w-3.5" /> : align === "center" ? <AlignCenter className="h-3.5 w-3.5" /> : <AlignRight className="h-3.5 w-3.5" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Live preview */}
+      <div className="rounded-lg border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100 px-3 py-3 overflow-hidden">
+        <p className="text-[9px] font-bold text-gray-400 mb-2 uppercase tracking-wide">Canlı önizleme</p>
+        <div className="min-h-[28px] flex items-center" style={{ justifyContent: field.text_align === "center" ? "center" : field.text_align === "right" ? "flex-end" : "flex-start" }}>
+          <span style={{
+            fontSize: Math.min(Math.max(field.font_size * 0.18, 10), 28),
+            color: field.font_color,
+            fontWeight: field.font_weight,
+            fontStyle: field.font_style,
+            lineHeight: 1.3,
+          }}>
+            Örnek Metin
+          </span>
+        </div>
+      </div>
+
+      {/* Position */}
+      <div>
+        <label className="label text-[10px] mb-1.5">Konum (px)</label>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">X</span>
+            <input type="number" value={field.x} min={0}
+              onChange={e => onChange({ x: +e.target.value })}
+              className="input-field py-1.5 pl-6 text-xs" />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Y</span>
+            <input type="number" value={field.y} min={0}
+              onChange={e => onChange({ y: +e.target.value })}
+              className="input-field py-1.5 pl-6 text-xs" />
+          </div>
         </div>
       </div>
     </div>
@@ -181,6 +302,21 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [err, setErr] = useState<string | null>(null);
 
   const [activePanel, setActivePanel] = useState<"typography" | "bulk" | "history">("typography");
+  const [zoom, setZoom] = useState(100);
+  const [showGrid, setShowGrid] = useState(false);
+
+  // Ctrl+S to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        saveConfig();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg]);
 
   // Template history
   type TemplateSnap = { id: number; template_image_url: string | null; created_at: string };
@@ -472,57 +608,129 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
 
       {/* TOP BAR */}
-      <div className="px-6 py-3 border-b border-gray-100 bg-white shrink-0 space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="border-b border-gray-100 bg-white shrink-0">
+        {/* Row 1: breadcrumb + actions */}
+        <div className="flex items-center justify-between px-5 py-2.5">
           <div className="flex items-center gap-3">
-            <Link href="/admin/events" className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
-              <ChevronLeft className="h-4 w-4" /> {t("editor_back")}
+            <Link href="/admin/events" className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+              <ChevronLeft className="h-4 w-4" /> Etkinlikler
             </Link>
             <span className="text-gray-200">/</span>
-            <div className="flex items-center gap-1.5 text-sm font-bold text-gray-800">
+            <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
               <FileText className="h-4 w-4 text-brand-500" />
-              {t("editor_title")} — Event {eventId}
+              Sertifika Editörü
+              <span className="ml-1 rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-mono text-gray-500">#{eventId}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 px-2">
-              <Link href={`/admin/events/${eventId}/settings`} title="Ayarlar" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-                <Settings className="h-4 w-4" />
-                Ayarlar
-              </Link>
-              <Link href={`/admin/events/${eventId}/email-templates`} title="Email Şablonları" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-                <Mail className="h-4 w-4" />
-                Email
-              </Link>
-              <Link href={`/admin/events/${eventId}/bulk-emails`} title="Toplu Email" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors text-sm font-medium">
-                <Send className="h-4 w-4" />
-                Kampanya
-              </Link>
-            </div>
-            <div className="border-l border-gray-200 mx-2 h-6" />
+
+          <div className="flex items-center gap-1.5">
+            <Link href={`/admin/events/${eventId}/settings`}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Settings className="h-3.5 w-3.5" /> Ayarlar
+            </Link>
+            <Link href={`/admin/events/${eventId}/email-templates`}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Mail className="h-3.5 w-3.5" /> Email
+            </Link>
+            <Link href={`/admin/events/${eventId}/bulk-emails`}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Send className="h-3.5 w-3.5" /> Kampanya
+            </Link>
+            <div className="mx-2 h-5 w-px bg-gray-200" />
             <AnimatePresence>
               {saved && (
-                <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                <motion.span initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 6 }}
                   className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> {t("editor_saved")}
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Kaydedildi
                 </motion.span>
               )}
             </AnimatePresence>
-            <button onClick={saveConfig} disabled={saving} className="btn-primary flex items-center gap-2 px-5 py-2 text-sm">
+            <button onClick={saveConfig} disabled={saving}
+              className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {t("editor_save")}
+              Kaydet
             </button>
           </div>
         </div>
-
-        <EventAdminNav eventId={eventId} active="editor" className="mb-2 flex flex-col gap-2" />
+        {/* Row 2: nav */}
+        <div className="px-5 pb-0">
+          <EventAdminNav eventId={eventId} active="editor" className="mb-0 flex flex-col gap-2" />
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
 
         {/* CANVAS AREA — intentionally dark (design tool experience) */}
-        <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-8">
-          <div className="relative" style={{ width: RENDER_W, height: renderH }}>
+        <div className="flex-1 overflow-hidden flex flex-col bg-slate-950">
+          {/* Canvas toolbar */}
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.max(25, z - 25))}
+                disabled={zoom <= 25}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-30"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(100)}
+                className="min-w-[52px] rounded-md px-2 py-1 text-center font-mono text-[11px] font-bold text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                {zoom}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.min(200, z + 25))}
+                disabled={zoom >= 200}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-30"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const containerW = window.innerWidth - 320 - 80;
+                  const containerH = window.innerHeight - 64 - 56 - 40;
+                  const zW = Math.floor((containerW / RENDER_W) * 100);
+                  const zH = Math.floor((containerH / (renderH || 550)) * 100);
+                  setZoom(Math.max(25, Math.min(175, Math.min(zW, zH))));
+                }}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+                title="Ekrana sığdır"
+              >
+                Sığdır
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowGrid(g => !g)}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  showGrid ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                }`}
+              >
+                <Crosshair className="h-3 w-3" /> Izgara
+              </button>
+              <button
+                type="button"
+                onClick={() => bgInputRef.current?.click()}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:bg-slate-700 hover:text-white transition-colors"
+              >
+                <ImagePlus className="h-3 w-3" /> Arka plan
+              </button>
+            </div>
+
+            <div className="text-[10px] text-slate-500 font-mono">
+              {cfg.image_width} × {cfg.image_height} px
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto flex items-center justify-center p-8">
+          <div className="relative" style={{ width: RENDER_W * (zoom / 100), height: renderH * (zoom / 100), transform: "none", transition: "width 0.15s, height 0.15s" }}>
+            <div className="absolute inset-0" style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left", width: RENDER_W, height: renderH }}>
 
             {/* Background */}
             {cfg.background_image ? (
@@ -560,14 +768,12 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 position={{ x: nameRX, y: nameRY }}
                 onDrag={onNameDrag}
                 bounds="parent"
+                scale={zoom / 100}
               >
-                <div
-                  className="absolute cursor-move select-none z-20"
-                  style={{ lineHeight: 1.3 }}
-                >
+                <div className="absolute cursor-move select-none z-20 group" style={{ lineHeight: 1.3 }}>
                   <div style={{ transform: alignTransform(cfg.name.text_align) }}>
                     <span
-                      className="rounded border-2 border-dashed border-brand-400/60 px-2 py-0.5 hover:border-brand-500 transition-colors bg-white/5 backdrop-blur-sm whitespace-nowrap inline-block"
+                      className="rounded-lg border-2 border-dashed border-brand-400/70 px-2 py-0.5 hover:border-brand-400 transition-all bg-black/10 backdrop-blur-sm whitespace-nowrap inline-block shadow-lg"
                       style={{
                         fontSize: toRenderPx(cfg.name.font_size, cfg.image_width),
                         color: cfg.name.font_color,
@@ -577,26 +783,27 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     >
                       {t("editor_preview_name")}
                     </span>
+                    <span className="absolute -top-5 left-0 hidden group-hover:block text-[9px] bg-brand-500 text-white rounded px-1.5 py-0.5 font-bold whitespace-nowrap">
+                      Ad Soyad • {cfg.name.x},{cfg.name.y}
+                    </span>
                   </div>
                 </div>
               </Draggable>
             )}
 
-            {/* Cert ID draggable — freely movable in X+Y */}
+            {/* Cert ID draggable */}
             {cfg.cert_id.show && (
               <Draggable
                 key={`certid-${cfgVersion}`}
                 position={{ x: certIdRX, y: certIdRY }}
                 onDrag={onCertIdDrag}
                 bounds="parent"
+                scale={zoom / 100}
               >
-                <div
-                  className="absolute cursor-move select-none z-20"
-                  style={{ lineHeight: 1.3 }}
-                >
+                <div className="absolute cursor-move select-none z-20 group" style={{ lineHeight: 1.3 }}>
                   <div style={{ transform: alignTransform(cfg.cert_id.text_align) }}>
                     <span
-                      className="rounded border-2 border-dashed border-amber-400/60 px-2 py-0.5 hover:border-amber-500 transition-colors bg-white/5 backdrop-blur-sm whitespace-nowrap inline-block"
+                      className="rounded-lg border-2 border-dashed border-amber-400/70 px-2 py-0.5 hover:border-amber-400 transition-all bg-black/10 backdrop-blur-sm whitespace-nowrap inline-block shadow-lg"
                       style={{
                         fontSize: toRenderPx(cfg.cert_id.font_size, cfg.image_width),
                         color: cfg.cert_id.font_color,
@@ -606,41 +813,56 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     >
                       {t("editor_preview_cert_id")}
                     </span>
+                    <span className="absolute -top-5 left-0 hidden group-hover:block text-[9px] bg-amber-500 text-white rounded px-1.5 py-0.5 font-bold whitespace-nowrap">
+                      Sertifika No • {cfg.cert_id.x},{cfg.cert_id.y}
+                    </span>
                   </div>
                 </div>
               </Draggable>
+            )}
+
+            {/* Grid overlay */}
+            {showGrid && (
+              <div className="pointer-events-none absolute inset-0 z-10" style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
+                backgroundSize: "40px 40px",
+              }} />
             )}
 
             {/* QR draggable */}
             {cfg.qr.show && (
-              <Draggable key={`qr-${cfgVersion}`} position={{ x: qrRX, y: qrRY }} onDrag={onQrStop} bounds="parent">
+              <Draggable key={`qr-${cfgVersion}`} position={{ x: qrRX, y: qrRY }} onDrag={onQrStop} bounds="parent" scale={zoom / 100}>
                 <div className="absolute cursor-move" style={{ width: qrRS, height: qrRS }}>
-                  <div className="w-full h-full rounded-md border-2 border-dashed border-emerald-400/60 bg-white/10 backdrop-blur flex items-center justify-center hover:border-emerald-400 transition-colors">
-                    <QrCode className="text-emerald-300" style={{ width: "50%", height: "50%" }} />
+                  <div className="w-full h-full rounded-lg border-2 border-dashed border-emerald-400/70 bg-white/10 backdrop-blur-sm flex items-center justify-center hover:border-emerald-400 hover:bg-white/20 transition-all group">
+                    <QrCode className="text-emerald-300 group-hover:text-emerald-200 transition-colors" style={{ width: "50%", height: "50%" }} />
                   </div>
                 </div>
               </Draggable>
             )}
-          </div>
+            </div>{/* scale wrapper */}
+          </div>{/* inner container */}
+          </div>{/* overflow-auto */}
         </div>
 
         {/* RIGHT PANEL — light theme */}
-        <div className="w-80 flex flex-col overflow-hidden border-l border-gray-100 bg-gray-50">
+        <div className="w-[320px] flex flex-col overflow-hidden border-l border-gray-100 bg-gray-50">
 
           {/* Panel tabs */}
           <div className="flex shrink-0 border-b border-gray-100 bg-white">
-            <button onClick={() => setActivePanel("typography")}
-              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "typography" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-              <Type className="h-3.5 w-3.5" /> {t("editor_tab_typography")}
-            </button>
-            <button onClick={() => setActivePanel("bulk")}
-              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "bulk" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-              <TableProperties className="h-3.5 w-3.5" /> {t("editor_tab_bulk")}
-            </button>
-            <button onClick={() => setActivePanel("history")}
-              className={`flex flex-1 items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-b-2 ${activePanel === "history" ? "border-brand-500 text-brand-600" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
-              <History className="h-3.5 w-3.5" /> Geçmiş
-            </button>
+            {([
+              { id: "typography", icon: <Type className="h-3.5 w-3.5" />, label: "Tasarım" },
+              { id: "bulk", icon: <TableProperties className="h-3.5 w-3.5" />, label: "Toplu" },
+              { id: "history", icon: <History className="h-3.5 w-3.5" />, label: "Geçmiş" },
+            ] as const).map(tab => (
+              <button key={tab.id} onClick={() => setActivePanel(tab.id)}
+                className={`flex flex-1 items-center justify-center gap-1.5 py-3 text-[11px] font-bold transition-all border-b-2 ${
+                  activePanel === tab.id
+                    ? "border-brand-500 text-brand-600 bg-brand-50/30"
+                    : "border-transparent text-gray-400 hover:text-gray-700 hover:bg-gray-50"
+                }`}>
+                {tab.icon} {tab.label}
+              </button>
+            ))}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -659,16 +881,33 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
 
                 {/* Canvas dimensions */}
-                <PanelSection icon={<Maximize2 className="h-3.5 w-3.5" />} title={t("editor_dimensions")}>
+                <PanelSection icon={<Maximize2 className="h-3.5 w-3.5" />} title="Boyutlar">
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label text-[10px]">{t("editor_width")} (px)</label>
+                    <div className="relative">
+                      <label className="label text-[10px] mb-1.5">Genişlik (px)</label>
                       <input type="number" value={cfg.image_width} onChange={e => setCfg(c => ({ ...c, image_width: +e.target.value }))} className="input-field py-1.5 text-xs" />
                     </div>
                     <div>
-                      <label className="label text-[10px]">{t("editor_height")} (px)</label>
+                      <label className="label text-[10px] mb-1.5">Yükseklik (px)</label>
                       <input type="number" value={cfg.image_height} onChange={e => setCfg(c => ({ ...c, image_height: +e.target.value }))} className="input-field py-1.5 text-xs" />
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {[
+                      { label: "A4 Yatay", w: 2480, h: 1748 },
+                      { label: "A4 Dikey", w: 1748, h: 2480 },
+                      { label: "HD", w: 1920, h: 1080 },
+                      { label: "Standart", w: 1240, h: 877 },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setCfg(c => ({ ...c, image_width: preset.w, image_height: preset.h }))}
+                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:border-brand-300 hover:text-brand-600 transition-colors"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
                   </div>
                 </PanelSection>
 
@@ -683,28 +922,48 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 </PanelSection>
 
                 {/* QR */}
-                <PanelSection icon={<QrCode className="h-3.5 w-3.5" />} title={t("editor_qr_field")}>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                <PanelSection icon={<QrCode className="h-3.5 w-3.5" />} title="QR Kodu">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-gray-600">QR Kodu</span>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={cfg.qr.show} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, show: e.target.checked } }))} className="accent-brand-600 h-3.5 w-3.5" />
-                        <span className="text-[11px] font-medium text-gray-500">Göster</span>
-                      </label>
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">QR Kodu</span>
+                      <button
+                        type="button"
+                        onClick={() => setCfg(c => ({ ...c, qr: { ...c.qr, show: !c.qr.show } }))}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                          cfg.qr.show ? "bg-brand-50 text-brand-600" : "bg-gray-100 text-gray-400"
+                        }`}
+                      >
+                        {cfg.qr.show ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                        {cfg.qr.show ? "Görünür" : "Gizli"}
+                      </button>
                     </div>
                     <div>
-                      <label className="label text-[10px]">Boyut (px)</label>
-                      <input type="number" value={cfg.qr.size} min={40} max={400}
-                        onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, size: +e.target.value } }))} className="input-field py-1.5 text-xs" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="label text-[10px]">X (px)</label>
-                        <input type="number" value={cfg.qr.x} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, x: +e.target.value } }))} className="input-field py-1.5 text-xs" />
+                      <label className="label text-[10px] mb-1.5">Boyut (px)</label>
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => setCfg(c => ({ ...c, qr: { ...c.qr, size: Math.max(40, c.qr.size - 10) } }))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors">
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <input type="number" value={cfg.qr.size} min={40} max={400}
+                          onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, size: +e.target.value } }))}
+                          className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-mono font-semibold text-gray-800" />
+                        <button type="button" onClick={() => setCfg(c => ({ ...c, qr: { ...c.qr, size: Math.min(400, c.qr.size + 10) } }))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors">
+                          <Plus className="h-3 w-3" />
+                        </button>
                       </div>
-                      <div>
-                        <label className="label text-[10px]">Y (px)</label>
-                        <input type="number" value={cfg.qr.y} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, y: +e.target.value } }))} className="input-field py-1.5 text-xs" />
+                    </div>
+                    <div>
+                      <label className="label text-[10px] mb-1.5">Konum (px)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">X</span>
+                          <input type="number" value={cfg.qr.x} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, x: +e.target.value } }))} className="input-field py-1.5 pl-6 text-xs" />
+                        </div>
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">Y</span>
+                          <input type="number" value={cfg.qr.y} min={0} onChange={e => setCfg(c => ({ ...c, qr: { ...c.qr, y: +e.target.value } }))} className="input-field py-1.5 pl-6 text-xs" />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -774,12 +1033,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   </div>
                 </PanelSection>
 
-                <div className="pt-2">
-                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-3 space-y-1.5">
-                    <div className="flex items-start gap-2.5">
-                      <Move className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        Tüm elemanları (İsim, Sertifika No, QR) sürükleyerek istediğiniz yere taşıyabilirsiniz.
+                <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3">
+                  <div className="flex items-start gap-2.5">
+                    <Move className="h-4 w-4 text-gray-300 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-500 mb-0.5">Sürükleme ile konumlandır</p>
+                      <p className="text-[10px] text-gray-400 leading-relaxed">
+                        İsme alanı (mavi), sertifika no (sarı) ve QR kodu (yeşil) doğrudan canvas üzerinde sürüklenebilir.
                       </p>
                     </div>
                   </div>

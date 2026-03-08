@@ -3014,12 +3014,32 @@ async def trigger_automatic_badge_calculation(
     )
     attendees = att_res.scalars().all()
 
+    # Pre-compute total session count for attendance_rate
+    sessions_res = await db.execute(
+        select(func.count()).select_from(EventSession).where(EventSession.event_id == event_id)
+    )
+    total_sessions = sessions_res.scalar() or 0
+
+    # Pre-compute registration ranks (ordered by registered_at asc)
+    rank_map: dict[int, int] = {
+        att.id: idx + 1
+        for idx, att in enumerate(sorted(attendees, key=lambda a: a.registered_at))
+    }
+
     created_count = 0
     for attendee in attendees:
+        # Load attendance records for this attendee once
+        ar_res = await db.execute(
+            select(func.count()).select_from(AttendanceRecord).where(
+                AttendanceRecord.attendee_id == attendee.id
+            )
+        )
+        sessions_attended = ar_res.scalar() or 0
+
         # For each badge definition, check if criteria are met
         for badge_def in badge_rule.badge_definitions or []:
             badge_type = badge_def.get("type", "")
-            
+
             # Check if badge already exists
             pb_res = await db.execute(
                 select(ParticipantBadge).where(
@@ -3031,9 +3051,49 @@ async def trigger_automatic_badge_calculation(
             if pb_res.scalar_one_or_none():
                 continue  # Already has this badge
 
-            # For now, criteria evaluation is placeholder
-            # In production, evaluate actual conditions (attendance %, performance, etc.)
-            criteria_met = {}  # Placeholder
+            # Evaluate each criterion
+            criteria = badge_def.get("criteria") or {}
+            passed = True
+            criteria_met: dict = {}
+
+            for key, threshold in criteria.items():
+                if key == "min_sessions":
+                    ok = sessions_attended >= int(threshold)
+                    criteria_met[key] = {"required": threshold, "actual": sessions_attended, "passed": ok}
+                    if not ok:
+                        passed = False
+
+                elif key == "attendance_rate":
+                    rate = (sessions_attended / total_sessions * 100) if total_sessions > 0 else 0
+                    ok = rate >= float(threshold)
+                    criteria_met[key] = {"required": threshold, "actual": round(rate, 1), "passed": ok}
+                    if not ok:
+                        passed = False
+
+                elif key == "registered_rank_max":
+                    rank = rank_map.get(attendee.id, 9999)
+                    ok = rank <= int(threshold)
+                    criteria_met[key] = {"required": threshold, "actual": rank, "passed": ok}
+                    if not ok:
+                        passed = False
+
+                elif key == "survey_completed":
+                    required = bool(threshold)
+                    actual = attendee.survey_completed_at is not None
+                    ok = actual == required if required else True
+                    criteria_met[key] = {"required": required, "actual": actual, "passed": ok}
+                    if not ok:
+                        passed = False
+
+                elif key == "can_download_cert":
+                    required = bool(threshold)
+                    ok = attendee.can_download_cert == required if required else True
+                    criteria_met[key] = {"required": required, "actual": attendee.can_download_cert, "passed": ok}
+                    if not ok:
+                        passed = False
+
+            if not passed:
+                continue
 
             badge = ParticipantBadge(
                 event_id=event_id,
