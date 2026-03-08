@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearToken } from "@/lib/api";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarCheck2,
   ChartNoAxesCombined,
@@ -12,14 +13,14 @@ import {
   Gauge,
   KeyRound,
   Mail,
-  MailCheck,
   MailOpen,
   Settings,
   Shield,
   Webhook,
   LogOut,
   Menu,
-  X,
+  PanelLeftClose,
+  PanelLeftOpen,
   Layers,
 } from "lucide-react";
 
@@ -74,7 +75,15 @@ function isActive(pathname: string, item: NavItem): boolean {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () => void }) {
+function SidebarContent({
+  pathname,
+  collapsed,
+  onClose,
+}: {
+  pathname: string;
+  collapsed: boolean;
+  onClose?: () => void;
+}) {
   const router = useRouter();
 
   function handleLogout() {
@@ -86,25 +95,49 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-5 border-b border-sidebar-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-brand">
+      <div className={`flex items-center border-b border-sidebar-border ${collapsed ? "justify-center px-0 py-5" : "gap-2.5 px-4 py-5"}`}>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-brand">
           <Layers className="h-4 w-4" />
         </div>
-        <span className="text-sm font-bold text-surface-900 tracking-tight">HeptaCert</span>
-        <span className="ml-auto rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 uppercase tracking-wide">Admin</span>
+        {!collapsed && (
+          <>
+            <span className="text-sm font-bold text-surface-900 tracking-tight">HeptaCert</span>
+            <span className="ml-auto rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 uppercase tracking-wide">Admin</span>
+          </>
+        )}
       </div>
 
       {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+      <nav className={`flex-1 overflow-y-auto py-4 space-y-5 ${collapsed ? "px-2" : "px-3"}`}>
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
-            <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-widest text-surface-400">
-              {group.label}
-            </p>
-            <div className="space-y-0.5">
+            {!collapsed && (
+              <p className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-widest text-surface-400">
+                {group.label}
+              </p>
+            )}
+            {collapsed && <div className="mb-1.5 border-t border-sidebar-border" />}
+            <div className="space-y-1">
               {group.items.map((item) => {
                 const active = isActive(pathname, item);
                 const Icon = item.icon;
+                if (collapsed) {
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onClose}
+                      title={item.label}
+                      className={`flex items-center justify-center rounded-lg p-2.5 transition-all ${
+                        active
+                          ? "bg-violet-50 text-violet-700"
+                          : "text-surface-500 hover:bg-sidebar-hover hover:text-surface-900"
+                      }`}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                    </Link>
+                  );
+                }
                 return (
                   <Link
                     key={item.href}
@@ -123,13 +156,18 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-sidebar-border px-3 py-3">
+      <div className={`border-t border-sidebar-border py-3 ${collapsed ? "px-2" : "px-3"}`}>
         <button
           onClick={handleLogout}
-          className="sidebar-item w-full text-left text-red-500 hover:bg-red-50 hover:text-red-700"
+          title="Çıkış Yap"
+          className={`transition-all text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg ${
+            collapsed
+              ? "flex items-center justify-center p-2.5 w-full"
+              : "sidebar-item w-full text-left"
+          }`}
         >
           <LogOut className="h-4 w-4 shrink-0" />
-          Çıkış Yap
+          {!collapsed && "Çıkış Yap"}
         </button>
       </div>
     </div>
@@ -139,6 +177,7 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
 export function AdminLayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   if (isAuthPage(pathname)) {
     return <>{children}</>;
@@ -147,37 +186,55 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-surface-50">
       {/* ── Desktop Sidebar ─────────────────────────────────── */}
-      <aside className="hidden lg:flex lg:w-[240px] lg:shrink-0 lg:flex-col border-r border-sidebar-border bg-sidebar">
-        <SidebarContent pathname={pathname} />
+      <aside
+        className={`hidden lg:flex lg:shrink-0 lg:flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200 ${
+          collapsed ? "lg:w-[64px]" : "lg:w-[240px]"
+        }`}
+      >
+        <SidebarContent pathname={pathname} collapsed={collapsed} />
       </aside>
 
       {/* ── Mobile Drawer ────────────────────────────────────── */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          {/* backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          {/* drawer */}
-          <aside className="relative z-10 w-[240px] bg-sidebar border-r border-sidebar-border animate-slide-right">
-            <SidebarContent pathname={pathname} onClose={() => setMobileOpen(false)} />
+          <aside className="relative z-10 w-[240px] bg-sidebar border-r border-sidebar-border">
+            <SidebarContent pathname={pathname} collapsed={false} onClose={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
 
       {/* ── Main ────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-        {/* Top bar (mobile only) */}
-        <header className="flex items-center gap-3 border-b border-surface-200 bg-white px-4 py-3 lg:hidden">
+        {/* Top bar — always visible */}
+        <header className="flex items-center gap-3 border-b border-surface-200 bg-white px-4 py-3 shrink-0">
+          {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen(true)}
-            className="rounded-lg p-1.5 text-surface-600 hover:bg-surface-100"
+            className="rounded-lg p-1.5 text-surface-600 hover:bg-surface-100 lg:hidden"
             aria-label="Menüyü Aç"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2">
+
+          {/* Desktop collapse toggle */}
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="hidden lg:flex rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 hover:text-surface-800 transition-colors"
+            aria-label={collapsed ? "Menüyü Genişlet" : "Menüyü Daralt"}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="h-5 w-5" />
+            ) : (
+              <PanelLeftClose className="h-5 w-5" />
+            )}
+          </button>
+
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 lg:hidden">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-600 text-white">
               <Layers className="h-3.5 w-3.5" />
             </div>
@@ -187,9 +244,17 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1280px] p-6 lg:p-8">
-            {children}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="w-full p-4 lg:p-6"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

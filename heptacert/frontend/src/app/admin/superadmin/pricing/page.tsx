@@ -31,7 +31,10 @@ export default function SuperadminPricingPage() {
     setLoading(true); setErr(null);
     try {
       const r = await apiFetch("/superadmin/pricing");
-      setTiers(await r.json());
+      const data = await r.json();
+      // API may return array directly or { tiers: [] } / { data: [] } / { items: [] }
+      const arr = Array.isArray(data) ? data : (data.tiers ?? data.data ?? data.items ?? []);
+      setTiers(arr);
     } catch (e: any) { setErr(e?.message || "Fiyatlandırma yüklenemedi."); }
     finally { setLoading(false); }
   }, []);

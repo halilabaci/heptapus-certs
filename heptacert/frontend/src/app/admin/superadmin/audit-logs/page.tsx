@@ -31,7 +31,7 @@ export default function AuditLogsPage() {
   const fetchLogs = async () => {
     try {
       setError(null);
-      const result = await listAuditLogs({ page: 1, limit: 1000 });
+      const result = await listAuditLogs({ page: 1, limit: 100 });
       setLogs(result.items);
     } catch (e: any) {
       console.error("Failed to load audit logs:", e);

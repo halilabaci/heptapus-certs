@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/useToast";
-import { StatCard } from "@/components/Admin/StatCard";
+import { StatCard, StatCardSkeleton } from "@/components/Admin/StatCard";
 import PageHeader from "@/components/Admin/PageHeader";
 
 type EventStat = {
@@ -66,8 +66,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-32">
-        <Loader2 className="h-10 w-10 animate-spin text-brand-500" />
+      <div className="flex flex-col gap-8 pb-20">
+        <PageHeader title="Dashboard" subtitle="Genel sertifika istatistikleri ve aksiyon yönetimi" icon={<BarChart3 className="h-5 w-5" />} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <StatCardSkeleton key={i} />)}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => <div key={i} className="card p-4 animate-pulse"><div className="h-14 rounded-lg bg-surface-100" /></div>)}
+        </div>
       </div>
     );
   }
@@ -189,7 +195,7 @@ export default function DashboardPage() {
                 >
                   <div className="flex-1 min-w-0">
                     <Link href={`/admin/events/${ev.event_id}/certificates`} className="font-semibold text-surface-800 hover:text-brand-600 transition-colors text-sm truncate block">
-                      {ev.event_name}
+                      {ev.event_name || (ev as any).name || `Etkinlik #${ev.event_id}`}
                     </Link>
                     <div className="w-full bg-surface-100 rounded-full h-1.5 mt-2 overflow-hidden">
                       <motion.div initial={{ width: 0 }} animate={{ width: `${evActive}%` }} transition={{ delay: 0.4 + i * 0.04, duration: 0.6 }} className="h-1.5 rounded-full bg-emerald-500" />

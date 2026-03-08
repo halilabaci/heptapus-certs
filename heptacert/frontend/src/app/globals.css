@@ -79,10 +79,10 @@
   }
   /* ── Sidebar nav ─────────────────────────── */
   .sidebar-item {
-    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-surface-600 transition-all hover:bg-sidebar-hover hover:text-surface-900;
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-surface-600 transition-all hover:bg-sidebar-hover hover:text-surface-900;
   }
   .sidebar-item-active {
-    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold bg-violet-50 text-violet-700 border-l-2 border-violet-500 pl-[10px];
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold bg-violet-50 text-violet-700 border-l-2 border-violet-500 pl-[10px];
   }
   /* ── Divider ─────────────────────────────── */
   .divider {
