@@ -298,7 +298,7 @@ def _build_hologram(canvas_w: int, canvas_h: int) -> Optional[Image.Image]:
     return full
 
 
-def render_certificate_pdf(
+def _render_certificate_base_image(
     template_image_bytes: bytes,
     student_name: str,
     verify_url: str,
@@ -307,13 +307,12 @@ def render_certificate_pdf(
     public_id: Optional[str] = None,
     qr_size_px: int = 260,
     brand_logo_bytes: Optional[bytes] = None,
-) -> bytes:
+) -> Image.Image:
     """
-    Renders:
-      - student_name at (isim_x, isim_y)
-      - QR pointing to verify_url at (qr_x, qr_y)
-      - optional public_id at (cert_id_x, cert_id_y)
-      - HeptaCert hologram stamp at bottom-right (if config.show_hologram)
+    Core rendering logic — returns a PIL RGBA Image with all certificate
+    elements drawn (name, cert-id, QR, hologram). Does NOT convert to PDF.
+    Call render_certificate_pdf() or render_certificate_png_watermarked()
+    to get the final output format.
     """
     if not student_name or not student_name.strip():
         raise ValueError("student_name is empty")
@@ -329,11 +328,9 @@ def render_certificate_pdf(
     name_fill   = _hex_to_rgba(config.font_color)
     name_align  = getattr(config, "name_text_align", "center")  # left | center | right
 
-    # Map text_align → Pillow anchor (horizontal axis: l/m/r, vertical: t)
     _anchor_map = {"left": "lt", "center": "mt", "right": "rt"}
     name_anchor = _anchor_map.get(name_align, "lt")
 
-    # Clamp name position within canvas bounds
     name_x = max(0, min(int(config.isim_x), canvas_w - 1))
     name_y = max(0, min(int(config.isim_y), canvas_h - 1))
 
@@ -353,7 +350,6 @@ def render_certificate_pdf(
         id_fill    = _hex_to_rgba(config.cert_id_color)
         cid_align  = getattr(config, "cert_id_text_align", "left")
         cid_anchor = _anchor_map.get(cid_align, "lt")
-        # Clamp cert_id position within canvas bounds
         cid_x = max(0, min(int(config.cert_id_x), canvas_w - 1))
         cid_y = max(0, min(int(config.cert_id_y), canvas_h - 1))
         draw.text(
@@ -372,21 +368,78 @@ def render_certificate_pdf(
         )
         base.alpha_composite(qr_img, (int(config.qr_x), int(config.qr_y)))
 
-    # HeptaCert hologram stamp
+    # ── HeptaCert hologram stamp ──────────────────────────────────────────────
     if getattr(config, "show_hologram", True):
         hologram = _build_hologram(base.width, base.height)
         if hologram is not None:
             base.alpha_composite(hologram)
 
-    # Save PDF
+    return base
+
+
+def render_certificate_pdf(
+    template_image_bytes: bytes,
+    student_name: str,
+    verify_url: str,
+    config: TemplateConfig,
+    *,
+    public_id: Optional[str] = None,
+    qr_size_px: int = 260,
+    brand_logo_bytes: Optional[bytes] = None,
+) -> bytes:
+    """
+    Renders the certificate and returns signed PDF bytes.
+    Backward-compatible wrapper around _render_certificate_base_image().
+    """
+    base = _render_certificate_base_image(
+        template_image_bytes, student_name, verify_url, config,
+        public_id=public_id, qr_size_px=qr_size_px, brand_logo_bytes=brand_logo_bytes,
+    )
+
     pdf_img = base.convert("RGB")
     out = io.BytesIO()
     pdf_img.save(out, format="PDF", resolution=300.0)
     raw_pdf = out.getvalue()
 
-    # Apply cryptographic signature (invisible, Adobe-verifiable)
     try:
         from .signing import sign_pdf
         return sign_pdf(raw_pdf)
     except Exception:
         return raw_pdf
+
+
+def render_certificate_png_watermarked(
+    template_image_bytes: bytes,
+    student_name: str,
+    verify_url: str,
+    config: TemplateConfig,
+    *,
+    public_id: Optional[str] = None,
+    qr_size_px: int = 260,
+    brand_logo_bytes: Optional[bytes] = None,
+) -> bytes:
+    """
+    Renders the certificate and returns lossless PNG bytes with an invisible
+    steganographic watermark embedded (payload = public_id).
+
+    The watermark can later be extracted by watermark.extract_watermark()
+    to prove the image's authenticity without any external database lookup.
+    Falls back to un-watermarked PNG if watermarking fails.
+    """
+    base = _render_certificate_base_image(
+        template_image_bytes, student_name, verify_url, config,
+        public_id=public_id, qr_size_px=qr_size_px, brand_logo_bytes=brand_logo_bytes,
+    )
+
+    watermark_payload = public_id or ""
+    if watermark_payload:
+        try:
+            from .watermark import to_watermarked_png_bytes
+            return to_watermarked_png_bytes(base, watermark_payload)
+        except Exception:
+            pass  # never fail certificate generation due to watermark
+
+    # Fallback: plain PNG without watermark
+    buf = io.BytesIO()
+    base.convert("RGBA").save(buf, format="PNG")
+    return buf.getvalue()

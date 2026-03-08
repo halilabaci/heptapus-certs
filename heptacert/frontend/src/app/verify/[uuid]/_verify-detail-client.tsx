@@ -33,6 +33,7 @@ type CertData = {
   status: "active" | "revoked" | "expired";
   issued_at?: string | null;
   pdf_url?: string | null;
+  png_url?: string | null;
   hosting_ends_at?: string | null;
   view_count?: number;
   linkedin_url?: string | null;
@@ -235,6 +236,16 @@ export default function VerifyPage({ params }: { params: { uuid: string } }) {
                     <a href={cert.pdf_url} target="_blank" rel="noopener noreferrer"
                       className="btn-primary flex items-center gap-2 px-6 py-3">
                       <Download className="h-4 w-4" /> {t("verify_download")}
+                    </a>
+                  )}
+                  {cert.status === "active" && cert.png_url && (
+                    <a href={cert.png_url} download={`sertifika-${cert.public_id ?? cert.uuid}.png`}
+                      className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-bold text-violet-700 hover:bg-violet-100 shadow-sm transition-colors">
+                      <Download className="h-4 w-4" />
+                      PNG İndir
+                      <span className="ml-1 rounded-full bg-violet-200 px-1.5 py-0.5 text-[10px] font-black text-violet-700 leading-none">
+                        Damgalı
+                      </span>
                     </a>
                   )}
                   {cert.status === "active" && cert.linkedin_url && (

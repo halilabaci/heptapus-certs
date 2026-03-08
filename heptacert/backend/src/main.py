@@ -58,7 +58,7 @@ INET = String(45).with_variant(_PgINET(), "postgresql")
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from .generator import TemplateConfig, render_certificate_pdf, new_certificate_uuid
+from .generator import TemplateConfig, render_certificate_pdf, render_certificate_png_watermarked, new_certificate_uuid
 
 logger = logging.getLogger("heptacert")
 
@@ -883,6 +883,7 @@ class VerifyOut(BaseModel):
     event_date: Optional[str] = None
     status: CertStatus
     pdf_url: Optional[str] = None
+    png_url: Optional[str] = None
     issued_at: Optional[datetime] = None
     hosting_ends_at: Optional[datetime] = None
     view_count: int = 0
@@ -6299,6 +6300,13 @@ async def verify(uuid: str, request: Request, db: AsyncSession = Depends(get_db)
 
     await db.commit()
 
+    # ── Watermarked PNG URL (only if the file was generated) ──────────────────
+    png_url: Optional[str] = None
+    rel_png_path = f"pngs/event_{ev.id}/{cert.uuid}.png"
+    abs_png_path = Path(settings.local_storage_dir) / rel_png_path
+    if abs_png_path.exists() and cert.status == CertStatus.active:
+        png_url = build_public_pdf_url(rel_png_path)  # same /api/files/ base
+
     return VerifyOut(
         uuid=cert.uuid,
         public_id=cert.public_id,
@@ -6307,11 +6315,86 @@ async def verify(uuid: str, request: Request, db: AsyncSession = Depends(get_db)
         event_date=ev.event_date.isoformat() if ev.event_date else None,
         status=cert.status,
         pdf_url=pdf_url,
+        png_url=png_url,
         issued_at=getattr(cert, "issued_at", None),
         hosting_ends_at=cert.hosting_ends_at,
         view_count=view_count,
         linkedin_url=linkedin_url,
         branding=branding,
+    )
+
+
+class WatermarkVerifyOut(BaseModel):
+    valid: bool
+    message: str
+    public_id: Optional[str] = None
+    cert_uuid: Optional[str] = None
+    student_name: Optional[str] = None
+    event_name: Optional[str] = None
+    issued_at: Optional[str] = None
+    status: Optional[str] = None
+
+
+@app.post("/api/verify-watermark", response_model=WatermarkVerifyOut)
+async def verify_watermark(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint: upload a HeptaCert certificate image (PNG recommended).
+    If a valid steganographic watermark is detected, the corresponding
+    certificate details are returned.
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Sadece görsel dosyaları kabul edilir (PNG, JPEG, …)")
+
+    img_bytes = await file.read()
+    if len(img_bytes) > 30 * 1024 * 1024:  # 30 MB guard
+        raise HTTPException(status_code=413, detail="Dosya 30 MB sınırını aşıyor")
+
+    # Extract watermark
+    try:
+        from .watermark import extract_watermark
+        payload = await asyncio.to_thread(extract_watermark, img_bytes)
+    except Exception:
+        payload = None
+
+    if not payload:
+        return WatermarkVerifyOut(
+            valid=False,
+            message="Bu görselde HeptaCert damgası bulunamadı. Orijinal PNG dosyasını yükleyin.",
+        )
+
+    # Look up certificate by public_id
+    res = await db.execute(
+        select(Certificate, Event)
+        .join(Event, Certificate.event_id == Event.id)
+        .where(Certificate.public_id == payload, Certificate.deleted_at.is_(None))
+    )
+    row = res.first()
+    if not row:
+        return WatermarkVerifyOut(
+            valid=False,
+            message=f"Damga görüldü ({payload}) ancak veritabanında eşleşen sertifika bulunamadı.",
+            public_id=payload,
+        )
+
+    cert, ev = row
+    issued_str = cert.issued_at.isoformat() if getattr(cert, "issued_at", None) else None
+
+    return WatermarkVerifyOut(
+        valid=cert.status == CertStatus.active,
+        message=(
+            f"Bu görsel geçerli bir HeptaCert sertifika kaydına ait."
+            if cert.status == CertStatus.active
+            else f"Sertifika bulundu ancak durumu: {cert.status.value}."
+        ),
+        public_id=cert.public_id,
+        cert_uuid=cert.uuid,
+        student_name=cert.student_name,
+        event_name=ev.name,
+        issued_at=issued_str,
+        status=cert.status.value,
     )
 
 
@@ -6517,6 +6600,24 @@ async def issue_certificate(
     abs_pdf_path.parent.mkdir(parents=True, exist_ok=True)
     abs_pdf_path.write_bytes(pdf_bytes)
     asset_size_bytes = abs_pdf_path.stat().st_size
+
+    # Save watermarked PNG alongside PDF (steganographic verification support)
+    try:
+        png_bytes = await asyncio.to_thread(
+            render_certificate_png_watermarked,
+            template_image_bytes=template_bytes,
+            student_name=payload.student_name,
+            verify_url=verify_url,
+            config=cfg,
+            public_id=public_id,
+            brand_logo_bytes=single_brand_logo_bytes,
+        )
+        rel_png_path = f"pngs/event_{ev.id}/{cert_uuid}.png"
+        abs_png_path = Path(settings.local_storage_dir) / rel_png_path
+        abs_png_path.parent.mkdir(parents=True, exist_ok=True)
+        abs_png_path.write_bytes(png_bytes)
+    except Exception:
+        pass  # PNG watermark is non-critical; PDF is always saved
 
     # hosting units
     hosting_spend = hosting_units(term, asset_size_bytes)
