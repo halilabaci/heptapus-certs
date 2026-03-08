@@ -14,10 +14,11 @@ type ApiKey = {
   id: number;
   name: string;
   key_prefix: string;
+  is_active: boolean;
   last_used_at: string | null;
   created_at: string;
   expires_at: string | null;
-  permissions: string[];
+  scopes: string[];
 };
 
 export default function ApiKeysPage() {
@@ -27,7 +28,9 @@ export default function ApiKeysPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [keyName, setKeyName] = useState("");
+  const [expiresDays, setExpiresDays] = useState("");
   const [displayedFullKey, setDisplayedFullKey] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const toast = useToast();
 
@@ -38,38 +41,15 @@ export default function ApiKeysPage() {
   const fetchKeys = async () => {
     try {
       setError(null);
-      const res = await apiFetch("/admin/api-keys").catch(() => null);
-
-      if (res && res.ok) {
+      const res = await apiFetch("/admin/api-keys");
+      if (res.ok) {
         const data = await res.json();
         setKeys(Array.isArray(data) ? data : data.items || []);
       } else {
-        // Mock data for demo if API not available
-        setKeys([
-          {
-            id: 1,
-            name: "Production API Key",
-            key_prefix: "sk_live_abc123****",
-            last_used_at: new Date().toISOString(),
-            created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-            expires_at: null,
-            permissions: ["read:events", "write:certificates", "read:analytics"],
-          },
-          {
-            id: 2,
-            name: "Development Key",
-            key_prefix: "sk_test_def456****",
-            last_used_at: null,
-            created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
-            permissions: ["read:events", "read:analytics"],
-          },
-        ]);
+        setError("API anahtarları yüklenemedi");
       }
     } catch (e: any) {
-      const message = e?.message || "Failed to load API keys";
-      setError(message);
-      toast.error(message);
+      setError(e?.message || "API anahtarları yüklenemedi");
     } finally {
       setLoading(false);
     }
@@ -77,37 +57,58 @@ export default function ApiKeysPage() {
 
   const handleCreateKey = async () => {
     if (!keyName.trim()) {
-      toast.error("Please enter a key name");
+      toast.error("Lütfen bir anahtar ismi girin");
       return;
     }
 
     setCreating(true);
     try {
+      const body: Record<string, unknown> = { name: keyName };
+      if (expiresDays.trim()) body.expires_days = parseInt(expiresDays, 10);
       const res = await apiFetch("/admin/api-keys", {
         method: "POST",
-        body: JSON.stringify({ name: keyName }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setDisplayedFullKey(data.key);
+        setDisplayedFullKey(data.full_key ?? data.key ?? null);
         setKeyName("");
+        setExpiresDays("");
+        setShowCreateModal(false);
         await fetchKeys();
-        toast.success("API key created successfully");
+        toast.success("API anahtarı oluşturuldu");
       } else {
-        toast.error("Failed to create API key");
+        toast.error("API anahtarı oluşturulamadı");
       }
     } catch (e: any) {
-      toast.error(e?.message || "Failed to create API key");
+      toast.error(e?.message || "API anahtarı oluşturulamadı");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteKey = async (id: number) => {
+    setDeletingId(id);
+    try {
+      const res = await apiFetch(`/admin/api-keys/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setKeys(prev => prev.filter(k => k.id !== id));
+        toast.success("Anahtar devre dışı bırakıldı");
+      } else {
+        toast.error("Anahtar silme başarısız");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Anahtar silme başarısız");
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const handleCopyKey = (fullKey: string, keyId: number) => {
     navigator.clipboard.writeText(fullKey);
     setCopiedKeyId(keyId);
-    toast.success("Key copied to clipboard");
+    toast.success("Anahtar panoya kopyalandı");
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
 
@@ -115,12 +116,12 @@ export default function ApiKeysPage() {
     () => [
       {
         accessorKey: "name",
-        header: "Name",
+        header: "Ad",
         cell: (info) => <span className="font-semibold text-gray-800 dark:text-gray-200">{info.getValue() as string}</span>,
       },
       {
         accessorKey: "key_prefix",
-        header: "Key",
+        header: "Anahtar",
         cell: (info) => (
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-700 dark:text-gray-300">
@@ -131,65 +132,80 @@ export default function ApiKeysPage() {
         ),
       },
       {
-        accessorKey: "permissions",
-        header: "Permissions",
+        accessorKey: "scopes",
+        header: "Yetkiler",
         cell: (info) => {
-          const perms = info.getValue() as string[];
+          const scopes = (info.getValue() as string[]) ?? [];
+          if (scopes.length === 0) return <span className="text-xs text-gray-400">Tüm yetkiler</span>;
           return (
             <div className="flex gap-1 flex-wrap">
-              {perms.length <= 2
-                ? perms.map((p) => (
-                    <span
-                      key={p}
-                      className="text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
-                    >
-                      {p}
+              {scopes.length <= 2
+                ? scopes.map((s) => (
+                    <span key={s} className="text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                      {s}
                     </span>
                   ))
-                : `${perms.length} permissions`}
+                : <span className="text-xs text-gray-500">{scopes.length} yetki</span>}
             </div>
           );
         },
       },
       {
         accessorKey: "last_used_at",
-        header: "Last Used",
+        header: "Son Kullanım",
         cell: (info) => {
           const date = info.getValue();
           return date ? (
             <span className="text-gray-600 dark:text-gray-400 text-sm">
-              {new Date(date as string).toLocaleString()}
+              {new Date(date as string).toLocaleString("tr-TR")}
             </span>
           ) : (
-            <span className="text-gray-400 dark:text-gray-500 text-sm">Never</span>
+            <span className="text-gray-400 dark:text-gray-500 text-sm">Hiç</span>
           );
         },
       },
       {
         accessorKey: "expires_at",
-        header: "Expires",
+        header: "Son Kullanma",
         cell: (info) => {
           const date = info.getValue();
           return date ? (
             <span className="text-gray-600 dark:text-gray-400 text-sm">
-              {new Date(date as string).toLocaleDateString()}
+              {new Date(date as string).toLocaleDateString("tr-TR")}
             </span>
           ) : (
-            <span className="text-gray-400 dark:text-gray-500 text-sm">Never</span>
+            <span className="text-gray-400 dark:text-gray-500 text-sm">Süresiz</span>
           );
         },
       },
       {
         accessorKey: "created_at",
-        header: "Created",
+        header: "Oluşturuldu",
         cell: (info) => (
           <span className="text-gray-600 dark:text-gray-400 text-sm">
-            {new Date(info.getValue() as string).toLocaleDateString()}
+            {new Date(info.getValue() as string).toLocaleDateString("tr-TR")}
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        cell: (info) => {
+          const key = info.row.original;
+          return (
+            <button
+              onClick={() => handleDeleteKey(key.id)}
+              disabled={deletingId === key.id}
+              className="p-1.5 rounded hover:bg-rose-50 text-rose-500 hover:text-rose-700 transition-colors disabled:opacity-50"
+              title="Devre dışı bırak"
+            >
+              {deletingId === key.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </button>
+          );
+        },
+      },
     ],
-    []
+    [deletingId]
   );
 
   if (loading) {
@@ -203,10 +219,10 @@ export default function ApiKeysPage() {
   return (
     <div className="p-6">
       <PageHeader
-        title="API Keys"
+        title="API Anahtarları"
         subtitle="API erişimi ve entegrasyonlar için kimlik doğrulama anahtarlarını yönetin"
         icon={<Lock className="h-5 w-5" />}
-        breadcrumbs={[{ label: "Ayarlar", href: "/admin/settings" }, { label: "API Keys" }]}
+        breadcrumbs={[{ label: "Ayarlar", href: "/admin/settings" }, { label: "API Anahtarları" }]}
         actions={
           <button
             onClick={() => setShowCreateModal(true)}
@@ -240,10 +256,10 @@ export default function ApiKeysPage() {
             animate={{ scale: 1 }}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full p-8"
           >
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">🔐 Your API Key</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">🔐 API Anahtarınız</h2>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
               <p className="text-sm text-amber-900 dark:text-amber-200 mb-3">
-                <strong>Important:</strong> Copy this key now. For security reasons, you will not be able to see it again.
+                <strong>Önemli:</strong> Bu anahtarı şimdi kopyalayın. Güvenlik nedeniyle bu anahtarı bir daha göremeyeceksiniz.
               </p>
             </div>
 
@@ -254,7 +270,7 @@ export default function ApiKeysPage() {
                 onClick={() => handleCopyKey(displayedFullKey, 0)}
                 className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors flex-shrink-0 ml-2"
               >
-                <Copy className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                {copiedKeyId === 0 ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <Copy className="h-5 w-5 text-gray-600 dark:text-gray-400" />}
               </motion.button>
             </div>
 
@@ -262,7 +278,7 @@ export default function ApiKeysPage() {
               onClick={() => setDisplayedFullKey(null)}
               className="w-full px-4 py-2 rounded-lg bg-brand-500 text-white font-medium hover:bg-brand-600 transition-colors"
             >
-              Done
+              Tamam
             </button>
           </motion.div>
         </motion.div>
@@ -276,35 +292,46 @@ export default function ApiKeysPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
         >
           <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Create New API Key</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Yeni API Anahtarı</h2>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Key Name</label>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Anahtar İsmi</label>
               <input
                 type="text"
-                placeholder="e.g., Production API Key"
+                placeholder="örn. Production API Key"
                 value={keyName}
                 onChange={(e) => setKeyName(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
 
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Geçerlilik Süresi (gün) <span className="text-gray-400 font-normal">— isteğe bağlı</span>
+              </label>
+              <input
+                type="number"
+                placeholder="Boş bırakırsanız süresiz olur"
+                value={expiresDays}
+                onChange={(e) => setExpiresDays(e.target.value)}
+                min="1"
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setKeyName("");
-                }}
+                onClick={() => { setShowCreateModal(false); setKeyName(""); setExpiresDays(""); }}
                 className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                Cancel
+                İptal
               </button>
               <button
                 onClick={handleCreateKey}
                 disabled={creating || !keyName.trim()}
                 className="flex-1 px-4 py-2 rounded-lg bg-brand-500 text-white font-medium hover:bg-brand-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 transition-colors"
               >
-                {creating ? "Creating..." : "Create"}
+                {creating ? "Oluşturuluyor..." : "Oluştur"}
               </button>
             </div>
           </motion.div>
@@ -322,7 +349,7 @@ export default function ApiKeysPage() {
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 rounded-lg bg-brand-500 text-white font-medium hover:bg-brand-600 transition-colors inline-flex items-center gap-2"
             >
-              <Plus className="h-4 w-4" /> Create First Key
+              <Plus className="h-4 w-4" /> İlk Anahtarı Oluştur
             </motion.button>
           </div>
         ) : (
@@ -331,7 +358,7 @@ export default function ApiKeysPage() {
             data={keys}
             pageSize={10}
             searchable={true}
-            searchPlaceholder="Search by name or key..."
+            searchPlaceholder="İsme veya anahtara göre ara..."
             enableExport={true}
             exportFileName="api-keys.csv"
             enableColumnVisibility={true}
@@ -341,14 +368,14 @@ export default function ApiKeysPage() {
 
       {/* Security Info */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-8 card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 p-6">
-        <h3 className="font-bold text-blue-900 dark:text-blue-200 mb-3">🔐 API Key Security</h3>
+        <h3 className="font-bold text-blue-900 dark:text-blue-200 mb-3">🔐 API Anahtarı Güvenliği</h3>
         <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-300">
-          <li>• API keys are sensitive credentials - never share them or commit them to version control</li>
-          <li>• Keys shown with ellipsis (****) cannot be displayed again after creation</li>
-          <li>• Only the key owner can see the full key immediately after generation</li>
-          <li>• Revoke keys immediately if they are compromised</li>
-          <li>• Use separate keys for development and production environments</li>
-          <li>• Set expiration dates on keys for better security practices</li>
+          <li>• API anahtarları hassas kimlik bilgileridir — asla paylaşmayın veya sürüm kontrol sistemine eklemeyin</li>
+          <li>• Kısayolla (...****) görüntülenen anahtarlar oluşturulduktan sonra tekrar görüntülenemez</li>
+          <li>• Tam anahtarı yalnızca oluşturma anında görebilirsiniz</li>
+          <li>• Açığa çıkma durumunda anahtarları derhal devre dışı bırakın</li>
+          <li>• Geliştirme ve üretim ortamları için ayrı anahtarlar kullanın</li>
+          <li>• Daha iyi güvenlik için anahtarlara son kullanma tarihi belirleyin</li>
         </ul>
       </motion.div>
     </div>

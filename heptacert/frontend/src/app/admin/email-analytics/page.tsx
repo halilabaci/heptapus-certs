@@ -1,216 +1,34 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import {
-  Mail,
-  MailCheck,
-  AlertCircle,
-  MailOpen,
-  TrendingUp,
-  Calendar,
-  Loader2,
-  ArrowLeft,
-  Send,
-  XCircle,
-  Eye,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Mail, TrendingUp, Loader2, AlertCircle, Send, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
-import { useToast } from "@/hooks/useToast";
 import PageHeader from "@/components/Admin/PageHeader";
-import { DataTable } from "@/components/DataTable/DataTable";
-import { ColumnDef } from "@tanstack/react-table";
+import EmptyState from "@/components/Admin/EmptyState";
 
-type EmailJob = {
-  id: number;
-  event_id: number;
-  template_id: number;
-  recipient_email: string;
-  status: "pending" | "sent" | "failed" | "bounced" | "opened";
-  sent_at: string | null;
-  opened_at: string | null;
-  created_at: string;
-};
-
-type EmailStats = {
-  total_sent: number;
-  total_opened: number;
-  total_failed: number;
-  total_bounced: number;
-  open_rate: number;
-  bounce_rate: number;
-  failure_rate: number;
-};
+type Event = { id: number; name: string; event_date: string | null };
 
 export default function EmailAnalyticsPage() {
-  const [stats, setStats] = useState<EmailStats | null>(null);
-  const [jobs, setJobs] = useState<EmailJob[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const toast = useToast();
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchEvents(); }, []);
 
-  const fetchData = async () => {
+  const fetchEvents = async () => {
     try {
       setError(null);
-      // Fetch email stats and jobs
-      const [statsRes, jobsRes] = await Promise.all([
-        apiFetch("/admin/email/stats").catch(() => null),
-        apiFetch("/admin/email/jobs?limit=100").catch(() => null),
-      ]);
-
-      if (statsRes && statsRes.ok) {
-        setStats(await statsRes.json());
-      }
-
-      if (jobsRes && jobsRes.ok) {
-        const data = await jobsRes.json();
-        setJobs(Array.isArray(data) ? data : data.items || []);
-      }
+      const res = await apiFetch("/admin/events");
+      const data = await res.json();
+      setEvents(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      const message = e?.message || "Failed to load email analytics";
-      setError(message);
-      toast.error(message);
+      setError(e?.message || "Etkinlikler yüklenemedi");
     } finally {
       setLoading(false);
     }
   };
-
-  const statCards = useMemo(
-    () => [
-      {
-        label: "Total Sent",
-        value: stats?.total_sent ?? 0,
-        icon: <Mail className="h-5 w-5 text-blue-600" />,
-        colorClass: "bg-blue-50 dark:bg-blue-900",
-        textColor: "text-blue-600 dark:text-blue-400",
-      },
-      {
-        label: "Opened",
-        value: stats?.total_opened ?? 0,
-        icon: <MailOpen className="h-5 w-5 text-emerald-600" />,
-        colorClass: "bg-emerald-50 dark:bg-emerald-900",
-        textColor: "text-emerald-600 dark:text-emerald-400",
-      },
-      {
-        label: "Bounced",
-        value: stats?.total_bounced ?? 0,
-        icon: <AlertCircle className="h-5 w-5 text-amber-600" />,
-        colorClass: "bg-amber-50 dark:bg-amber-900",
-        textColor: "text-amber-600 dark:text-amber-400",
-      },
-      {
-        label: "Failed",
-        value: stats?.total_failed ?? 0,
-        icon: <XCircle className="h-5 w-5 text-rose-600" />,
-        colorClass: "bg-rose-50 dark:bg-rose-900",
-        textColor: "text-rose-600 dark:text-rose-400",
-      },
-    ],
-    [stats]
-  );
-
-  const rateCards = useMemo(
-    () => [
-      {
-        label: "Open Rate",
-        value: `${(stats?.open_rate ?? 0).toFixed(1)}%`,
-        icon: <Eye className="h-5 w-5 text-blue-600" />,
-        colorClass: "bg-blue-50 dark:bg-blue-900",
-      },
-      {
-        label: "Bounce Rate",
-        value: `${(stats?.bounce_rate ?? 0).toFixed(1)}%`,
-        icon: <AlertCircle className="h-5 w-5 text-amber-600" />,
-        colorClass: "bg-amber-50 dark:bg-amber-900",
-      },
-      {
-        label: "Failure Rate",
-        value: `${(stats?.failure_rate ?? 0).toFixed(1)}%`,
-        icon: <XCircle className="h-5 w-5 text-rose-600" />,
-        colorClass: "bg-rose-50 dark:bg-rose-900",
-      },
-    ],
-    [stats]
-  );
-
-  const statusColors: Record<string, string> = {
-    sent: "bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200",
-    opened: "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200",
-    pending: "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200",
-    failed: "bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200",
-    bounced: "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200",
-  };
-
-  const columns = useMemo<ColumnDef<EmailJob>[]>(
-    () => [
-      {
-        accessorKey: "recipient_email",
-        header: "Recipient",
-        cell: (info) => (
-          <span className="text-gray-800 dark:text-gray-200 font-medium">{info.getValue() as string}</span>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: (info) => {
-          const status = info.getValue() as string;
-          const colors = statusColors[status] || "bg-gray-100 text-gray-800";
-          const labels: Record<string, string> = {
-            sent: "Sent",
-            opened: "Opened",
-            pending: "Pending",
-            failed: "Failed",
-            bounced: "Bounced",
-          };
-          return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${colors}`}>{labels[status]}</span>;
-        },
-      },
-      {
-        accessorKey: "sent_at",
-        header: "Sent Time",
-        cell: (info) => {
-          const date = info.getValue();
-          return date ? (
-            <span className="text-gray-600 dark:text-gray-400 text-sm">
-              {new Date(date as string).toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-gray-400 dark:text-gray-500 text-sm">-</span>
-          );
-        },
-      },
-      {
-        accessorKey: "opened_at",
-        header: "Opened Time",
-        cell: (info) => {
-          const date = info.getValue();
-          return date ? (
-            <span className="text-gray-600 dark:text-gray-400 text-sm">
-              {new Date(date as string).toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-gray-400 dark:text-gray-500 text-sm">-</span>
-          );
-        },
-      },
-      {
-        accessorKey: "created_at",
-        header: "Created",
-        cell: (info) => (
-          <span className="text-gray-600 dark:text-gray-400 text-sm">
-            {new Date(info.getValue() as string).toLocaleDateString()}
-          </span>
-        ),
-      },
-    ],
-    []
-  );
 
   if (loading) {
     return (
@@ -221,117 +39,69 @@ export default function EmailAnalyticsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="flex flex-col gap-6">
       <PageHeader
-        title="Email Analytics"
-        subtitle="Email teslimatını, açılma oranlarını ve kampanya performansını takip edin"
+        title="Email Analitik"
+        subtitle="Etkinlik bazlı email teslimat ve performans takibi"
         icon={<TrendingUp className="h-5 w-5" />}
-        breadcrumbs={[{ label: "Email Dashboard", href: "/admin/email-dashboard" }, { label: "Email Analytics" }]}
-        actions={
-          <button onClick={fetchData} className="btn-primary">
-            Yenile
-          </button>
-        }
+        breadcrumbs={[{ label: "Email Merkezi", href: "/admin/email-dashboard" }, { label: "Email Analitik" }]}
       />
 
-      {/* Error Alert */}
       {error && (
-        <div className="error-banner mb-6">
-          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold">Hata</p>
-            <p className="mt-0.5">{error}</p>
-          </div>
+        <div className="error-banner">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
         </div>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {statCards.map((card, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="card p-6 flex items-center gap-4"
-          >
-            <div className={`p-3 rounded-lg ${card.colorClass}`}>{card.icon}</div>
-            <div>
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5">
-                {card.label}
-              </p>
-              <p className={`text-2xl font-extrabold ${card.textColor}`}>{card.value.toLocaleString()}</p>
-            </div>
-          </motion.div>
-        ))}
+      <div className="card p-4 bg-blue-50 border-blue-200 text-sm text-blue-800 flex items-start gap-3">
+        <Mail className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
+        <p>Email analitikleri etkinlik bazında takip edilir. Aşağıdan bir etkinlik seçerek toplu email iş geçmişini ve teslimat istatistiklerini inceleyebilirsiniz.</p>
       </div>
 
-      {/* Rate Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        {rateCards.map((card, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 + i * 0.05 }}
-            className="card p-6"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{card.label}</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{card.value}</p>
-              </div>
-              <div className={`p-3 rounded-lg ${card.colorClass}`}>{card.icon}</div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Recent Activity */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <Send className="h-5 w-5 text-brand-500" /> Email Delivery Log
-        </h2>
-
-        {jobs.length === 0 ? (
-          <div className="card p-12 text-center dark:bg-gray-800 dark:border-gray-700">
-            <Mail className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-500 dark:text-gray-400">No email delivery history yet</p>
+      {events.length === 0 ? (
+        <EmptyState
+          icon={<Mail className="h-7 w-7" />}
+          title="Henüz etkinlik yok"
+          description="Email analitiği görüntülemek için önce bir etkinlik oluşturun"
+          action={<Link href="/admin/events" className="btn-primary">Etkinliklere Git</Link>}
+        />
+      ) : (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-surface-100">
+            <h2 className="text-sm font-semibold text-surface-900">Etkinlikler</h2>
+            <p className="text-xs text-surface-400 mt-0.5">{events.length} etkinlik · Analitik için etkinlik seçin</p>
           </div>
-        ) : (
-          <DataTable
-            columns={columns}
-            data={jobs}
-            pageSize={15}
-            searchable={true}
-            searchPlaceholder="Search by email or status..."
-            enableExport={true}
-            exportFileName="email-analytics.csv"
-            enableColumnVisibility={true}
-          />
-        )}
-      </motion.div>
-
-      {/* Info Panel */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-8 card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 p-6">
-        <h3 className="font-bold text-blue-900 dark:text-blue-200 mb-3 flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" /> Analytics Information
-        </h3>
-        <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-300">
-          <li>
-            <strong>Open Rate:</strong> Percentage of emails that were opened by recipients
-          </li>
-          <li>
-            <strong>Bounce Rate:</strong> Percentage of emails that could not be delivered to the recipient
-          </li>
-          <li>
-            <strong>Failure Rate:</strong> Percentage of emails that failed due to configuration or server errors
-          </li>
-          <li>
-            <strong>Status Legend:</strong> Pending (queued), Sent (delivered), Opened (recipient opened), Bounced (recipient not found), Failed (delivery error)
-          </li>
-        </ul>
-      </motion.div>
+          <div className="divide-y divide-surface-100">
+            {events.map(event => (
+              <div key={event.id} className="flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors">
+                <div>
+                  <p className="font-medium text-surface-900">{event.name}</p>
+                  {event.event_date && (
+                    <p className="text-xs text-surface-400 mt-0.5">
+                      {new Date(event.event_date).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/admin/events/${event.id}/bulk-emails`}
+                    className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
+                  >
+                    <Send className="h-3.5 w-3.5" /> Toplu Email
+                  </Link>
+                  <Link
+                    href={`/admin/events/${event.id}/analytics`}
+                    className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" /> Analitik
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

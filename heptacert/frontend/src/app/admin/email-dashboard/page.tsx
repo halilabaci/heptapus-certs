@@ -42,52 +42,52 @@ export default function EmailDashboard() {
 
   const features = [
     {
-      title: '⚙️ SMTP Settings',
-      description: 'Configure your email server (Gmail, Outlook, custom SMTP)',
+      title: '⚙️ SMTP Ayarları',
+      description: 'Email sunucunuzu yapılandırın (Gmail, Outlook, özel SMTP)',
       href: '/admin/email-settings',
       color: 'from-blue-500 to-blue-600',
       icon: '🔧',
-      stats: 'Test & Verify'
+      stats: 'Test Et & Doğrula'
     },
     {
-      title: '📧 Email Templates',
-      description: 'Create and manage email templates with live preview',
+      title: '📧 Email Şablonları',
+      description: 'Canlı önizleme ile email şablonları oluşturun ve yönetin',
       href: '/admin/events',
       color: 'from-purple-500 to-purple-600',
       icon: '📝',
-      stats: `${stats.templates} templates`
+      stats: `${stats.templates} şablon`
     },
     {
-      title: '📅 Schedule Emails',
-      description: 'Send emails immediately, at a specific time, or on schedule (cron)',
+      title: '📅 Email Zamanla',
+      description: 'Hemen, belirli bir zamanda veya zamanlamayla (cron) email gönderin',
       href: '/admin/events',
       color: 'from-green-500 to-green-600',
       icon: '⏰',
-      stats: 'Multiple trigger modes'
+      stats: 'Çoklu tetikleyici'
     },
     {
-      title: '📊 Analytics & Delivery',
-      description: 'Track email delivery status, open rates, and bounce rates',
+      title: '📊 Analitik & Teslimat',
+      description: 'Email teslimat durumunu, açılma oranlarını ve geri dönme oranlarını takip edin',
       href: '/admin/email-analytics',
       color: 'from-orange-500 to-orange-600',
       icon: '📈',
-      stats: 'Real-time tracking'
+      stats: 'Gerçek zamanlı'
     },
     {
-      title: '🪝 Webhooks',
-      description: 'Subscribe to email events and integrate with external systems',
+      title: '🪝 Webhooklar',
+      description: 'Email olaylarına abone olun ve harici sistemlerle entegre edin',
       href: '/admin/webhooks',
       color: 'from-red-500 to-red-600',
       icon: '🔗',
-      stats: `${stats.webhooks} active webhooks`
+      stats: `${stats.webhooks} aktif webhook`
     },
     {
-      title: '📬 Unsubscribe',
-      description: 'Attendees can opt-out from bulk emails',
+      title: '📬 Abonelik İptali',
+      description: 'Katılımcılar toplu emaillerden aboneliklerini iptal edebilir',
       href: '#',
       color: 'from-gray-600 to-gray-700',
       icon: '✋',
-      stats: 'Token-based system',
+      stats: 'Token tabanlı sistem',
       disabled: true
     }
   ];
@@ -142,7 +142,7 @@ export default function EmailDashboard() {
                   <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{feature.stats}</span>
                   {!feature.disabled && (
                     <Link href={feature.href} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-semibold">
-                      Open →
+                      Aç →
                     </Link>
                   )}
                 </div>
@@ -155,14 +155,14 @@ export default function EmailDashboard() {
       {/* Quick Start Guide */}
       <div className="max-w-7xl mx-auto mt-12">
         <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-lg p-8">
-          <h3 className="text-xl font-bold text-blue-900 dark:text-blue-200 mb-4">🚀 Quick Start Guide</h3>
+          <h3 className="text-xl font-bold text-blue-900 dark:text-blue-200 mb-4">🚀 Hızlı Başlangıç Kılavuzu</h3>
           <ol className="text-blue-800 dark:text-blue-300 space-y-2 list-decimal list-inside">
-            <li><strong>Step 1:</strong> Go to <Link href="/admin/email-settings" className="text-blue-600 dark:text-blue-400 hover:underline">SMTP Settings</Link> to configure your email server</li>
-            <li><strong>Step 2:</strong> Click "Test Connection" to verify your SMTP credentials work</li>
-            <li><strong>Step 3:</strong> Go to an event and create an email template with <Link href="/admin/events" className="text-blue-600 dark:text-blue-400 hover:underline">preview</Link></li>
-            <li><strong>Step 4:</strong> <Link href="/admin/events" className="text-blue-600 dark:text-blue-400 hover:underline">Schedule emails</Link> to send immediately or on a schedule (cron)</li>
-            <li><strong>Step 5:</strong> Monitor delivery with <Link href="/admin/email-analytics" className="text-blue-600 dark:text-blue-400 hover:underline">analytics</Link> dashboard</li>
-            <li><strong>Step 6:</strong> Set up <Link href="/admin/webhooks" className="text-blue-600 dark:text-blue-400 hover:underline">webhooks</Link> to integrate with Slack, Zapier, etc.</li>
+            <li><strong>Adım 1:</strong> Email sunucunuzu yapılandırmak için <Link href="/admin/email-settings" className="text-blue-600 dark:text-blue-400 hover:underline">SMTP Ayarları</Link>&apos;na gidin</li>
+            <li><strong>Adım 2:</strong> SMTP kimlik bilgilerinizin çalıştığını doğrulamak için &quot;Bağlantıyı Test Et&quot;&apos;e tıklayın</li>
+            <li><strong>Adım 3:</strong> Bir etkinliğe gidin ve <Link href="/admin/events" className="text-blue-600 dark:text-blue-400 hover:underline">önizleme</Link> ile email şablonu oluşturun</li>
+            <li><strong>Adım 4:</strong> <Link href="/admin/events" className="text-blue-600 dark:text-blue-400 hover:underline">Emailleri zamanlayın</Link>: hemen veya zamanlama (cron) ile gönderin</li>
+            <li><strong>Adım 5:</strong> <Link href="/admin/email-analytics" className="text-blue-600 dark:text-blue-400 hover:underline">Analitik</Link> paneli ile teslimatı izleyin</li>
+            <li><strong>Adım 6:</strong> Slack, Zapier vb. ile entegrasyon için <Link href="/admin/webhooks" className="text-blue-600 dark:text-blue-400 hover:underline">webhookları</Link> kurun</li>
           </ol>
         </div>
       </div>
@@ -170,23 +170,23 @@ export default function EmailDashboard() {
       {/* Supported Events */}
       <div className="max-w-7xl mx-auto mt-12">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">🔔 Webhook Events</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">🔔 Webhook Olayları</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="border-l-4 border-green-500 pl-4 py-2">
               <p className="font-semibold text-green-700 dark:text-green-400">email.sent</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Triggered when an email is successfully delivered</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">Email başarıyla iletildiğinde tetiklenir</p>
             </div>
             <div className="border-l-4 border-red-500 pl-4 py-2">
               <p className="font-semibold text-red-700 dark:text-red-400">email.failed</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Triggered when an email delivery fails</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">Email teslimatı başarısız olduğunda tetiklenir</p>
             </div>
             <div className="border-l-4 border-yellow-500 pl-4 py-2">
               <p className="font-semibold text-yellow-700 dark:text-yellow-400">email.bounced</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Triggered when recipient bounces email</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">Alıcı tarafından email reddedildiğinde tetiklenir</p>
             </div>
             <div className="border-l-4 border-blue-500 pl-4 py-2">
               <p className="font-semibold text-blue-700 dark:text-blue-400">email.opened</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Triggered when recipient opens email</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">Alıcı emaili açtığında tetiklenir</p>
             </div>
           </div>
         </div>
@@ -195,23 +195,23 @@ export default function EmailDashboard() {
       {/* Technology Stack */}
       <div className="max-w-7xl mx-auto mt-12 mb-12">
         <div className="bg-gradient-to-r from-indigo-50 dark:from-indigo-900/20 to-blue-50 dark:to-blue-900/20 rounded-lg p-8">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">💡 Technology Stack</h3>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">💡 Teknoloji Altyapısı</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <p className="font-semibold text-gray-900 dark:text-gray-100">Email</p>
               <p className="text-gray-600 dark:text-gray-400">SMTP via aiosmtplib</p>
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100">Scheduling</p>
+              <p className="font-semibold text-gray-900 dark:text-gray-100">Zamanlama</p>
               <p className="text-gray-600 dark:text-gray-400">APScheduler (cron/datetime)</p>
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100">Webhooks</p>
-              <p className="text-gray-600 dark:text-gray-400">HMAC-SHA256 signatures</p>
+              <p className="font-semibold text-gray-900 dark:text-gray-100">Webhooklar</p>
+              <p className="text-gray-600 dark:text-gray-400">HMAC-SHA256 imzalama</p>
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100">Tracking</p>
-              <p className="text-gray-600 dark:text-gray-400">PostgreSQL + Delivery logs</p>
+              <p className="font-semibold text-gray-900 dark:text-gray-100">Takip</p>
+              <p className="text-gray-600 dark:text-gray-400">PostgreSQL + Teslimat logları</p>
             </div>
           </div>
         </div>
