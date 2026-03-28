@@ -16,6 +16,7 @@ const TABS = [
   { id: "2fa", label: "2FA Güvenlik", icon: ShieldCheck },
   { id: "transactions", label: "Coin Geçmişi", icon: History },
   { id: "domain", label: "Özel Domain", icon: Globe },
+  { id: "branding", label: "Kurumsal", icon: Settings },
 ];
 
 function fmtDate(s: string | null) {
@@ -462,6 +463,119 @@ function CustomDomainTab() {
           {status && <p className="text-sm">Durum: <strong>{status}</strong></p>}
         </div>
         <p className="text-xs text-gray-400">DNS değişikliklerinin yayılması: genelde birkaç dakika, maksimum 24 saat.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Branding Tab ───────────────────────────────────────────────────────────
+function BrandingTab() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [brandColor, setBrandColor] = useState("#6366f1");
+  const [brandLogo, setBrandLogo] = useState<string | null>(null);
+  const [settingsState, setSettingsState] = useState<Record<string, any>>({});
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch("/admin/organization/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        setBrandLogo(d.brand_logo || null);
+        setBrandColor(d.brand_color || "#6366f1");
+        setSettingsState(d.settings || {});
+      })
+      .catch((e) => setErr(e?.message || "Yüklenemedi"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function uploadLogo(file: File | null) {
+    if (!file) return;
+    setErr(null); setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await apiFetch("/admin/organization/logo", { method: "POST", body: fd });
+      const j = await r.json();
+      setBrandLogo(j.brand_logo || null);
+    } catch (e: any) {
+      setErr(e?.message || "Yükleme başarısız");
+    } finally { setLogoUploading(false); }
+  }
+
+  async function saveSettings(e: React.FormEvent) {
+    e.preventDefault(); setErr(null); setSaving(true);
+    try {
+      const payload = { ...settingsState };
+      // ensure brand_color persists as well via PATCH to settings
+      payload.brand_color = brandColor;
+      await apiFetch("/admin/organization/settings", { method: "PATCH", body: JSON.stringify(payload) });
+    } catch (e: any) { setErr(e?.message || "Kaydedilemedi."); } finally { setSaving(false); }
+  }
+
+  if (loading) return <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>;
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div className="card p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><Settings className="h-5 w-5" /></div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Kurumsal Görünüm</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Logo, renk ve diğer marka ayarlarını yönetebilirsiniz.</p>
+          </div>
+        </div>
+
+        {err && <div className="error-banner">{err}</div>}
+
+        <form onSubmit={saveSettings} className="space-y-4">
+          <div>
+            <label className="label">Logo</label>
+            <div className="flex items-center gap-4">
+              <div className="w-28 h-16 rounded border border-gray-100 bg-white flex items-center justify-center overflow-hidden">
+                {brandLogo ? <img src={brandLogo} alt="brand" className="max-w-full max-h-full" /> : <div className="text-xs text-gray-400">Logo yok</div>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="btn-ghost cursor-pointer">
+                  {logoUploading ? 'Yükleniyor...' : 'Logo Yükle'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => uploadLogo(e.target.files ? e.target.files[0] : null)} />
+                </label>
+                <button type="button" className="btn-ghost" onClick={async () => { setBrandLogo(null); await apiFetch('/admin/organization/settings', { method: 'PATCH', body: JSON.stringify({}) }); }}>Logoyu Kaldır</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Marka Rengi</label>
+            <div className="flex items-center gap-3">
+              <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)} className="w-12 h-8 p-0 border rounded" />
+              <input className="input-field" value={brandColor} onChange={e => setBrandColor(e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Doğrulama Yolu (verification_path)</label>
+            <input className="input-field" value={settingsState.verification_path || ''} onChange={e => setSettingsState(s => ({ ...s, verification_path: e.target.value }))} placeholder="/verify" />
+            <p className="text-xs text-gray-400 mt-1">Boş bırakılırsa varsayılan doğrulama yolu kullanılır.</p>
+          </div>
+
+          <div>
+            <label className="label">Sertifika Altbilgisi (certificate_footer)</label>
+            <input className="input-field" value={settingsState.certificate_footer || ''} onChange={e => setSettingsState(s => ({ ...s, certificate_footer: e.target.value }))} placeholder="© Şirketiniz 2026" />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input id="hide" type="checkbox" checked={!!settingsState.hide_heptacert_home} onChange={e => setSettingsState(s => ({ ...s, hide_heptacert_home: e.target.checked }))} />
+            <label htmlFor="hide" className="text-sm text-gray-700">HeptaCert ana sayfasını gizle (`hide_heptacert_home`)</label>
+          </div>
+
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Kaydediliyor...' : 'Ayarları Kaydet'}</button>
+            <button type="button" onClick={() => { setSettingsState({}); setBrandColor('#6366f1'); }} className="btn-ghost">Sıfırla</button>
+          </div>
+        </form>
       </div>
     </div>
   );

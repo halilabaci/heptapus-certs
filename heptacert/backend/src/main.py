@@ -1991,9 +1991,45 @@ _AUDIT_SKIP_PREFIXES = (
     "/api/waitlist",
     "/docs", "/openapi", "/redoc",
 )
-
 @app.middleware("http")
-async def audit_middleware(request: Request, call_next):
+async def organization_middleware(request: Request, call_next):
+    """Resolve organization by Host header (if set) and attach lightweight info to request.state.organization.
+
+    This avoids repeating the same lookup in many endpoints and centralizes host-based branding.
+    """
+    request.state.organization = None
+    host = request.headers.get("host", "")
+    if host:
+        domain = host.split(":")[0]
+        try:
+            async with SessionLocal() as session:
+                res = await session.execute(select(Organization).where(Organization.custom_domain == domain))
+                org = res.scalar_one_or_none()
+                if org:
+                    request.state.organization = {
+                        "id": org.id,
+                        "org_name": org.org_name,
+                        "brand_logo": org.brand_logo,
+                        "brand_color": org.brand_color,
+                        "settings": getattr(org, "settings", {}) or {},
+                    }
+        except Exception:
+            # Fail open: do not block requests if DB lookup fails — logging only.
+            logger.debug("organization_middleware: lookup failed for host %s", host)
+
+    # If a human opens an API URL in the browser without Authorization, redirect
+    # them to the frontend admin login. This avoids confusing raw JSON errors
+    # when someone pastes an API URL into the address bar. Do NOT affect XHR
+    # requests (which typically accept application/json).
+    try:
+        path = request.url.path or ""
+        auth_hdr = request.headers.get("authorization") or request.headers.get("Authorization")
+        accept = request.headers.get("accept", "")
+        if request.method == "GET" and path.startswith("/api/") and not auth_hdr and "text/html" in accept:
+            return RedirectResponse(url=f"{settings.frontend_base_url.rstrip('/')}/admin/login", status_code=302)
+    except Exception:
+        pass
+
     response = await call_next(request)
     method = request.method
     path = request.url.path
@@ -6605,6 +6641,11 @@ async def issue_certificate(
                 single_brand_logo_bytes = logo_path2.read_bytes()
         except Exception:
             pass
+    certificate_footer: Optional[str] = None
+    try:
+        certificate_footer = (org2.settings or {}).get("certificate_footer") if org2 else None
+    except Exception:
+        certificate_footer = None
 
     # Event lock (cert_seq atomic)
     res_lock = await db.execute(select(Event).where(Event.id == ev.id).with_for_update())
@@ -6626,6 +6667,7 @@ async def issue_certificate(
         config=cfg,
         public_id=public_id,
         brand_logo_bytes=single_brand_logo_bytes,
+        certificate_footer=certificate_footer,
     )
 
     rel_pdf_path = f"pdfs/event_{ev.id}/{cert_uuid}.pdf"
@@ -6644,6 +6686,7 @@ async def issue_certificate(
             config=cfg,
             public_id=public_id,
             brand_logo_bytes=single_brand_logo_bytes,
+            certificate_footer=certificate_footer,
         )
         rel_png_path = f"pngs/event_{ev.id}/{cert_uuid}.png"
         abs_png_path = Path(settings.local_storage_dir) / rel_png_path
@@ -7050,6 +7093,87 @@ async def update_custom_domain(
         org.custom_domain = payload.custom_domain or None
     await db.commit()
     return {"custom_domain": payload.custom_domain or None}
+
+
+@app.get(
+    "/api/admin/organization/settings",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def get_organization_settings(
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return {
+        "id": org.id,
+        "org_name": org.org_name,
+        "brand_logo": org.brand_logo,
+        "brand_color": org.brand_color,
+        "settings": getattr(org, "settings", {}) or {},
+    }
+
+
+@app.patch(
+    "/api/admin/organization/settings",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def patch_organization_settings(
+    payload: Dict[str, Any] = Body(...),
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    # Replace or merge settings — here we merge keys into existing dict
+    existing = getattr(org, "settings", {}) or {}
+    if not isinstance(existing, dict):
+        existing = {}
+    if not isinstance(payload, dict):
+        raise bad_request("Expected JSON object for settings")
+    existing.update(payload)
+    # Persist
+    try:
+        org.settings = existing
+    except Exception:
+        # In case DB doesn't have settings column yet, raise helpful error
+        raise HTTPException(status_code=500, detail="Database missing settings column; run migrations")
+    await db.commit()
+    return {"ok": True, "settings": existing}
+
+
+@app.post(
+    "/api/admin/organization/logo",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def upload_organization_logo(
+    file: UploadFile = File(...),
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise bad_request("Only image uploads allowed")
+    data = await file.read()
+    max_bytes = 1_000_000
+    if len(data) > max_bytes:
+        raise bad_request("Image too large (max 1MB)")
+    ext = Path(file.filename or "logo.png").suffix.lower() or ".png"
+    safe_name = f"orgs/{org.id}/logo{ext}"
+    dest = Path(settings.local_storage_dir) / safe_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    pub_url = f"{settings.public_base_url}/api/files/{safe_name}"
+    org.brand_logo = pub_url
+    await db.commit()
+    return {"brand_logo": pub_url}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -8706,6 +8830,7 @@ async def bulk_certify_attendees(
                 config=tc,
                 public_id=public_id,
                 brand_logo_bytes=brand_logo_bytes,
+                certificate_footer=(cfg_raw.get("certificate_footer") if isinstance(cfg_raw, dict) else None),
             )
             abs_path.write_bytes(pdf_bytes)
         except Exception as e:

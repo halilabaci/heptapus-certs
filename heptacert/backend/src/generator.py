@@ -307,6 +307,7 @@ def _render_certificate_base_image(
     public_id: Optional[str] = None,
     qr_size_px: int = 260,
     brand_logo_bytes: Optional[bytes] = None,
+    certificate_footer: Optional[str] = None,
 ) -> Image.Image:
     """
     Core rendering logic — returns a PIL RGBA Image with all certificate
@@ -374,6 +375,22 @@ def _render_certificate_base_image(
         if hologram is not None:
             base.alpha_composite(hologram)
 
+    # ── Certificate footer (optional) ────────────────────────────────────────
+    if certificate_footer:
+        try:
+            fnt = _load_font(14)
+        except Exception:
+            fnt = ImageFont.load_default()
+        tmp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        bbox = tmp.textbbox((0, 0), certificate_footer, font=fnt)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        margin_bottom = 36
+        x = max(0, (base.width - text_w) // 2)
+        y = max(0, base.height - text_h - margin_bottom)
+        footer_fill = _hex_to_rgba(getattr(config, "cert_id_color", "#334155"))
+        draw.text((x, y), certificate_footer, font=fnt, fill=footer_fill)
+
     return base
 
 
@@ -386,6 +403,7 @@ def render_certificate_pdf(
     public_id: Optional[str] = None,
     qr_size_px: int = 260,
     brand_logo_bytes: Optional[bytes] = None,
+    certificate_footer: Optional[str] = None,
 ) -> bytes:
     """
     Renders the certificate and returns signed PDF bytes.
@@ -394,6 +412,7 @@ def render_certificate_pdf(
     base = _render_certificate_base_image(
         template_image_bytes, student_name, verify_url, config,
         public_id=public_id, qr_size_px=qr_size_px, brand_logo_bytes=brand_logo_bytes,
+        certificate_footer=certificate_footer,
     )
 
     pdf_img = base.convert("RGB")
@@ -417,6 +436,7 @@ def render_certificate_png_watermarked(
     public_id: Optional[str] = None,
     qr_size_px: int = 260,
     brand_logo_bytes: Optional[bytes] = None,
+    certificate_footer: Optional[str] = None,
 ) -> bytes:
     """
     Renders the certificate and returns lossless PNG bytes with an invisible
@@ -429,6 +449,7 @@ def render_certificate_png_watermarked(
     base = _render_certificate_base_image(
         template_image_bytes, student_name, verify_url, config,
         public_id=public_id, qr_size_px=qr_size_px, brand_logo_bytes=brand_logo_bytes,
+        certificate_footer=certificate_footer,
     )
 
     watermark_payload = public_id or ""
