@@ -330,7 +330,7 @@ function CustomDomainTab() {
   useEffect(() => {
     const dom = domain.trim();
     if (!dom) return;
-    apiFetch(`/api/domains/${encodeURIComponent(dom)}`)
+    apiFetch(`/domains/${encodeURIComponent(dom)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d) {
@@ -356,7 +356,7 @@ function CustomDomainTab() {
       }
 
       // Create domain via new API
-      const resp = await apiFetch("/api/domains", {
+      const resp = await apiFetch("/domains", {
         method: "POST",
         body: JSON.stringify({ domain: dom, owner: undefined }),
       });
@@ -378,7 +378,7 @@ function CustomDomainTab() {
     try {
       const dom = domain.trim();
       if (!dom) throw new Error("Alan adı boş.");
-      const r = await apiFetch(`/api/domains/${encodeURIComponent(dom)}/check`);
+      const r = await apiFetch(`/domains/${encodeURIComponent(dom)}/check`);
       const j = await r.json();
       setStatus(j.status || null);
     } catch (e: any) {
@@ -391,7 +391,7 @@ function CustomDomainTab() {
     try {
       const dom = domain.trim();
       if (!dom) throw new Error("Alan adı boş.");
-      const r = await apiFetch(`/api/domains/${encodeURIComponent(dom)}/regenerate`, { method: "POST" });
+      const r = await apiFetch(`/domains/${encodeURIComponent(dom)}/regenerate`, { method: "POST" });
       const j = await r.json();
       setToken(j.token || null);
     } catch (e: any) { setErr(e?.message || "Token yenilenemedi."); }
@@ -403,7 +403,7 @@ function CustomDomainTab() {
     try {
       const dom = domain.trim();
       if (!dom) throw new Error("Alan adı boş.");
-      await apiFetch(`/api/domains/${encodeURIComponent(dom)}`, { method: "DELETE" });
+      await apiFetch(`/domains/${encodeURIComponent(dom)}`, { method: "DELETE" });
       setDomain(""); setToken(null); setStatus(null); setCreatedAt(null);
     } catch (e: any) { setErr(e?.message || "Silinemedi."); }
   }
