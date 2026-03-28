@@ -626,6 +626,8 @@ export default function AdminSettingsPage() {
           {activeTab === "2fa" && <TwoFATab />}
           {activeTab === "transactions" && <TransactionsTab />}
           {activeTab === "domain" && <CustomDomainTab />}
+          {activeTab === "branding" && <BrandingTab />}
+          {activeTab === "kurumsal" && <BrandingTab />}
         </motion.div>
       </AnimatePresence>
     </div>
