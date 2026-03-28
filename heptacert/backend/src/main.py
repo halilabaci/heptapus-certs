@@ -2037,7 +2037,14 @@ async def organization_middleware(request: Request, call_next):
         path = request.url.path or ""
         auth_hdr = request.headers.get("authorization") or request.headers.get("Authorization")
         accept = request.headers.get("accept", "")
-        if request.method == "GET" and path.startswith("/api/") and not auth_hdr and "text/html" in accept:
+        # Avoid redirecting public human-facing API endpoints (files, verify, etc.)
+        if (
+            request.method == "GET"
+            and path.startswith("/api/")
+            and not auth_hdr
+            and "text/html" in accept
+            and not any(path.startswith(p) for p in _AUDIT_SKIP_PREFIXES)
+        ):
             return RedirectResponse(url=f"{settings.frontend_base_url.rstrip('/')}/admin/login", status_code=302)
     except Exception:
         pass
