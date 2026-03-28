@@ -74,28 +74,33 @@ export default function QrPresentPage() {
 
   const pageBg = useMemo(
     () => ({
-      background: `linear-gradient(135deg, ${brandColor}10, ${brandColor}08 35%, #020617 100%)`,
+      background: `
+        radial-gradient(circle at 50% 0%, ${brandColor}20 0%, transparent 22%),
+        linear-gradient(180deg, #0b1120 0%, #050816 45%, #020617 100%)
+      `,
     }),
     [brandColor]
   );
 
   const glowTop = useMemo(
     () => ({
-      backgroundColor: `${brandColor}22`,
+      backgroundColor: `${brandColor}18`,
+      opacity: 0.65,
     }),
     [brandColor]
   );
 
   const glowBottom = useMemo(
     () => ({
-      backgroundColor: `${brandColor}18`,
+      backgroundColor: `${brandColor}12`,
+      opacity: 0.45,
     }),
     [brandColor]
   );
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden bg-[#020617]"
       style={pageBg}
     >
       {/* Subtle accent glow */}
