@@ -24,7 +24,7 @@ import pandas as pd
 import pyotp
 from fastapi import FastAPI, Body, Depends, HTTPException, UploadFile, File, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, JSONResponse
 try:
     from PIL import Image as PILImage
 except ImportError:
@@ -38,8 +38,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pydantic_settings import BaseSettings
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from datetime import date as date_type
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1926,10 +1925,34 @@ def build_certificate_verify_url(cert_uuid: str) -> str:
 
 app = FastAPI(title="HeptaCert API", version="2.0.0")
 
+# Prefer the first X-Forwarded-For IP when behind reverse proxies.
+def _client_ip_for_rate_limit(request: Request) -> str:
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        first_ip = xff.split(",", 1)[0].strip()
+        if first_ip:
+            return first_ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+async def _heptacert_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    detail = str(exc.detail or "Too many requests")
+    # Preserve legacy `error` key while adding standard `detail` for frontend handlers.
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": f"Rate limit exceeded: {detail}",
+            "error": f"Rate limit exceeded: {detail}",
+        },
+    )
+
+
 # Rate limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+limiter = Limiter(key_func=_client_ip_for_rate_limit, default_limits=["200/minute"])
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _heptacert_rate_limit_handler)
 
 origins = [o.strip() for o in settings.cors_origins.split(",")] if settings.cors_origins else ["*"]
 # When wildcard, allow_credentials must be False (browser blocks credentials+wildcard per CORS spec).
@@ -3992,6 +4015,7 @@ async def get_timeline_analytics(
 
 
 @app.get("/api/health")
+@limiter.exempt
 async def health_check():
     return {"status": "ok"}
 

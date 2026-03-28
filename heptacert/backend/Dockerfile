@@ -2,9 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-dejavu-core \
-  && rm -rf /var/lib/apt/lists/*
+# Avoid apt cache usage on low-disk hosts: download only required font files.
+RUN mkdir -p /usr/share/fonts/truetype/dejavu
+ADD https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+ADD https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans-Bold.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+ADD https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans-Oblique.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf
+ADD https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans-BoldOblique.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf
 
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
