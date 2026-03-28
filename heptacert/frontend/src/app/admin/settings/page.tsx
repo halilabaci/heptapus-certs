@@ -312,8 +312,13 @@ function CustomDomainTab() {
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
 
   useEffect(() => {
+    // Attempt to read existing organization domain if endpoint exists; fallback to empty.
     apiFetch("/admin/organization/domain")
       .then(r => r.json())
       .then(d => { setDomain(d.custom_domain || ""); })
@@ -321,14 +326,44 @@ function CustomDomainTab() {
       .finally(() => setLoading(false));
   }, []);
 
+  // When domain text changes, if token/status unknown try to fetch domain details
+  useEffect(() => {
+    const dom = domain.trim();
+    if (!dom) return;
+    apiFetch(`/api/domains/${encodeURIComponent(dom)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setToken(d.token || null); setStatus(d.status || null); setCreatedAt(d.created_at || null);
+        }
+      })
+      .catch(() => {})
+  }, [domain]);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setErr(null); setOk(false); setSaving(true);
     try {
-      await apiFetch("/admin/organization/domain", {
-        method: "PUT",
-        body: JSON.stringify({ custom_domain: domain.trim() || null }),
+      const dom = domain.trim();
+      if (!dom) {
+        // If empty, try to remove via old endpoint
+        await apiFetch("/admin/organization/domain", {
+          method: "PUT",
+          body: JSON.stringify({ custom_domain: null }),
+        });
+        setToken(null); setStatus(null); setOk(true); setTimeout(() => setOk(false), 3000);
+        return;
+      }
+
+      // Create domain via new API
+      const resp = await apiFetch("/api/domains", {
+        method: "POST",
+        body: JSON.stringify({ domain: dom, owner: undefined }),
       });
+      const data = await resp.json();
+      setToken(data.token || null);
+      setStatus(data.status || null);
+      setCreatedAt(data.created_at || null);
       setOk(true);
       setTimeout(() => setOk(false), 3000);
     } catch (e: any) {
@@ -336,6 +371,41 @@ function CustomDomainTab() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function checkDNS() {
+    setErr(null); setChecking(true);
+    try {
+      const dom = domain.trim();
+      if (!dom) throw new Error("Alan adı boş.");
+      const r = await apiFetch(`/api/domains/${encodeURIComponent(dom)}/check`);
+      const j = await r.json();
+      setStatus(j.status || null);
+    } catch (e: any) {
+      setErr(e?.message || "Doğrulama başarısız.");
+    } finally { setChecking(false); }
+  }
+
+  async function regenerate() {
+    setErr(null);
+    try {
+      const dom = domain.trim();
+      if (!dom) throw new Error("Alan adı boş.");
+      const r = await apiFetch(`/api/domains/${encodeURIComponent(dom)}/regenerate`, { method: "POST" });
+      const j = await r.json();
+      setToken(j.token || null);
+    } catch (e: any) { setErr(e?.message || "Token yenilenemedi."); }
+  }
+
+  async function removeDomain() {
+    if (!confirm("Bu alan adını silmek istediğinize emin misiniz?")) return;
+    setErr(null);
+    try {
+      const dom = domain.trim();
+      if (!dom) throw new Error("Alan adı boş.");
+      await apiFetch(`/api/domains/${encodeURIComponent(dom)}`, { method: "DELETE" });
+      setDomain(""); setToken(null); setStatus(null); setCreatedAt(null);
+    } catch (e: any) { setErr(e?.message || "Silinemedi."); }
   }
 
   if (loading) return <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>;
@@ -351,7 +421,7 @@ function CustomDomainTab() {
           </div>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 mb-5">
-          <p className="text-xs text-amber-700 font-medium">Growth ve Enterprise planlarına özeldir. DNS'inizde <code className="font-mono bg-amber-100 px-1 rounded">CNAME</code> kaydı oluşturmanız gerekir.</p>
+          <p className="text-xs text-amber-700 font-medium">Growth ve Enterprise planlarına özeldir. Doğrulama için DNS'inize bir <code className="font-mono bg-amber-100 px-1 rounded">TXT</code> kaydı eklemeniz gerekir (aşağıda gösteriliyor).</p>
         </div>
         <form onSubmit={save} className="space-y-4">
           <div>
@@ -379,11 +449,19 @@ function CustomDomainTab() {
       </div>
       <div className="card p-5 space-y-3">
         <h3 className="text-sm font-semibold text-gray-800">DNS Yapılandırması</h3>
-        <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 text-xs font-mono space-y-1">
-          <p className="text-gray-500"># DNS sağlayıcınıza şu kaydı ekleyin:</p>
-          <p className="text-gray-800">{domain || "certs.sirketiniz.com"} &nbsp;CNAME&nbsp; {typeof window !== "undefined" ? window.location.hostname : "heptacert.app"}</p>
+        <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 text-xs font-mono space-y-2">
+          <p className="text-gray-500"># DNS sağlayıcınıza şu TXT kaydını ekleyin:</p>
+          <p className="text-gray-800">Ad: <span className="font-mono">_heptacert-verify.{domain || 'your-domain.tld'}</span></p>
+          <p className="text-gray-800">Değer: <span className="font-mono">{token || '<kaydetmeden sonra token görünür>'}</span> <CopyBtn text={token || ''} /></p>
+          {createdAt && <p className="text-gray-500">Oluşturulma: <span className="font-mono">{new Date(createdAt).toLocaleString()}</span></p>}
+          <div className="flex gap-2">
+            <button onClick={checkDNS} disabled={checking || !domain} className="btn-ghost">{checking ? 'Kontrol ediliyor...' : 'DNS Kontrolü Yap'}</button>
+            <button onClick={regenerate} disabled={!domain} className="btn-ghost">Token Yenile</button>
+            <button onClick={removeDomain} disabled={!domain} className="btn-danger">Alan Adını Sil</button>
+          </div>
+          {status && <p className="text-sm">Durum: <strong>{status}</strong></p>}
         </div>
-        <p className="text-xs text-gray-400">DNS değişikliklerinin yayılması 24-48 saat sürebilir.</p>
+        <p className="text-xs text-gray-400">DNS değişikliklerinin yayılması: genelde birkaç dakika, maksimum 24 saat.</p>
       </div>
     </div>
   );

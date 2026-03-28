@@ -25,6 +25,7 @@ class DomainOut(BaseModel):
     owner: Optional[str]
     status: str
     token: str
+    created_at: Optional[str] = None
 
 
 @router.post("/api/domains", response_model=DomainOut)
@@ -37,6 +38,42 @@ async def create_domain(payload: DomainCreateIn):
         await db.commit()
         await db.refresh(dom)
         return DomainOut(id=dom.id, domain=dom.domain, owner=dom.owner, status=dom.status, token=dom.token)
+
+
+    @router.get("/api/domains/{domain}", response_model=DomainOut)
+    async def get_domain(domain: str):
+        async with SessionLocal() as db:
+            d = await Domain.get_by_domain(db, domain)
+            if not d:
+                raise HTTPException(status_code=404, detail="Domain not found")
+            return DomainOut(
+                id=d.id,
+                domain=d.domain,
+                owner=d.owner,
+                status=d.status,
+                token=d.token,
+                created_at=d.created_at.isoformat() if getattr(d, "created_at", None) else None,
+            )
+
+
+    @router.post("/api/domains/{domain}/regenerate")
+    async def regenerate_domain_token(domain: str):
+        async with SessionLocal() as db:
+            new = await Domain.regenerate_token(db, domain)
+            if new is None:
+                raise HTTPException(status_code=404, detail="Domain not found")
+            await db.commit()
+            return {"token": new}
+
+
+    @router.delete("/api/domains/{domain}")
+    async def delete_domain(domain: str):
+        async with SessionLocal() as db:
+            ok = await Domain.delete_by_domain(db, domain)
+            if not ok:
+                raise HTTPException(status_code=404, detail="Domain not found")
+            await db.commit()
+            return {"deleted": True}
 
 
 @router.get("/api/domains/{domain}/check")

@@ -51,3 +51,22 @@ class Domain(Base):
         q = select(cls).where(cls.token == token)
         res = await session.execute(q)
         return res.scalars().first()
+
+    @classmethod
+    async def regenerate_token(cls, session: AsyncSession, domain: str) -> Optional[str]:
+        obj = await cls.get_by_domain(session, domain)
+        if not obj:
+            return None
+        obj.token = secrets.token_urlsafe(16)
+        session.add(obj)
+        await session.flush()
+        return obj.token
+
+    @classmethod
+    async def delete_by_domain(cls, session: AsyncSession, domain: str) -> bool:
+        obj = await cls.get_by_domain(session, domain)
+        if not obj:
+            return False
+        await session.delete(obj)
+        await session.flush()
+        return True
