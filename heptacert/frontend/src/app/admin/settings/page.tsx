@@ -540,19 +540,25 @@ function BrandingTab() {
     setSaving(true);
 
     try {
+      const payload = {
+        brand_color: brandColor,
+        verification_path: settingsState.verification_path || "",
+        certificate_footer: settingsState.certificate_footer || "",
+        hide_heptacert_home: !!settingsState.hide_heptacert_home,
+      };
+
+      console.log("PATCH payload:", payload);
+
       const resp = await apiFetch("/admin/organization/settings", {
         method: "PATCH",
-        body: JSON.stringify({
-          brand_color: brandColor,
-          ...settingsState,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await resp.json();
+      console.log("PATCH response:", data);
 
-      setBrandColor(data.brand_color || "#6366f1");
-      setBrandLogo(data.brand_logo || null);
       setSettingsState(data.settings || {});
+      setBrandColor(data.brand_color || "#6366f1");
     } catch (e: any) {
       setErr(e?.message || "Kaydedilemedi.");
     } finally {
