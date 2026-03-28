@@ -1,7 +1,7 @@
 """create domains table
 
 Revision ID: 012_add_domains_table
-Revises: 011_gamification_surveys_sponsors
+Revises: 011
 Create Date: 2026-03-28 00:00:00.000000
 """
 from alembic import op
