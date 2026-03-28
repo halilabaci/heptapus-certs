@@ -1954,6 +1954,15 @@ limiter = Limiter(key_func=_client_ip_for_rate_limit, default_limits=["200/minut
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _heptacert_rate_limit_handler)
 
+# Include domains router (custom domains / Caddy ask endpoint)
+try:
+    from . import domains as _domains_module  # ensure model is importable
+    from . import domains_api as _domains_api  # router
+    app.include_router(_domains_api.router)
+except Exception:
+    # Import errors at startup shouldn't break the app; log and continue.
+    logger.debug("domains_api not loaded at startup (will try on demand)")
+
 origins = [o.strip() for o in settings.cors_origins.split(",")] if settings.cors_origins else ["*"]
 # When wildcard, allow_credentials must be False (browser blocks credentials+wildcard per CORS spec).
 # JWT auth uses Authorization header — no cookies — so credentials=False is fine.
