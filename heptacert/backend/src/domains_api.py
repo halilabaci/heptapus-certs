@@ -45,16 +45,18 @@ async def create_domain(payload: DomainCreateIn, me: CurrentUser = Depends(get_c
         )
         org = org_res.scalar_one_or_none()
 
+        org_res = await db.execute(
+            select(Organization).where(Organization.user_id == me.id)
+        )
+        org = org_res.scalar_one_or_none()
+
         if not org:
-            org = Organization(
-                user_id=me.id,
-                org_name="",
-                brand_color="#6366f1",
-                custom_domain=payload.domain,
+            raise HTTPException(
+                status_code=400,
+                detail="Organization not found for this user"
             )
-            db.add(org)
-        else:
-            org.custom_domain = payload.domain
+
+        org.custom_domain = payload.domain
 
         await db.commit()
         await db.refresh(dom)
@@ -137,12 +139,12 @@ async def check_domain(domain: str, me: CurrentUser = Depends(get_current_user))
 
                 await db.commit()
                 return {"status": "active"}
-            else:
-                return {"status": d.status}
+
+            return {"status": d.status}
+
         except Exception as exc:
             logger.debug("DNS check failed for %s: %s", domain, exc)
             return {"status": d.status}
-
 
 @router.get("/.internal/caddy/authorize")
 async def caddy_authorize(domain: Optional[str] = Query(None)):
