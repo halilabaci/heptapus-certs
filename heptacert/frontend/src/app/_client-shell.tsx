@@ -90,7 +90,13 @@ function Navbar() {
         <div className="hidden md:flex items-center gap-2 pr-4 py-3">
           <LanguageToggle />
           <Link href="/admin/login" className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">{t("nav_login")}</Link>
-          <Link href="/register" className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-brand hover:opacity-90 transition-opacity" style={{ background: brandColor ? `linear-gradient(90deg, ${brandColor}, #7c3aed)` : undefined }}>{t("nav_start_free")}</Link>
+          <Link
+            href="/register"
+            className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-brand hover:opacity-90 transition-opacity"
+            style={{ background: brandColor ? `linear-gradient(90deg, ${brandColor}, #7c3aed)` : undefined }}
+          >
+            {t("nav_start_free")}
+          </Link>
         </div>
         <button onClick={() => setOpen(!open)} className="md:hidden rounded-lg p-2.5 mr-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -107,7 +113,16 @@ function Navbar() {
               <LanguageToggle />
             </div>
             <Link href="/admin/login" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{t("nav_login")}</Link>
-            <Link href="/register" onClick={() => setOpen(false)} className="mt-1 inline-flex w-full items-center justify-center rounded-xl py-3 text-sm font-bold text-white shadow-brand" style={{ background: brandColor ? `linear-gradient(90deg, ${brandColor}, #7c3aed)` : undefined }}>{t("nav_start_free")}</Link>
+            <Link
+              href="/register"
+              onClick={() => setOpen(false)}
+              className="mt-1 inline-flex w-full items-center justify-center rounded-xl py-3 text-sm font-bold text-white shadow-brand"
+              style={{
+                background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
+              }}
+            >
+              {t("nav_start_free")}
+            </Link>
           </nav>
         </motion.div>
       )}
