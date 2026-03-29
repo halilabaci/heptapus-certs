@@ -93,7 +93,9 @@ function Navbar() {
           <Link
             href="/register"
             className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-brand hover:opacity-90 transition-opacity"
-            style={{ background: brandColor ? `linear-gradient(90deg, ${brandColor}, #7c3aed)` : undefined }}
+            style={{
+              background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
+            }}
           >
             {t("nav_start_free")}
           </Link>

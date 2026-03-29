@@ -106,10 +106,14 @@ export default function LandingPage() {
   }, [branding, isHeptaCertHost]);
 
   const brandName = branding?.org_name || "HeptaCert";
+  
+  // Whitelabel kontrolleri
+  const showStats = !isWhiteLabel;
   const showMarketingBlocks = !isWhiteLabel;
   const showHeptapusSection = !isWhiteLabel;
   const showPricingLinks = !isWhiteLabel;
   const showStartFreeCta = !isWhiteLabel;
+  const showECommerceLinks = !isWhiteLabel;
 
   const heroTitle = isWhiteLabel
     ? `${brandName} için dijital sertifika ve doğrulama altyapısı`
@@ -246,22 +250,24 @@ export default function LandingPage() {
         </motion.div>
       </motion.section>
 
-      <motion.section
-        variants={stagger}
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, amount: 0.3 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-4"
-      >
-        {statCards.map((s) => (
-          <motion.div key={s.key} variants={in_view} className="card p-6 text-center">
-            <div className="text-3xl font-extrabold text-gray-900">
-              {stats ? stats[s.key as keyof StatsData] : <span className="inline-block h-8 w-20 animate-pulse rounded-lg bg-gray-100" />}
-            </div>
-            <div className="mt-1 text-sm text-gray-500">{s.label}</div>
-          </motion.div>
-        ))}
-      </motion.section>
+      {showStats && (
+        <motion.section
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, amount: 0.3 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        >
+          {statCards.map((s) => (
+            <motion.div key={s.key} variants={in_view} className="card p-6 text-center">
+              <div className="text-3xl font-extrabold text-gray-900">
+                {stats ? stats[s.key as keyof StatsData] : <span className="inline-block h-8 w-20 animate-pulse rounded-lg bg-gray-100" />}
+              </div>
+              <div className="mt-1 text-sm text-gray-500">{s.label}</div>
+            </motion.div>
+          ))}
+        </motion.section>
+      )}
 
       <section id="features" className="scroll-mt-24">
         <motion.div
@@ -440,12 +446,16 @@ export default function LandingPage() {
           <Link href="/gizlilik" className="hover:text-brand-600 transition-colors">
             Gizlilik Politikası
           </Link>
-          <Link href="/iade" className="hover:text-brand-600 transition-colors">
-            İade ve İptal Politikası
-          </Link>
-          <Link href="/mesafeli-satis" className="hover:text-brand-600 transition-colors">
-            Mesafeli Satış Sözleşmesi
-          </Link>
+          {showECommerceLinks && (
+            <>
+              <Link href="/iade" className="hover:text-brand-600 transition-colors">
+                İade ve İptal Politikası
+              </Link>
+              <Link href="/mesafeli-satis" className="hover:text-brand-600 transition-colors">
+                Mesafeli Satış Sözleşmesi
+              </Link>
+            </>
+          )}
           <Link href="/iletisim" className="hover:text-brand-600 transition-colors">
             İletişim
           </Link>
@@ -455,6 +465,8 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             {branding?.brand_logo ? (
               <img src={branding.brand_logo} alt={branding.org_name || "Logo"} className="h-10 w-auto" />
+            ) : isWhiteLabel ? (
+              <span className="text-xl font-bold text-gray-900 tracking-tight">{brandName}</span>
             ) : (
               <Image src="/logo.png" alt="HeptaCert" width={160} height={44} className="h-10 w-auto" />
             )}
@@ -483,10 +495,12 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <div className="flex justify-center items-center gap-2 text-[11px] text-gray-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-brand-500" />
-          HeptaCert altyapısıyla güvence altındadır.
-        </div>
+        {!isWhiteLabel && (
+          <div className="flex justify-center items-center gap-2 text-[11px] text-gray-400">
+            <ShieldCheck className="w-3.5 h-3.5 text-brand-500" />
+            HeptaCert altyapısıyla güvence altındadır.
+          </div>
+        )}
       </footer>
     </div>
   );
