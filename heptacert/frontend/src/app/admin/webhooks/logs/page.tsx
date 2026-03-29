@@ -9,6 +9,7 @@ import PageHeader from "@/components/Admin/PageHeader";
 import { DataTable } from "@/components/DataTable/DataTable";
 import { ColumnDef } from "@tanstack/react-table";
 import { motion } from "framer-motion";
+import { FeatureGate } from '@/lib/useSubscription';
 
 type WebhookLog = {
   id: number;
@@ -202,7 +203,8 @@ export default function WebhookLogsPage() {
   }
 
   return (
-    <div className="p-6">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="p-6">
       <PageHeader
         title="Webhook Teslimat Günlüklerine"
         subtitle="Webhook olay teslimatlarını ve yeniden deneme geçmişini izleyin"
@@ -314,6 +316,7 @@ export default function WebhookLogsPage() {
           </li>
         </ul>
       </motion.div>
-    </div>
+      </div>
+    </FeatureGate>
   );
 }

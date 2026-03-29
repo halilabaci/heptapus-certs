@@ -351,6 +351,15 @@ class Organization(Base):
     created_at:    Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OrganizationAllowlist(Base):
+    __tablename__ = "organization_allowlists"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+
 class WaitlistEntry(Base):
     __tablename__ = "waitlist_entries"
     id:            Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -4158,6 +4167,52 @@ async def login(request: Request, data: LoginIn, db: AsyncSession = Depends(get_
     if totp:
         partial = create_partial_token(user_id=user.id)
         return LoginWith2FAOut(requires_2fa=True, partial_token=partial)
+    # Enforce host-scoped organization access: if request resolved to an organization
+    # (via organization_middleware), only allow login from users that either
+    # - own the organization (Organization.user_id), or
+    # - have an email matching the organization's custom domain.
+    # Future: support an explicit allowlist table for per-org approved emails.
+    try:
+        org_info = getattr(request.state, "organization", None)
+        if org_info and org_info.get("id"):
+            # load full Organization to get its owner user_id and custom_domain
+            org_res = await db.execute(select(Organization).where(Organization.id == int(org_info.get("id"))))
+            org = org_res.scalar_one_or_none()
+                    if org:
+                        # owner bypass
+                        if user.id == org.user_id:
+                            pass
+                        else:
+                            # compare email domain OR check explicit allowlist entries
+                            email_val = (user.email or "").strip().lower()
+                            email_domain = email_val.split("@")[-1] if "@" in email_val else ""
+                            org_domain = (org.custom_domain or "").lower()
+                            allowed = False
+                            if email_domain and org_domain and email_domain == org_domain:
+                                allowed = True
+                            else:
+                                # consult allowlist table
+                                try:
+                                    allow_res = await db.execute(
+                                        select(OrganizationAllowlist).where(
+                                            OrganizationAllowlist.org_id == org.id,
+                                            OrganizationAllowlist.email == email_val,
+                                        )
+                                    )
+                                    allow_entry = allow_res.scalar_one_or_none()
+                                    if allow_entry:
+                                        allowed = True
+                                except Exception:
+                                    # DB problem when checking allowlist — fail closed
+                                    raise HTTPException(status_code=500, detail="Alan adı erişimi doğrulanamadı.")
+
+                            if not allowed:
+                                raise HTTPException(status_code=403, detail="Bu alan adı için yalnızca yetkili hesaplar giriş yapabilir.")
+    except HTTPException:
+        raise
+    except Exception:
+        # If DB check fails for some reason, fail closed to be safe.
+        raise HTTPException(status_code=500, detail="Alan adı erişimi doğrulanamadı.")
 
     return LoginWith2FAOut(
         requires_2fa=False,
@@ -7245,6 +7300,85 @@ async def get_organization_settings(
         "brand_color": org.brand_color,
         "settings": getattr(org, "settings", {}) or {},
     }
+
+
+
+@app.get(
+    "/api/admin/organization/allowlist",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def list_organization_allowlist(
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        return []
+    rows = await db.execute(select(OrganizationAllowlist).where(OrganizationAllowlist.org_id == org.id).order_by(OrganizationAllowlist.created_at.desc()))
+    entries = rows.scalars().all()
+    return [
+        {"id": e.id, "email": e.email, "created_at": e.created_at.isoformat() if e.created_at else None}
+        for e in entries
+    ]
+
+
+@app.post(
+    "/api/admin/organization/allowlist",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def add_organization_allowlist(
+    payload: Dict[str, str] = Body(...),
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    email = (payload.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise bad_request("A valid email is required")
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        org = Organization(user_id=me.id, org_name="", brand_color="#6366f1")
+        try:
+            org.settings = {}
+        except Exception:
+            pass
+        db.add(org)
+        await db.commit()
+        await db.refresh(org)
+
+    # avoid duplicates
+    existing = await db.execute(select(OrganizationAllowlist).where(OrganizationAllowlist.org_id == org.id, OrganizationAllowlist.email == email))
+    if existing.scalar_one_or_none():
+        return {"ok": True}
+
+    entry = OrganizationAllowlist(org_id=org.id, email=email)
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return {"ok": True, "id": entry.id, "email": entry.email}
+
+
+@app.delete(
+    "/api/admin/organization/allowlist/{entry_id}",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def delete_organization_allowlist(
+    entry_id: int,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(Organization).where(Organization.user_id == me.id))
+    org = res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    row = await db.execute(select(OrganizationAllowlist).where(OrganizationAllowlist.id == entry_id, OrganizationAllowlist.org_id == org.id))
+    entry = row.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Allowlist entry not found")
+    await db.delete(entry)
+    await db.commit()
+    return {"ok": True}
 
 
 @app.patch(

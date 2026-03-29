@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { FeatureGate } from '@/lib/useSubscription';
 import {
   Send, AlertCircle, Loader2, CheckCircle2,
   Clock, X, Eye, Plus, Mail, TrendingUp,
@@ -156,8 +157,9 @@ export default function BulkEmailsPage() {
   const selectedJob = jobs.find((j) => j.id === selectedJobId);
 
   return (
-    <div className="py-8">
-      <div className="mx-auto max-w-6xl px-4">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="py-8">
+        <div className="mx-auto max-w-6xl px-4">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -430,6 +432,8 @@ export default function BulkEmailsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+        </div>
+      </div>
+    </FeatureGate>
   );
 }

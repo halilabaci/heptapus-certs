@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getEventAnalytics, EventAnalyticsOut } from "@/lib/api";
+import { FeatureGate } from '@/lib/useSubscription';
 import { useT } from "@/lib/i18n";
 import EventAdminNav from "@/components/Admin/EventAdminNav";
 
@@ -92,7 +93,8 @@ export default function EventAnalyticsPage() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
@@ -203,6 +205,7 @@ export default function EventAnalyticsPage() {
           </Link>
         </div>
       </div>
-    </div>
+      </div>
+    </FeatureGate>
   );
 }

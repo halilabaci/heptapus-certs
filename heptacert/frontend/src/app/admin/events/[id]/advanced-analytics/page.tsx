@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { FeatureGate } from '@/lib/useSubscription';
 import EventAdminNav from "@/components/Admin/EventAdminNav";
 
 type EngagementAnalytics = {
@@ -158,12 +159,13 @@ export default function AdvancedAnalyticsPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6"
-    >
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="space-y-6"
+      >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -609,7 +611,8 @@ export default function AdvancedAnalyticsPage() {
           </div>
         </div>
       )}
-    </motion.div>
+      </motion.div>
+    </FeatureGate>
   );
 }
 

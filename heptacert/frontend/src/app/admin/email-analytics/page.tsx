@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/Admin/PageHeader";
+import { FeatureGate } from '@/lib/useSubscription';
 import EmptyState from "@/components/Admin/EmptyState";
 
 type Event = { id: number; name: string; event_date: string | null };
@@ -39,7 +40,8 @@ export default function EmailAnalyticsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="flex flex-col gap-6">
       <PageHeader
         title="Email Analitik"
         subtitle="Etkinlik bazlı email teslimat ve performans takibi"
@@ -102,6 +104,7 @@ export default function EmailAnalyticsPage() {
           </div>
         </motion.div>
       )}
-    </div>
+      </div>
+    </FeatureGate>
   );
 }

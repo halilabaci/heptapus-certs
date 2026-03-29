@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { FeatureGate } from '@/lib/useSubscription';
 import { Send } from 'lucide-react';
 
 interface EmailTemplate {
@@ -149,8 +150,9 @@ export default function ScheduleEmailPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="max-w-6xl mx-auto">
+    <FeatureGate>
+      <div className="p-8">
+        <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <Send className="h-7 w-7 text-brand-600" />
@@ -368,7 +370,8 @@ export default function ScheduleEmailPage() {
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </FeatureGate>
   );
 }

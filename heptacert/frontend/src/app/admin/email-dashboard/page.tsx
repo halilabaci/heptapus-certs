@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Mail } from 'lucide-react';
+import { FeatureGate } from '@/lib/useSubscription';
 import { apiFetch } from '@/lib/api';
 import PageHeader from '@/components/Admin/PageHeader';
 
@@ -119,37 +120,39 @@ export default function EmailDashboard() {
       {/* Feature Grid */}
       <div className="max-w-7xl mx-auto">
         <h2 className="text-2xl font-bold text-surface-900 mb-8">Temel Özellikler</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, idx) => (
-            <div
-              key={idx}
-              className={`rounded-lg shadow-lg overflow-hidden transition-transform hover:scale-105 ${
-                feature.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-              }`}
-            >
-              <Link href={feature.disabled ? '#' : feature.href}>
-                <div className={`bg-gradient-to-br ${feature.color} h-32 flex flex-col justify-between p-6 text-white`}>
-                  <div className="text-4xl">{feature.icon}</div>
-                  <div>
-                    <h3 className="text-lg font-bold">{feature.title}</h3>
+        <FeatureGate requiredPlans={["growth","enterprise"]}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature, idx) => (
+              <div
+                key={idx}
+                className={`rounded-lg shadow-lg overflow-hidden transition-transform hover:scale-105 ${
+                  feature.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+              >
+                <Link href={feature.disabled ? '#' : feature.href}>
+                  <div className={`bg-gradient-to-br ${feature.color} h-32 flex flex-col justify-between p-6 text-white`}>
+                    <div className="text-4xl">{feature.icon}</div>
+                    <div>
+                      <h3 className="text-lg font-bold">{feature.title}</h3>
+                    </div>
+                  </div>
+                </Link>
+                
+                <div className="card p-6">
+                  <p className="text-gray-700 dark:text-gray-300 text-sm mb-4">{feature.description}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{feature.stats}</span>
+                    {!feature.disabled && (
+                      <Link href={feature.href} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-semibold">
+                        Aç →
+                      </Link>
+                    )}
                   </div>
                 </div>
-              </Link>
-              
-              <div className="card p-6">
-                <p className="text-gray-700 dark:text-gray-300 text-sm mb-4">{feature.description}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{feature.stats}</span>
-                  {!feature.disabled && (
-                    <Link href={feature.href} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-semibold">
-                      Aç →
-                    </Link>
-                  )}
-                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </FeatureGate>
       </div>
 
       {/* Quick Start Guide */}

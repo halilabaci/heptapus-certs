@@ -22,6 +22,7 @@ import {
   X,
   AlertCircle,
 } from 'lucide-react';
+import { FeatureGate } from '@/lib/useSubscription';
 
 interface Webhook {
   id: number;
@@ -152,7 +153,8 @@ export default function WebhooksPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="flex flex-col gap-6">
       <PageHeader
         title="Webhooks"
         subtitle="Email olaylarını harici sistemlere gönderin"
@@ -371,7 +373,8 @@ export default function WebhooksPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+      </div>
+    </FeatureGate>
   );
 }
 

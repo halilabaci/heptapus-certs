@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import PageHeader from "@/components/Admin/PageHeader";
+import { FeatureGate } from '@/lib/useSubscription';
 
 interface SMTPConfig {
   host: string;
@@ -129,7 +130,8 @@ export default function SMTPConfigurationPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <FeatureGate requiredPlans={["growth","enterprise"]}>
+      <div className="space-y-6 max-w-2xl">
       <PageHeader
         title="SMTP Yapılandırması"
         subtitle="Email gönderim sunucu ayarlarını yapılandırın"
@@ -321,6 +323,7 @@ export default function SMTPConfigurationPage() {
           <li>Gönderici adresinde @gmail.com hesabınızı kullanın</li>
         </ul>
       </div>
-    </div>
+      </div>
+    </FeatureGate>
   );
 }
