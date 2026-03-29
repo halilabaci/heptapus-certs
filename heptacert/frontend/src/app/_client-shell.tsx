@@ -5,9 +5,17 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { I18nProvider, LanguageToggle, useT, useI18n } from "@/lib/i18n";
 import { apiFetch } from "@/lib/api";
+
+const HEPTACERT_PRIMARY_HOSTS = new Set([
+  "heptacert.com",
+  "www.heptacert.com",
+  "cert.heptapusgroup.com",
+  "localhost",
+  "127.0.0.1",
+]);
 
 function HtmlLangSync() {
   const { lang } = useI18n();
@@ -20,14 +28,18 @@ function HtmlLangSync() {
 function Navbar() {
   const [open, setOpen] = useState(false);
   const t = useT();
-  const links = [
-    { href: "/#features", label: t("nav_features") },
-    { href: "/pricing", label: t("nav_pricing") },
-    { href: "/verify", label: t("nav_verify") },
-  ];
+
   const [brandLogo, setBrandLogo] = useState<string | null>(null);
   const [brandColor, setBrandColor] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
+  const [settings, setSettings] = useState<{ hide_heptacert_home?: boolean } | null>(null);
+  const [host, setHost] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHost(window.location.hostname);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -38,6 +50,7 @@ function Navbar() {
         setBrandLogo(j.brand_logo || null);
         setBrandColor(j.brand_color || null);
         setOrgName(j.org_name || null);
+        setSettings(j.settings || null);
         if (j.brand_color) {
           document.documentElement.style.setProperty("--site-brand-color", j.brand_color);
         }
@@ -47,6 +60,28 @@ function Navbar() {
       mounted = false;
     };
   }, []);
+
+  const isHeptaCertHost = useMemo(() => {
+    if (!host) return true; // Sayfa yüklenmeden layout shift olmaması için default true
+    return HEPTACERT_PRIMARY_HOSTS.has(host);
+  }, [host]);
+
+  const isWhiteLabel = useMemo(() => {
+    if (settings?.hide_heptacert_home) return true;
+    if (!host) return false;
+    return !isHeptaCertHost;
+  }, [host, isHeptaCertHost, settings]);
+
+  const links = isWhiteLabel
+    ? [
+        { href: "/verify", label: t("nav_verify") },
+      ]
+    : [
+        { href: "/#features", label: t("nav_features") },
+        { href: "/pricing", label: t("nav_pricing") },
+        { href: "/verify", label: t("nav_verify") },
+      ];
+
   return (
     <motion.header
       initial={{ y: -64, opacity: 0 }}
@@ -65,6 +100,8 @@ function Navbar() {
           {brandLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={brandLogo} alt="brand" className="h-14 w-auto group-hover:opacity-85 transition-opacity drop-shadow-sm" />
+          ) : isWhiteLabel && orgName ? (
+            <span className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight ml-2">{orgName}</span>
           ) : (
             <Image
               src="/logo.png"
@@ -76,11 +113,11 @@ function Navbar() {
               className="h-14 w-auto group-hover:opacity-85 transition-opacity drop-shadow-sm"
             />
           )}
-          {orgName && (
+          {orgName && !isWhiteLabel && (
             <span className="ml-3 hidden md:inline-block text-lg font-semibold text-gray-700 dark:text-gray-200 brand-text">{orgName}</span>
           )}
         </Link>
-        <nav className="hidden md:flex items-center gap-0.5 flex-1 px-2">
+        <nav className="hidden md:flex items-center gap-0.5 flex-1 px-2 justify-end mr-4">
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200">
               {l.label}
@@ -90,15 +127,18 @@ function Navbar() {
         <div className="hidden md:flex items-center gap-2 pr-4 py-3">
           <LanguageToggle />
           <Link href="/admin/login" className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">{t("nav_login")}</Link>
-          <Link
-            href="/register"
-            className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-brand hover:opacity-90 transition-opacity"
-            style={{
-              background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
-            }}
-          >
-            {t("nav_start_free")}
-          </Link>
+          
+          {!isWhiteLabel && (
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-brand hover:opacity-90 transition-opacity"
+              style={{
+                background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
+              }}
+            >
+              {t("nav_start_free")}
+            </Link>
+          )}
         </div>
         <button onClick={() => setOpen(!open)} className="md:hidden rounded-lg p-2.5 mr-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -115,16 +155,19 @@ function Navbar() {
               <LanguageToggle />
             </div>
             <Link href="/admin/login" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{t("nav_login")}</Link>
-            <Link
-              href="/register"
-              onClick={() => setOpen(false)}
-              className="mt-1 inline-flex w-full items-center justify-center rounded-xl py-3 text-sm font-bold text-white shadow-brand"
-              style={{
-                background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
-              }}
-            >
-              {t("nav_start_free")}
-            </Link>
+            
+            {!isWhiteLabel && (
+              <Link
+                href="/register"
+                onClick={() => setOpen(false)}
+                className="mt-1 inline-flex w-full items-center justify-center rounded-xl py-3 text-sm font-bold text-white shadow-brand"
+                style={{
+                  background: `linear-gradient(90deg, ${brandColor || "#7c3aed"}, #7c3aed)`,
+                }}
+              >
+                {t("nav_start_free")}
+              </Link>
+            )}
           </nav>
         </motion.div>
       )}
