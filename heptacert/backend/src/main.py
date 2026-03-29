@@ -4178,26 +4178,26 @@ async def login(request: Request, data: LoginIn, db: AsyncSession = Depends(get_
             # load full Organization to get its owner user_id and custom_domain
             org_res = await db.execute(select(Organization).where(Organization.id == int(org_info.get("id"))))
             org = org_res.scalar_one_or_none()
-                    if org:
-                        # owner bypass
-                        if user.id == org.user_id:
-                            pass
-                        else:
-                            # compare email domain OR check explicit allowlist entries
-                            email_val = (user.email or "").strip().lower()
-                            email_domain = email_val.split("@")[-1] if "@" in email_val else ""
-                            org_domain = (org.custom_domain or "").lower()
-                            allowed = False
-                            if email_domain and org_domain and email_domain == org_domain:
-                                allowed = True
-                            else:
-                                # consult allowlist table
-                                try:
-                                    allow_res = await db.execute(
-                                        select(OrganizationAllowlist).where(
-                                            OrganizationAllowlist.org_id == org.id,
-                                            OrganizationAllowlist.email == email_val,
-                                        )
+            if org:
+                # owner bypass
+                if user.id == org.user_id:
+                    pass
+                else:
+                    # compare email domain OR check explicit allowlist entries
+                    email_val = (user.email or "").strip().lower()
+                    email_domain = email_val.split("@")[-1] if "@" in email_val else ""
+                    org_domain = (org.custom_domain or "").lower()
+                    allowed = False
+                    if email_domain and org_domain and email_domain == org_domain:
+                        allowed = True
+                    else:
+                        # consult allowlist table
+                        try:
+                            allow_res = await db.execute(
+                                select(OrganizationAllowlist).where(
+                                    OrganizationAllowlist.org_id == org.id,
+                                    OrganizationAllowlist.email == email_val,
+                                )
                                     )
                                     allow_entry = allow_res.scalar_one_or_none()
                                     if allow_entry:
