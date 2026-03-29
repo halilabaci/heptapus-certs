@@ -4198,16 +4198,16 @@ async def login(request: Request, data: LoginIn, db: AsyncSession = Depends(get_
                                     OrganizationAllowlist.org_id == org.id,
                                     OrganizationAllowlist.email == email_val,
                                 )
-                                    )
-                                    allow_entry = allow_res.scalar_one_or_none()
-                                    if allow_entry:
-                                        allowed = True
-                                except Exception:
-                                    # DB problem when checking allowlist — fail closed
-                                    raise HTTPException(status_code=500, detail="Alan adı erişimi doğrulanamadı.")
+                            )
+                            allow_entry = allow_res.scalar_one_or_none()
+                            if allow_entry:
+                                allowed = True
+                        except Exception:
+                            # DB problem when checking allowlist — fail closed
+                            raise HTTPException(status_code=500, detail="Alan adı erişimi doğrulanamadı.")
 
-                            if not allowed:
-                                raise HTTPException(status_code=403, detail="Bu alan adı için yalnızca yetkili hesaplar giriş yapabilir.")
+                    if not allowed:
+                        raise HTTPException(status_code=403, detail="Bu alan adı için yalnızca yetkili hesaplar giriş yapabilir.")
     except HTTPException:
         raise
     except Exception:
