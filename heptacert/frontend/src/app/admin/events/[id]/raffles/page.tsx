@@ -771,16 +771,28 @@ export default function EventRafflesPage() {
                                   </span>
                                 </div>
                                 <div className="mt-4 grid gap-3">
-                                  <Link
-                                    href={`/admin/events/${eventId}/raffles/${raffle.id}/present`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                                  >
-                                    <MonitorPlay className="h-4 w-4" />
-                                    Sunum Modu
-                                    <ExternalLink className="h-3.5 w-3.5 opacity-80" />
-                                  </Link>
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    <Link
+                                      href={`/admin/events/${eventId}/raffles/${raffle.id}/present?mode=operator`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                    >
+                                      <MonitorPlay className="h-4 w-4" />
+                                      Operatör Modu
+                                      <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                                    </Link>
+                                    <Link
+                                      href={`/admin/events/${eventId}/raffles/${raffle.id}/present?mode=stage`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                    >
+                                      <MonitorPlay className="h-4 w-4" />
+                                      Sahne Modu
+                                      <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                                    </Link>
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => handleDraw(raffle)}

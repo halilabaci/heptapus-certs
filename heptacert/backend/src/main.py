@@ -1637,6 +1637,15 @@ def build_public_survey_url(*, event_id: int, attendee_id: int, email: str) -> s
     return f"{settings.frontend_base_url.rstrip('/')}/events/{event_id}/survey?token={survey_token}"
 
 
+def build_public_status_url(*, event_id: int, attendee_id: int, email: str) -> str:
+    survey_token = make_survey_access_token(
+        attendee_id=attendee_id,
+        event_id=event_id,
+        email=email,
+    )
+    return f"{settings.frontend_base_url.rstrip('/')}/events/{event_id}/status?token={survey_token}"
+
+
 async def write_audit_log(
     db: AsyncSession,
     *,
@@ -9022,8 +9031,35 @@ async def public_event_register(
     existing = await db.execute(
         select(Attendee).where(Attendee.event_id == event_id, func.lower(Attendee.email) == payload.email.lower())
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Bu e-posta ile zaten kaydolunmuş")
+    existing_attendee = existing.scalar_one_or_none()
+    if existing_attendee:
+        survey_token = make_survey_access_token(
+            attendee_id=existing_attendee.id,
+            event_id=event_id,
+            email=existing_attendee.email,
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": True,
+                "already_registered": True,
+                "message": "Bu e-posta ile zaten kayıtlısınız",
+                "attendee_id": existing_attendee.id,
+                "attendee_name": existing_attendee.name,
+                "attendee_email": existing_attendee.email,
+                "survey_token": survey_token,
+                "survey_url": build_public_survey_url(
+                    event_id=event_id,
+                    attendee_id=existing_attendee.id,
+                    email=existing_attendee.email,
+                ),
+                "status_url": build_public_status_url(
+                    event_id=event_id,
+                    attendee_id=existing_attendee.id,
+                    email=existing_attendee.email,
+                ),
+            },
+        )
     attendee = Attendee(
         event_id=event_id,
         name=payload.name,
@@ -9044,10 +9080,18 @@ async def public_event_register(
     )
     return {
         "ok": True,
+        "already_registered": False,
         "message": "Kayıt başarılı",
         "attendee_id": attendee.id,
+        "attendee_name": attendee.name,
+        "attendee_email": attendee.email,
         "survey_token": survey_token,
         "survey_url": survey_url,
+        "status_url": build_public_status_url(
+            event_id=event_id,
+            attendee_id=attendee.id,
+            email=attendee.email,
+        ),
     }
 
 
