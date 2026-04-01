@@ -192,7 +192,11 @@ export default function AttendCheckinPage() {
     );
   }
 
-  if (!sessionInfo?.is_active) {
+  if (!sessionInfo) {
+    return null;
+  }
+
+  if (!sessionInfo.is_active) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 py-10" style={pageBg}>
         <div className="w-full max-w-xl overflow-hidden rounded-[32px] border border-white/80 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.12)]">
