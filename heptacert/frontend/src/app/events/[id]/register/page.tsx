@@ -62,7 +62,6 @@ export default function EventRegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [attendeeId, setAttendeeId] = useState<number | null>(null);
   const [surveyUrl, setSurveyUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -134,7 +133,6 @@ export default function EventRegisterPage() {
         email: email.trim().toLowerCase(),
       });
 
-      setAttendeeId(registered.attendee_id);
       setSurveyUrl(registered.survey_url || null);
 
       if (typeof window !== "undefined") {
@@ -371,7 +369,14 @@ export default function EventRegisterPage() {
                         adımına geçmeden önce doldurmanız gerekiyor.
                       </p>
 
-                      <div className="mt-4">
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <a
+                          href={`/events/${eventId}/status`}
+                          className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-900 font-semibold px-4 py-2.5 text-sm hover:opacity-90 transition-opacity"
+                        >
+                          Durum Sayfası
+                          <ArrowRight className="w-4 h-4" />
+                        </a>
                         {event.survey.external_url &&
                         event.survey.survey_type === "external" &&
                         !event.survey.has_builtin_questions ? (

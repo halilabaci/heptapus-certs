@@ -97,7 +97,7 @@ export default function AttendCheckinPage() {
   const brandName = branding?.org_name || "HeptaCert";
   const brandColor = branding?.brand_color || "#2563eb";
   const eventHref = sessionInfo ? `/events/${sessionInfo.event_id}/register` : "#";
-  const surveyHref = sessionInfo ? `/events/${sessionInfo.event_id}/survey` : "#";
+  const statusHref = sessionInfo ? `/events/${sessionInfo.event_id}/status` : "#";
 
   const pageBg = useMemo(
     () => ({
@@ -275,11 +275,11 @@ export default function AttendCheckinPage() {
               </button>
 
               <Link
-                href={result.success ? surveyHref : eventHref}
+                href={result.success ? statusHref : eventHref}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition"
                 style={primaryStyle}
               >
-                {result.success ? "Anket Sayfasına Git" : "Etkinlik Sayfasına Git"}
+                {result.success ? "Durum Sayfasına Git" : "Etkinlik Sayfasına Git"}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>

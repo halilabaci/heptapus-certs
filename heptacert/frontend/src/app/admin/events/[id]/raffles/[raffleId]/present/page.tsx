@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { apiFetch, drawEventRaffle, type EventRaffleOut } from "@/lib/api";
 import { formatRaffleDate, formatWinnerPlan, splitRaffleRounds } from "@/lib/raffles";
@@ -141,8 +141,10 @@ function CelebrationBurst({ visible, color }: { visible: boolean; color: string 
 
 export default function RafflePresentationPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const eventId = Number(params?.id);
   const raffleId = Number(params?.raffleId);
+  const mode = searchParams?.get("mode") === "operator" ? "operator" : "stage";
 
   const [loading, setLoading] = useState(true);
   const [drawing, setDrawing] = useState(false);
@@ -372,32 +374,54 @@ export default function RafflePresentationPage() {
           </Link>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={loadPresentation}
-              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Veriyi yenile
-            </button>
-            <button
-              type="button"
-              onClick={enterFullscreen}
-              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
-            >
-              <Expand className="h-4 w-4" />
-              Tam ekran
-            </button>
-            {raffle?.winners.length ? (
+            {mode === "operator" ? (
+              <>
+                <Link
+                  href={`/admin/events/${eventId}/raffles/${raffleId}/present?mode=stage`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-2 text-sm font-semibold text-emerald-100 backdrop-blur"
+                >
+                  <Expand className="h-4 w-4" />
+                  Sahne Modunu Aç
+                </Link>
+                <button
+                  type="button"
+                  onClick={loadPresentation}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Veriyi yenile
+                </button>
+                <button
+                  type="button"
+                  onClick={enterFullscreen}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
+                >
+                  <Expand className="h-4 w-4" />
+                  Tam ekran
+                </button>
+                {raffle?.winners.length ? (
+                  <button
+                    type="button"
+                    onClick={handleReplay}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Sunumu tekrar oynat
+                  </button>
+                ) : null}
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={handleReplay}
+                onClick={enterFullscreen}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur"
               >
-                <RotateCcw className="h-4 w-4" />
-                Sunumu tekrar oynat
+                <Expand className="h-4 w-4" />
+                Tam ekran
               </button>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -405,7 +429,7 @@ export default function RafflePresentationPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur">
               <Sparkles className="h-3.5 w-3.5" />
-              Çekiliş Sunumu
+              {mode === "operator" ? "Operatör Modu" : "Sahne Modu"}
             </div>
 
             <div className="mt-6 max-w-3xl">
@@ -438,15 +462,17 @@ export default function RafflePresentationPage() {
             </div>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleStart}
-                disabled={drawing || !!(raffle && raffle.winners.length === 0 && raffle.eligible_count === 0)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-black text-slate-900 transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {drawing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                {raffle?.winners.length ? "Sunumu başlat" : "Çekilişi başlat"}
-              </button>
+              {mode === "operator" ? (
+                <button
+                  type="button"
+                  onClick={handleStart}
+                  disabled={drawing || !!(raffle && raffle.winners.length === 0 && raffle.eligible_count === 0)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-black text-slate-900 transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {drawing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {raffle?.winners.length ? "Sunumu başlat" : "Çekilişi başlat"}
+                </button>
+              ) : null}
               {raffle?.winners.length ? (
                 <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-200">
                   <Trophy className="h-4 w-4" />
@@ -455,7 +481,7 @@ export default function RafflePresentationPage() {
               ) : null}
             </div>
 
-            {sequenceItems.length > 0 ? (
+            {mode === "operator" && sequenceItems.length > 0 ? (
               <div className="mt-6 space-y-3">
                 <NameMarquee items={sequenceItems} />
                 <NameMarquee items={sequenceItems} reverse />
@@ -660,7 +686,7 @@ export default function RafflePresentationPage() {
                   Kural: En az {raffle?.min_sessions_required ?? 0} oturuma katılanlar arasından {" "}
                   {raffle ? formatWinnerPlan(raffle.winner_count, raffle.reserve_winner_count) : "-"} seçilir.
                 </span>
-                <span>{eventName}</span>
+                <span>{mode === "operator" ? `${eventName} • Operatör görünümü` : eventName}</span>
               </div>
             </div>
           </div>

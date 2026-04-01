@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ClipboardList,
+  Copy,
   ExternalLink,
   FileText,
   Link2,
@@ -261,10 +262,23 @@ export default function SurveysPage() {
   }, [responseQuery, responseTypeFilter, responses]);
 
   const builtinQuestionCount = builtinQuestions.length;
+  const builtinResponseCount = responses.filter((item) => item.survey_type === "builtin").length;
+  const externalResponseCount = responses.filter((item) => item.survey_type === "external").length;
   const completionRate = responseStats.completed + responseStats.pending > 0
     ? Math.round((responseStats.completed / (responseStats.completed + responseStats.pending)) * 100)
     : 0;
   const webhookEndpoint = `/api/surveys/external/webhook?event_id=${eventId}&attendee_id=[ATTENDEE_ID]`;
+  const surveyLandingUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/events/${eventId}/survey` : `/events/${eventId}/survey`;
+
+  async function copyText(value: string, message: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setSuccess(message);
+    } catch {
+      setError("Panoya kopyalama başarısız oldu");
+    }
+  }
 
   if (loading) {
     return (
@@ -640,6 +654,48 @@ export default function SurveysPage() {
                 </div>
               )}
 
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Katılımcı bağlantıları</h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Genel anket adresi sadece giriş noktasıdır. Form, yalnızca kişiye özel token ile açılır.
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-indigo-50 p-3 text-indigo-600">
+                    <Link2 className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Genel giriş adresi</p>
+                  <code className="mt-3 block break-all rounded-xl bg-white p-3 text-xs text-slate-700">
+                    {surveyLandingUrl}
+                  </code>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => copyText(surveyLandingUrl, "Genel anket adresi panoya kopyalandı")}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Linki kopyala
+                    </button>
+                    <Link
+                      href={`/admin/events/${eventId}/attendees`}
+                      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500"
+                    >
+                      Katılımcılara git
+                      <ExternalLink className="h-4 w-4" />
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Kişiye özel anket bağlantısını katılımcılar ekranındaki ilgili kişi satırından kopyalayın.
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-gray-200 bg-slate-950 p-6 text-white shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -655,6 +711,7 @@ export default function SurveysPage() {
                   <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Mod: <span className="font-semibold">{surveyType === "both" ? "Yerleşik + Harici" : surveyType === "builtin" ? "Yerleşik" : "Harici"}</span></div>
                   <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Soru sayısı: <span className="font-semibold">{builtinQuestionCount}</span></div>
                   <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Webhook: <span className="font-semibold">{externalWebhookKey ? "Hazır" : surveyType === "builtin" ? "Gerekmiyor" : "Kayıt anında üretilecek"}</span></div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Yerleşik yanıt: <span className="font-semibold">{builtinResponseCount}</span> • Harici yanıt: <span className="font-semibold">{externalResponseCount}</span></div>
                 </div>
               </div>
             </div>
