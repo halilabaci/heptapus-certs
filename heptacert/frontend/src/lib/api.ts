@@ -182,6 +182,17 @@ export interface EventRaffleOut {
   winners: EventRaffleWinnerOut[];
 }
 
+export interface AuditLogOut {
+  id: number;
+  user_id?: number | null;
+  action: string;
+  resource_type?: string | null;
+  resource_id?: string | null;
+  ip_address?: string | null;
+  extra?: Record<string, any> | null;
+  created_at: string;
+}
+
 // -----------------------------------------------------------------------------
 
 export interface SubscriptionInfo {
@@ -389,6 +400,11 @@ export async function exportEventRaffle(eventId: number, raffleId: number): Prom
   return { blob, filename: filenameMatch?.[1] || `raffle_${raffleId}_results.csv` };
 }
 
+export async function listEventRaffleAuditLogs(eventId: number): Promise<AuditLogOut[]> {
+  const res = await apiFetch(`/admin/events/${eventId}/raffles/audit`);
+  return res.json();
+}
+
 export async function adminManualCheckin(
   eventId: number,
   sessionId: number,
@@ -506,6 +522,52 @@ export async function resolvePublicSurveyToken(
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     throw new Error(j?.detail || "Anket bağlantısı doğrulanamadı");
+  }
+  return res.json();
+}
+
+export type PublicParticipantStatus = {
+  attendee_id: number;
+  attendee_name: string;
+  attendee_email: string;
+  event_id: number;
+  event_name: string;
+  sessions_attended: number;
+  total_sessions: number;
+  sessions_required: number;
+  survey_required: boolean;
+  survey_completed: boolean;
+  can_download_cert: boolean;
+  certificate_ready: boolean;
+  certificate_count: number;
+  latest_certificate_uuid?: string | null;
+  latest_certificate_verify_url?: string | null;
+  badge_count: number;
+  badges: PublicParticipantBadge[];
+  eligible_raffles: Array<{
+    id: number;
+    title: string;
+    prize_name: string;
+    status: string;
+    min_sessions_required: number;
+  }>;
+};
+
+export async function getPublicParticipantStatus(
+  eventId: number,
+  surveyToken: string,
+): Promise<PublicParticipantStatus> {
+  const res = await fetch(
+    `${API_BASE}/events/${eventId}/participant-status?token=${encodeURIComponent(surveyToken)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    let detail = `İstek başarısız (${res.status})`;
+    try {
+      const j = await res.json();
+      detail = j?.detail || JSON.stringify(j);
+    } catch {}
+    throw new ApiError(res.status, detail);
   }
   return res.json();
 }

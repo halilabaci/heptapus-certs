@@ -1223,7 +1223,29 @@ class AuditLogOut(BaseModel):
     resource_type: Optional[str] = None
     resource_id: Optional[str] = None
     ip_address: Optional[str] = None
+    extra: Optional[Dict[str, Any]] = None
     created_at: datetime
+
+
+class PublicParticipantStatusOut(BaseModel):
+    attendee_id: int
+    attendee_name: str
+    attendee_email: str
+    event_id: int
+    event_name: str
+    sessions_attended: int
+    total_sessions: int
+    sessions_required: int
+    survey_required: bool
+    survey_completed: bool
+    can_download_cert: bool
+    certificate_ready: bool
+    certificate_count: int
+    latest_certificate_uuid: Optional[str] = None
+    latest_certificate_verify_url: Optional[str] = None
+    badge_count: int
+    badges: List[ParticipantBadgeOut] = []
+    eligible_raffles: List[Dict[str, Any]] = []
 
 
 class PricingTier(BaseModel):
@@ -1613,6 +1635,117 @@ def build_public_survey_url(*, event_id: int, attendee_id: int, email: str) -> s
         email=email,
     )
     return f"{settings.frontend_base_url.rstrip('/')}/events/{event_id}/survey?token={survey_token}"
+
+
+async def write_audit_log(
+    db: AsyncSession,
+    *,
+    user_id: Optional[int],
+    action: str,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    extra: Optional[Dict[str, Any]] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> None:
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            extra=extra,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+    )
+
+
+async def build_public_participant_status(
+    db: AsyncSession,
+    *,
+    event: Event,
+    attendee: Attendee,
+) -> PublicParticipantStatusOut:
+    total_sessions_res = await db.execute(
+        select(func.count()).select_from(EventSession).where(EventSession.event_id == event.id)
+    )
+    total_sessions = int(total_sessions_res.scalar_one() or 0)
+
+    sessions_attended_res = await db.execute(
+        select(func.count()).select_from(AttendanceRecord).where(AttendanceRecord.attendee_id == attendee.id)
+    )
+    sessions_attended = int(sessions_attended_res.scalar_one() or 0)
+
+    badge_res = await db.execute(
+        select(ParticipantBadge)
+        .where(
+            ParticipantBadge.event_id == event.id,
+            ParticipantBadge.attendee_id == attendee.id,
+        )
+        .order_by(ParticipantBadge.awarded_at.desc())
+    )
+    badges = badge_res.scalars().all()
+    badge_items = await _build_participant_badge_items(db, event.id, badges)
+
+    certs_res = await db.execute(
+        select(Certificate)
+        .where(
+            Certificate.event_id == event.id,
+            Certificate.student_name == attendee.name,
+            Certificate.deleted_at.is_(None),
+        )
+        .order_by(Certificate.created_at.desc())
+    )
+    certificates = certs_res.scalars().all()
+    latest_certificate = certificates[0] if certificates else None
+
+    raffle_res = await db.execute(
+        select(EventRaffle)
+        .where(EventRaffle.event_id == event.id)
+        .order_by(EventRaffle.created_at.desc())
+    )
+    raffles = raffle_res.scalars().all()
+    eligible_raffles = [
+        {
+            "id": raffle.id,
+            "title": raffle.title,
+            "prize_name": raffle.prize_name,
+            "status": raffle.status,
+            "min_sessions_required": raffle.min_sessions_required,
+        }
+        for raffle in raffles
+        if sessions_attended >= raffle.min_sessions_required
+    ]
+
+    certificate_ready = bool(
+        attendee.can_download_cert
+        and sessions_attended >= event.min_sessions_required
+        and latest_certificate is not None
+    )
+
+    return PublicParticipantStatusOut(
+        attendee_id=attendee.id,
+        attendee_name=attendee.name,
+        attendee_email=attendee.email,
+        event_id=event.id,
+        event_name=event.name,
+        sessions_attended=sessions_attended,
+        total_sessions=total_sessions,
+        sessions_required=event.min_sessions_required,
+        survey_required=bool(attendee.survey_required),
+        survey_completed=attendee.survey_completed_at is not None,
+        can_download_cert=bool(attendee.can_download_cert),
+        certificate_ready=certificate_ready,
+        certificate_count=len(certificates),
+        latest_certificate_uuid=latest_certificate.uuid if latest_certificate else None,
+        latest_certificate_verify_url=(
+            build_certificate_verify_url(latest_certificate.uuid) if latest_certificate else None
+        ),
+        badge_count=len(badge_items),
+        badges=badge_items,
+        eligible_raffles=eligible_raffles,
+    )
 
 
 async def send_email_async(
@@ -3297,6 +3430,38 @@ async def resolve_public_survey_access(
         "attendee_email": attendee.email,
         "survey_token": token,
     }
+
+
+@app.get("/api/events/{event_id}/participant-status", response_model=PublicParticipantStatusOut)
+async def get_public_participant_status(
+    event_id: int,
+    token: str = Query(..., min_length=8),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        payload = verify_survey_access_token(token, event_id=event_id)
+    except SignatureExpired:
+        raise HTTPException(status_code=410, detail="Survey access link expired")
+    except BadSignature:
+        raise HTTPException(status_code=400, detail="Invalid survey access link")
+
+    event_res = await db.execute(select(Event).where(Event.id == event_id))
+    event = event_res.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    attendee_id = int(payload.get("attendee_id") or 0)
+    attendee_res = await db.execute(
+        select(Attendee).where(
+            Attendee.id == attendee_id,
+            Attendee.event_id == event_id,
+        )
+    )
+    attendee = attendee_res.scalar_one_or_none()
+    if not attendee or attendee.email.lower() != str(payload.get("email") or "").lower():
+        raise HTTPException(status_code=404, detail="Attendee not found")
+
+    return await build_public_participant_status(db, event=event, attendee=attendee)
 
 
 @app.post("/api/admin/events/{event_id}/badges/calculate")
@@ -9415,6 +9580,29 @@ async def list_event_raffles(
     return [_raffle_to_out(raffle, attendees, attendance_counts) for raffle in raffles]
 
 
+@app.get(
+    "/api/admin/events/{event_id}/raffles/audit",
+    response_model=List[AuditLogOut],
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def list_event_raffle_audit_logs(
+    event_id: int,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_for_admin(event_id, me, db)
+    logs_res = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.resource_type == "raffle",
+            AuditLog.extra["event_id"].astext == str(event_id),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(100)
+    )
+    return logs_res.scalars().all()
+
+
 @app.post(
     "/api/admin/events/{event_id}/raffles",
     response_model=EventRaffleOut,
@@ -9439,6 +9627,21 @@ async def create_event_raffle(
         created_by=me.id,
     )
     db.add(raffle)
+    await db.flush()
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.create",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+            "winner_count": raffle.winner_count,
+            "reserve_winner_count": raffle.reserve_winner_count,
+            "min_sessions_required": raffle.min_sessions_required,
+        },
+    )
     await db.commit()
     raffle = await _get_raffle_for_admin(event_id, raffle.id, me, db)
     attendees, attendance_counts = await _get_event_attendance_counts(event_id, db)
@@ -9460,6 +9663,7 @@ async def update_event_raffle(
     raffle = await _get_raffle_for_admin(event_id, raffle_id, me, db)
     should_reset_draw = False
 
+    original_title = raffle.title
     if payload.title is not None:
         raffle.title = payload.title.strip()
     if payload.prize_name is not None:
@@ -9481,6 +9685,22 @@ async def update_event_raffle(
         raffle.status = "draft"
         raffle.drawn_at = None
 
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.update",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title_before": original_title,
+            "title_after": raffle.title,
+            "winner_count": raffle.winner_count,
+            "reserve_winner_count": raffle.reserve_winner_count,
+            "min_sessions_required": raffle.min_sessions_required,
+            "reset_draw": should_reset_draw,
+        },
+    )
     await db.commit()
     refreshed = await _get_raffle_for_admin(event_id, raffle_id, me, db)
     attendees, attendance_counts = await _get_event_attendance_counts(event_id, db)
@@ -9498,6 +9718,19 @@ async def delete_event_raffle(
     db: AsyncSession = Depends(get_db),
 ):
     raffle = await _get_raffle_for_admin(event_id, raffle_id, me, db)
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.delete",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+            "winner_count": raffle.winner_count,
+            "reserve_winner_count": raffle.reserve_winner_count,
+        },
+    )
     await db.delete(raffle)
     await db.commit()
     return {"ok": True}
@@ -9525,6 +9758,19 @@ async def draw_event_raffle(
 
     raffle.status = "drawn"
     raffle.drawn_at = draw_time
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.draw",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+            "selected_count": len(selected_winners),
+            "winner_ids": [attendee.id for attendee in selected_winners],
+        },
+    )
     await db.commit()
 
     refreshed = await _get_raffle_for_admin(event_id, raffle_id, me, db)
@@ -9554,6 +9800,20 @@ async def redraw_event_raffle(
 
     raffle.status = "drawn"
     raffle.drawn_at = draw_time
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.redraw",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+            "selected_count": len(selected_winners),
+            "winner_ids": [attendee.id for attendee in selected_winners],
+            "excluded_count": len(excluded_attendee_ids),
+        },
+    )
     await db.commit()
 
     refreshed = await _get_raffle_for_admin(event_id, raffle_id, me, db)
@@ -9614,6 +9874,20 @@ async def export_event_raffle(
             winner.drawn_at.isoformat(),
         ])
 
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.export",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+            "winner_rows": len(raffle_out.winners),
+        },
+    )
+    await db.commit()
+
     filename = f"raffle_{raffle_out.id}_results.csv"
     return StreamingResponse(
         iter([buffer.getvalue().encode("utf-8-sig")]),
@@ -9637,6 +9911,17 @@ async def reset_event_raffle(
     await db.execute(delete(EventRaffleWinner).where(EventRaffleWinner.raffle_id == raffle.id))
     raffle.status = "draft"
     raffle.drawn_at = None
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="raffle.reset",
+        resource_type="raffle",
+        resource_id=str(raffle.id),
+        extra={
+            "event_id": event_id,
+            "title": raffle.title,
+        },
+    )
     await db.commit()
 
     refreshed = await _get_raffle_for_admin(event_id, raffle_id, me, db)

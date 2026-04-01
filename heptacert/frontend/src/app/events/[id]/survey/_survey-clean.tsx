@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
+  getPublicParticipantStatus,
   getPublicAttendeeBadges,
   getPublicEventInfo,
   resolvePublicSurveyToken,
   submitBuiltinSurvey,
   type PublicParticipantBadge,
+  type PublicParticipantStatus,
 } from "@/lib/api";
 import {
   AlertCircle,
@@ -19,6 +21,7 @@ import {
   Loader2,
   LockKeyhole,
   Sparkles,
+  Ticket,
 } from "lucide-react";
 
 type SurveyQuestion = {
@@ -113,6 +116,8 @@ export default function EventSurveyPage() {
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [badges, setBadges] = useState<PublicParticipantBadge[]>([]);
   const [badgesLoading, setBadgesLoading] = useState(false);
+  const [participantStatus, setParticipantStatus] = useState<PublicParticipantStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   const questions = eventInfo?.survey?.builtin_questions || [];
   const survey = eventInfo?.survey;
@@ -135,6 +140,24 @@ export default function EventSurveyPage() {
       setBadges([]);
     } finally {
       setBadgesLoading(false);
+    }
+  }
+
+  async function loadStatus(nextSurveyToken: string) {
+    if (!eventId || !nextSurveyToken) {
+      setParticipantStatus(null);
+      return;
+    }
+
+    setStatusLoading(true);
+    try {
+      const status = await getPublicParticipantStatus(eventId, nextSurveyToken);
+      setParticipantStatus(status);
+      setBadges(status.badges || []);
+    } catch {
+      setParticipantStatus(null);
+    } finally {
+      setStatusLoading(false);
     }
   }
 
@@ -166,6 +189,7 @@ export default function EventSurveyPage() {
         setSurveyToken(access.survey_token);
         setAttendeeId(access.attendee_id);
         setAttendeeEmail(access.attendee_email);
+        await loadStatus(access.survey_token);
 
         if (typeof window !== "undefined") {
           localStorage.setItem(`heptacert_survey_token_${eventId}`, access.survey_token);
@@ -213,6 +237,7 @@ export default function EventSurveyPage() {
       if (typeof window !== "undefined") {
         localStorage.setItem(`heptacert_survey_done_${eventId}_${attendeeId}`, "1");
       }
+      await loadStatus(surveyToken);
       await loadBadges(attendeeId, attendeeEmail);
     } catch (err: any) {
       setError(err?.message || "Anket gönderilemedi.");
@@ -297,6 +322,102 @@ export default function EventSurveyPage() {
             {hasSurveyAccess && survey && !survey.is_required ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
                 Bu etkinlikte anket zorunlu değil. Yine de doldurursanız organizasyon geri bildirim toplayabilir.
+              </div>
+            ) : null}
+
+            {hasSurveyAccess && participantStatus ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 md:p-6">
+                <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900">Katılımcı durumunuz</h2>
+                    <p className="mt-1 text-sm text-slate-500">Etkinlik içindeki ilerlemeniz tek bakışta burada.</p>
+                  </div>
+                  {statusLoading ? (
+                    <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Durum yenileniyor
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Oturum</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">
+                      {participantStatus.sessions_attended}/{Math.max(participantStatus.total_sessions, participantStatus.sessions_required)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Minimum {participantStatus.sessions_required} oturum</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Anket</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">
+                      {participantStatus.survey_completed ? "Tamam" : "Bekliyor"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {participantStatus.survey_required ? "Sertifika için zorunlu" : "Opsiyonel geri bildirim"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rozet</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">{participantStatus.badge_count}</p>
+                    <p className="mt-1 text-xs text-slate-500">Toplam kazanılan rozet</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sertifika</p>
+                    <p className="mt-2 text-2xl font-black text-slate-900">
+                      {participantStatus.certificate_ready ? "Hazır" : participantStatus.certificate_count > 0 ? "Üretildi" : "Bekliyor"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {participantStatus.certificate_ready ? "İndirmeye uygun" : "Akış tamamlanınca görünür"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-slate-900">Sonraki önerilen adım</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {participantStatus.certificate_ready
+                        ? "Sertifikanız hazır. Doğrulama bağlantısı üzerinden görüntüleyebilir veya indirebilirsiniz."
+                        : participantStatus.survey_required && !participantStatus.survey_completed
+                          ? "Önce anketi tamamlayın. Sonrasında sertifika uygunluğu otomatik güncellenecek."
+                          : participantStatus.sessions_attended < participantStatus.sessions_required
+                            ? `Sertifika için ${participantStatus.sessions_required - participantStatus.sessions_attended} oturum daha tamamlamanız gerekiyor.`
+                            : "Katılım koşullarını tamamladınız. Sertifika üretimi veya paylaşımı için etkinlik akışını takip edin."}
+                    </p>
+                  </div>
+
+                  {participantStatus.latest_certificate_verify_url ? (
+                    <a
+                      href={participantStatus.latest_certificate_verify_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500"
+                    >
+                      Sertifikayı görüntüle
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                </div>
+
+                {participantStatus.eligible_raffles.length > 0 ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                      <Ticket className="h-4 w-4" />
+                      Uygun olduğunuz çekilişler
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {participantStatus.eligible_raffles.map((raffle) => (
+                        <span
+                          key={raffle.id}
+                          className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-800"
+                        >
+                          {raffle.title} • {raffle.prize_name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
