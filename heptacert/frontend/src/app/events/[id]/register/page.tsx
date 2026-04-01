@@ -61,8 +61,10 @@ export default function EventRegisterPage() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [surveyUrl, setSurveyUrl] = useState<string | null>(null);
+  const [statusUrl, setStatusUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/branding")
@@ -133,11 +135,15 @@ export default function EventRegisterPage() {
         email: email.trim().toLowerCase(),
       });
 
+      setAlreadyRegistered(Boolean(registered.already_registered));
+      setName(registered.attendee_name || name.trim());
+      setEmail(registered.attendee_email || email.trim().toLowerCase());
       setSurveyUrl(registered.survey_url || null);
+      setStatusUrl(registered.status_url || null);
 
       if (typeof window !== "undefined") {
         localStorage.setItem(`heptacert_attendee_${eventId}`, String(registered.attendee_id));
-        localStorage.setItem(`heptacert_attendee_email_${eventId}`, email.trim().toLowerCase());
+        localStorage.setItem(`heptacert_attendee_email_${eventId}`, (registered.attendee_email || email.trim().toLowerCase()));
         if (registered.survey_token) {
           localStorage.setItem(`heptacert_survey_token_${eventId}`, registered.survey_token);
         }
@@ -353,13 +359,72 @@ export default function EventRegisterPage() {
                   </div>
 
                   <h2 className="text-2xl md:text-3xl font-black text-white mb-2">
-                    Kayıt Tamamlandı
+                    {alreadyRegistered ? "Zaten Kayıtlısınız" : "Kayıt Tamamlandı"}
                   </h2>
 
                   <p className="text-white/70 text-sm md:text-base leading-relaxed max-w-md mx-auto">
-                    <span className="text-white font-semibold">{name}</span>, etkinliğe başarıyla
-                    kaydoldunuz. Etkinlik günü QR kodu okutarak check-in yapabilirsiniz.
+                    <span className="text-white font-semibold">{name}</span>,{" "}
+                    {alreadyRegistered
+                      ? "bu etkinlik için zaten kayıtlı görünüyorsunuz. Aşağıda dijital katılım kartınızı görebilir ve kendi akışınıza devam edebilirsiniz."
+                      : "etkinliğe başarıyla kaydoldunuz. Etkinlik günü QR kodu okutarak check-in yapabilirsiniz."}
                   </p>
+
+                  <div className="mt-6 max-w-lg mx-auto overflow-hidden rounded-[28px] border border-white/15 bg-[linear-gradient(135deg,rgba(255,255,255,0.16),rgba(255,255,255,0.06))] p-5 text-left shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55">Dijital Katılım Kartı</p>
+                        <p className="mt-3 text-2xl font-black text-white">{event.name}</p>
+                        <p className="mt-1 text-sm text-white/70">{name}</p>
+                        <p className="text-xs text-white/50">{email}</p>
+                      </div>
+                      <div
+                        className="rounded-2xl px-3 py-2 text-xs font-semibold"
+                        style={{
+                          backgroundColor: `${brandColor}22`,
+                          color: brandColor,
+                          border: `1px solid ${brandColor}55`,
+                        }}
+                      >
+                        {alreadyRegistered ? "Mevcut Kayıt" : "Kayıtlı"}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">Kart Sahibi</p>
+                        <p className="mt-2 text-sm font-semibold text-white">{name}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">Katılım Kuralı</p>
+                        <p className="mt-2 text-sm font-semibold text-white">Min. {event.min_sessions_required} oturum</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">Durum</p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {alreadyRegistered ? "Kayıt zaten mevcut" : "Yeni kayıt oluşturuldu"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <a
+                        href={statusUrl || `/events/${eventId}/status`}
+                        className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:opacity-90"
+                      >
+                        Katılım Kartını Aç
+                        <ArrowRight className="w-4 h-4" />
+                      </a>
+                      {surveyUrl ? (
+                        <a
+                          href={surveyUrl}
+                          className="inline-flex items-center gap-2 rounded-xl bg-amber-400 text-black font-semibold px-4 py-2.5 text-sm hover:opacity-90 transition-opacity"
+                        >
+                          Anket Bağlantısı
+                          <ArrowRight className="w-4 h-4" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
 
                   {event.survey?.is_required && (
                     <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4 text-left max-w-md mx-auto">

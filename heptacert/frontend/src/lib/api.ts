@@ -472,7 +472,17 @@ export async function getPublicEventInfo(eventId: number) {
 export async function publicRegisterAttendee(
   eventId: number,
   data: { name: string; email: string }
-): Promise<{ ok: boolean; message: string; attendee_id: number; survey_token?: string; survey_url?: string }> {
+): Promise<{
+  ok: boolean;
+  message: string;
+  already_registered?: boolean;
+  attendee_id: number;
+  attendee_name?: string;
+  attendee_email?: string;
+  survey_token?: string;
+  survey_url?: string;
+  status_url?: string;
+}> {
   const res = await fetch(`${API_BASE}/events/${eventId}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -41,6 +41,7 @@ export default function AdminAttendeesPage() {
   const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null);
   const [copyingSurveyId, setCopyingSurveyId] = useState<number | null>(null);
   const [copiedSurveyId, setCopiedSurveyId] = useState<number | null>(null);
+  const [selectedAttendee, setSelectedAttendee] = useState<AttendeeOut | null>(null);
 
   // Matrix tab
   const [matrix, setMatrix] = useState<AttendanceMatrix | null>(null);
@@ -373,7 +374,13 @@ export default function AdminAttendeesPage() {
                       {attendees.map((a) => (
                         <tr key={a.id} className="hover:bg-gray-50 transition">
                           <td className="px-4 py-3 font-medium text-gray-800">
-                            {a.name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAttendee(a)}
+                              className="text-left transition hover:text-indigo-600"
+                            >
+                              {a.name}
+                            </button>
                             <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${a.source === "self_register" ? "bg-blue-50 text-blue-600" : "bg-gray-100 text-gray-500"}`}>
                               {a.source === "self_register" ? "kendi" : "import"}
                             </span>
@@ -585,13 +592,84 @@ export default function AdminAttendeesPage() {
             onConfirm={confirmDelete}
             onCancel={() => setPendingDeleteId(null)}
           />
-          <ConfirmModal
-            open={showCertifyConfirm}
+      <ConfirmModal
+        open={showCertifyConfirm}
             title="Toplu sertifika üret"
             description="Eşiği geçen tüm katılımcılara sertifika üretilecek. Onaylıyor musunuz?"
             onConfirm={executeBulkCertify}
             onCancel={() => setShowCertifyConfirm(false)}
-          />
+      />
+
+      {selectedAttendee && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-[1px]">
+          <div className="h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Katılımcı Kartı</p>
+                <h3 className="mt-2 text-2xl font-black text-slate-900">{selectedAttendee.name}</h3>
+                <p className="mt-1 text-sm text-slate-500">{selectedAttendee.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAttendee(null)}
+                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+              >
+                <XSquare className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kayıt Tipi</p>
+                <p className="mt-2 text-lg font-black text-slate-900">
+                  {selectedAttendee.source === "self_register" ? "Kendi kaydı" : "İçe aktarıldı"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Oturum</p>
+                <p className="mt-2 text-lg font-black text-slate-900">{selectedAttendee.sessions_attended}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sertifika</p>
+                <p className="mt-2 text-lg font-black text-slate-900">
+                  {selectedAttendee.has_certificate ? "Var" : "Yok"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kayıt Tarihi</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {new Date(selectedAttendee.registered_at).toLocaleString("tr-TR")}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-semibold text-slate-900">Hızlı aksiyonlar</p>
+              <div className="mt-4 grid gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleCopySurveyLink(selectedAttendee.id)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Kişisel anket linkini kopyala
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttendee(null);
+                    void handleDelete(selectedAttendee.id);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Katılımcıyı sil
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

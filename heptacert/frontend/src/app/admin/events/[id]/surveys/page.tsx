@@ -297,15 +297,14 @@ export default function SurveysPage() {
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Link href={`/admin/events/${eventId}`}>
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              className="rounded-xl border border-gray-200 bg-white p-2.5 text-gray-700 shadow-sm transition hover:border-brand-200 hover:text-brand-700"
+          <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+            <Link
+              href={`/admin/events/${eventId}/certificates`}
+              className="inline-flex rounded-xl border border-gray-200 bg-white p-2.5 text-gray-700 shadow-sm transition hover:border-brand-200 hover:text-brand-700"
             >
               <ChevronLeft className="h-5 w-5" />
-            </motion.button>
-          </Link>
+            </Link>
+          </motion.div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Katılımcı Anketleri</h1>
             <p className="mt-1 text-sm text-gray-500">Anket kurgusunu yönetin, cevapları izleyin ve sertifika akışına etkisini kontrol edin.</p>
