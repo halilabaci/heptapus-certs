@@ -213,8 +213,8 @@ export default function AttendCheckinPage() {
               </div>
             </div>
 
-            <h1 className="mt-6 text-3xl font-black">{session.session_name}</h1>
-            <p className="mt-2 text-sm text-white/80">{session.event_name}</p>
+            <h1 className="mt-6 text-3xl font-black">{sessionInfo.session_name}</h1>
+            <p className="mt-2 text-sm text-white/80">{sessionInfo.event_name}</p>
           </div>
 
           <div className="px-8 py-8">
@@ -225,11 +225,11 @@ export default function AttendCheckinPage() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarih</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{formatSessionDate(session.session_date)}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{formatSessionDate(sessionInfo.session_date)}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saat</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{session.session_start || "Henüz açıklanmadı"}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{sessionInfo.session_start || "Henüz açıklanmadı"}</p>
               </div>
             </div>
           </div>
