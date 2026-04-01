@@ -213,8 +213,8 @@ export default function AttendCheckinPage() {
               </div>
             </div>
 
-            <h1 className="mt-6 text-3xl font-black">{sessionInfo.session_name}</h1>
-            <p className="mt-2 text-sm text-white/80">{sessionInfo.event_name}</p>
+            <h1 className="mt-6 text-3xl font-black">{session.session_name}</h1>
+            <p className="mt-2 text-sm text-white/80">{session.event_name}</p>
           </div>
 
           <div className="px-8 py-8">
@@ -225,11 +225,11 @@ export default function AttendCheckinPage() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarih</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{formatSessionDate(sessionInfo.session_date)}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{formatSessionDate(session.session_date)}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saat</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{sessionInfo.session_start || "Henüz açıklanmadı"}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{session.session_start || "Henüz açıklanmadı"}</p>
               </div>
             </div>
           </div>
@@ -237,6 +237,8 @@ export default function AttendCheckinPage() {
       </div>
     );
   }
+
+  const session = sessionInfo;
 
   return (
     <div className="min-h-screen px-4 py-8 md:px-6 md:py-12" style={pageBg}>
@@ -270,28 +272,28 @@ export default function AttendCheckinPage() {
             </div>
 
             <h1 className="mt-6 text-3xl font-black leading-tight md:text-4xl">
-              {sessionInfo.session_name}
+              {session.session_name}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/82 md:text-base">
-              {sessionInfo.event_name} için katılımınızı birkaç saniyede onaylayın. E-posta adresiniz eşleştiğinde sistem oturum ilerlemenizi anında günceller.
+              {session.event_name} için katılımınızı birkaç saniyede onaylayın. E-posta adresiniz eşleştiğinde sistem oturum ilerlemenizi anında günceller.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/65">Tarih</p>
-                <p className="mt-2 text-sm font-semibold text-white">{formatSessionDate(sessionInfo.session_date)}</p>
+                <p className="mt-2 text-sm font-semibold text-white">{formatSessionDate(session.session_date)}</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/65">Saat</p>
-                <p className="mt-2 text-sm font-semibold text-white">{sessionInfo.session_start || "Henüz açıklanmadı"}</p>
+                <p className="mt-2 text-sm font-semibold text-white">{session.session_start || "Henüz açıklanmadı"}</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/65">Konum</p>
-                <p className="mt-2 text-sm font-semibold text-white">{sessionInfo.session_location || "Paylaşılmadı"}</p>
+                <p className="mt-2 text-sm font-semibold text-white">{session.session_location || "Paylaşılmadı"}</p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/65">Katılımcı</p>
-                <p className="mt-2 text-sm font-semibold text-white">{sessionInfo.attendance_count} kişi</p>
+                <p className="mt-2 text-sm font-semibold text-white">{session.attendance_count} kişi</p>
               </div>
             </div>
           </div>
@@ -300,12 +302,12 @@ export default function AttendCheckinPage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
               <Calendar className="h-4 w-4 text-slate-500" />
               <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Etkinlik</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{sessionInfo.event_name}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{session.event_name}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
               <Users className="h-4 w-4 text-slate-500" />
               <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Sertifika Eşiği</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">En az {sessionInfo.min_sessions_required} oturum</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">En az {session.min_sessions_required} oturum</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
               <MapPin className="h-4 w-4 text-slate-500" />
@@ -546,3 +548,4 @@ export default function AttendCheckinPage() {
     </div>
   );
 }
+
