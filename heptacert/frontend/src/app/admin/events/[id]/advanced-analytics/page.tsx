@@ -169,7 +169,7 @@ export default function AdvancedAnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href={`/admin/events/${eventId}`}>
+          <Link href={`/admin/events/${eventId}/certificates`}>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
