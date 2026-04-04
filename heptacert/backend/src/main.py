@@ -6053,8 +6053,8 @@ async def my_transactions(
 async def credit_coins(payload: CreditCoinsIn, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(User).where(User.id == payload.admin_user_id))
     user = res.scalar_one_or_none()
-    if not user or user.role != Role.admin:
-        raise bad_request("Admin user not found")
+    if not user or user.role not in (Role.admin, Role.superadmin):
+        raise bad_request("Admin or superadmin user not found")
 
     user.heptacoin_balance += payload.amount
     db.add(Transaction(user_id=user.id, amount=payload.amount, type=TxType.credit))

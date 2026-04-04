@@ -223,7 +223,7 @@ export default function SuperAdminAdminsPage() {
   };
 
   const filteredAdmins = admins.filter((admin) => admin.email.toLowerCase().includes(searchTerm.toLowerCase()));
-  const adminRecipients = admins.filter((admin) => admin.role === "admin");
+  const adminRecipients = admins;
 
   if (loading) {
     return (
