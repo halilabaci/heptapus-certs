@@ -54,6 +54,7 @@ from sqlalchemy.dialects.postgresql import JSONB as _PgJSONB, INET as _PgINET, i
 # Use native PostgreSQL JSONB/INET on PostgreSQL, fall back to JSON/String on SQLite
 JSONB = _JSON().with_variant(_PgJSONB(), "postgresql")
 INET = String(45).with_variant(_PgINET(), "postgresql")
+BIGINT_PK = BigInteger().with_variant(Integer, "sqlite")
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
 
@@ -306,7 +307,7 @@ class TotpSecret(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-    id:            Mapped[int]           = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id:            Mapped[int]           = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     user_id:       Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action:        Mapped[str]           = mapped_column(String(128))
     resource_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -331,7 +332,7 @@ class WebhookEndpoint(Base):
 
 class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
-    id:           Mapped[int]           = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id:           Mapped[int]           = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     endpoint_id:  Mapped[int]           = mapped_column(Integer, ForeignKey("webhook_endpoints.id", ondelete="CASCADE"))
     event_type:   Mapped[str]           = mapped_column(String(64))
     payload:      Mapped[dict]          = mapped_column(JSONB, default=dict)
@@ -375,7 +376,7 @@ class WaitlistEntry(Base):
 
 class VerificationHit(Base):
     __tablename__ = "verification_hits"
-    id:         Mapped[int]           = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id:         Mapped[int]           = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     cert_uuid:  Mapped[str]           = mapped_column(String(36))
     viewed_at:  Mapped[datetime]      = mapped_column(DateTime(timezone=True), server_default=func.now())
     ip_address: Mapped[Optional[str]] = mapped_column(INET, nullable=True)
