@@ -352,7 +352,7 @@ export default function PublicEventDetailClient() {
                   />
                   <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-3 py-2 mt-2 rounded-b-xl">
                     <div className="text-[11px] font-semibold text-slate-400">
-                      {member.name} {lang === "tr" ? "olarak yorum yapıyorsunuz." : "posting as."}
+                      {member.display_name} {lang === "tr" ? "olarak yorum yapıyorsunuz." : "posting as."}
                     </div>
                     <button type="submit" disabled={commentBusy || !commentBody.trim()} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50">
                       {commentBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
