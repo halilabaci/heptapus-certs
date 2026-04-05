@@ -56,28 +56,28 @@ export default function PublicEventDetailClient() {
     () =>
       lang === "tr"
         ? {
-            back: "Etkinlik listesine d?n",
-            loading: "Etkinlik detaylar? y?kleniyor...",
-            error: "Etkinlik detaylar? y?klenemedi.",
-            register: "Etkinli?e Kay?t Ol",
+            back: "Etkinlik listesine don",
+            loading: "Etkinlik detaylari yukleniyor...",
+            error: "Etkinlik detaylari yuklenemedi.",
+            register: "Etkinlige Kayit Ol",
             sessions: "Oturumlar",
-            customFields: "Kay?tta istenecek ek bilgiler",
-            minSessions: "Sertifika i?in minimum oturum",
-            unlisted: "Liste d??? payla??m",
-            noSessions: "Hen?z oturum eklenmedi.",
-            defaultFields: "Bu etkinlikte ?u an yaln?zca standart ad ve e-posta alanlar? kullan?l?yor.",
-            defaultHelper: "Kay?t s?ras?nda doldurulacak ek alan.",
+            customFields: "Kayitta istenecek ek bilgiler",
+            minSessions: "Sertifika icin minimum oturum",
+            unlisted: "Listede gosterilmeyen paylasim",
+            noSessions: "Henuz oturum eklenmedi.",
+            defaultFields: "Bu etkinlikte simdilik standart ad ve e-posta alanlari kullaniliyor.",
+            defaultHelper: "Kayit sirasinda doldurulacak ek alan.",
             required: "Zorunlu",
             commentsTitle: "Yorumlar",
-            commentsSubtitle: "Toplulu?un etkinlik hakk?ndaki g?r??lerini inceleyin veya siz de katk? b?rak?n.",
-            noComments: "Hen?z yorum yok. ?lk yorumu sen b?rak.",
-            commentPlaceholder: "Bu etkinlik hakk?nda ne d???n?yorsun?",
-            commentSubmit: "Yorum G?nder",
-            loginPrompt: "Yorum yazmak i?in ?ye hesab?nla giri? yap.",
-            loginCta: "?ye Giri?i",
+            commentsSubtitle: "Toplulugun etkinlik hakkindaki goruslerini inceleyin veya siz de yorum birakin.",
+            noComments: "Henuz yorum yok. Ilk yorumu sen birak.",
+            commentPlaceholder: "Bu etkinlik hakkinda ne dusunuyorsun?",
+            commentSubmit: "Yorum Gonder",
+            loginPrompt: "Yorum yazmak icin uye hesabinla giris yap.",
+            loginCta: "Uye Girisi",
             report: "Bildir",
-            reportBusy: "G?nderiliyor",
-            writeError: "Yorum g?nderilemedi.",
+            reportBusy: "Gonderiliyor",
+            writeError: "Yorum gonderilemedi.",
             sessionLabel: "Oturum",
             fieldType: "Alan tipi",
           }
@@ -219,11 +219,11 @@ export default function PublicEventDetailClient() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                {event.visibility === "unlisted" && (
+                {event.visibility === "unlisted" ? (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
                     {copy.unlisted}
                   </span>
-                )}
+                ) : null}
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                   {copy.minSessions}: {event.min_sessions_required}
                 </span>
@@ -273,7 +273,7 @@ export default function PublicEventDetailClient() {
               event.sessions.map((session, index) => (
                 <div key={session.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    {lang === "tr" ? `${copy.sessionLabel} ${index + 1}` : `${copy.sessionLabel} ${index + 1}`}
+                    {copy.sessionLabel} {index + 1}
                   </div>
                   <div className="mt-2 text-lg font-bold text-slate-900">{session.name}</div>
                   <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-600">

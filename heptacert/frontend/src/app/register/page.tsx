@@ -3,13 +3,11 @@ import { Suspense } from "react";
 import RegisterHub from "./_register-hub";
 
 export const metadata: Metadata = {
-  title: "Hesap Oluştur",
-  description:
-    "HeptaCert'e ücretsiz kaydolun. 100 HC hediye bakiyesiyle dijital sertifika oluşturmaya hemen başlayın.",
+  title: "Hesap Olustur",
+  description: "HeptaCert'e ucretsiz kaydolun. 100 HC hediye bakiyesiyle dijital sertifika olusturmaya hemen baslayin.",
   openGraph: {
-    title: "Hesap Oluştur | HeptaCert",
-    description:
-      "HeptaCert'e ücretsiz kaydolun. 100 HC hediye bakiyesiyle dijital sertifika oluşturmaya hemen başlayın.",
+    title: "Hesap Olustur | HeptaCert",
+    description: "HeptaCert'e ucretsiz kaydolun. 100 HC hediye bakiyesiyle dijital sertifika olusturmaya hemen baslayin.",
     type: "website",
   },
 };
