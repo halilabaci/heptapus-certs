@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from src.main import app, SessionLocal, User, Organization
+from src.main import app, SessionLocal, User, Organization, Role
 
 
 @pytest.mark.asyncio
@@ -9,10 +9,17 @@ async def test_branding_returns_org_for_host():
     # Insert a user and organization into the test DB
     async with SessionLocal() as sess:
         async with sess.begin():
-            user = User(email="owner@example.com", password_hash="x", role="admin")
+            user = User(email="owner@example.com", password_hash="x", role=Role.admin)
             sess.add(user)
             await sess.flush()
-            org = Organization(user_id=user.id, org_name="TestOrg", custom_domain="example.test", brand_logo="https://cdn/test.png", brand_color="#112233")
+            org = Organization(
+                user_id=user.id,
+                public_id="org_branding_test",
+                org_name="TestOrg",
+                custom_domain="example.test",
+                brand_logo="https://cdn/test.png",
+                brand_color="#112233",
+            )
             sess.add(org)
 
     transport = ASGITransport(app=app)
