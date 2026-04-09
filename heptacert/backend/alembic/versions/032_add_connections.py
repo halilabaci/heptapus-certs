@@ -1,8 +1,8 @@
 """Add connections system tables (follow/block)
 
-Revision ID: 0xx_connections
-Revises: 018_attendee_registration_answers
-Create Date: 2024-01-20 10:00:00
+Revision ID: 032_add_connections
+Revises: 031_user_connections
+Create Date: 2026-04-09
 
 """
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '0xx_connections'
-down_revision = '018_attendee_registration_answers'
+revision = '032_add_connections'
+down_revision = '031_user_connections'
 branch_labels = None
 depends_on = None
 
