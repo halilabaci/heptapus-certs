@@ -379,12 +379,18 @@ export default function DiscoveryPage() {
                   <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
                     {post.organization_name || "Üye"}
                   </p>
-                  <Link
-                    href={`/member/${post.author_id}`}
-                    className="text-sm font-semibold text-slate-900 truncate hover:text-blue-600 transition line-clamp-1"
-                  >
-                    {post.author_name}
-                  </Link>
+                  {post.author_public_id && post.author_type === "member" ? (
+                    <Link
+                      href={`/member/${post.author_public_id}`}
+                      className="text-sm font-semibold text-slate-900 truncate hover:text-blue-600 transition line-clamp-1"
+                    >
+                      {post.author_name}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {post.author_name}
+                    </p>
+                  )}
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-2xl font-black text-blue-600">
