@@ -204,100 +204,393 @@ export default function PublicEventDetailClient() {
   }
 
   return (
-    <div className="space-y-8 pb-12">
-      <Link href="/events" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900">
-        <ArrowLeft className="h-4 w-4" />
-        {copy.back}
-      </Link>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/50 px-6 py-4">
+        <Link
+          href="/events"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition duration-200"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {copy.back}
+        </Link>
+      </div>
 
-      <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.08)]">
-        <div className="h-56 bg-slate-100">
-          {event.event_banner_url ? (
-            <img src={event.event_banner_url} alt={event.name} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,rgba(56,189,248,0.18),rgba(59,130,246,0.08))] text-3xl font-black text-slate-800">
-              {event.name}
-            </div>
-          )}
-        </div>
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Hero Card */}
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl mb-12">
+          {/* Banner Section */}
+          <div className="relative h-56 sm:h-64 lg:h-72 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 overflow-hidden group">
+            {event.event_banner_url ? (
+              <>
+                <img
+                  src={event.event_banner_url}
+                  alt={event.name}
+                  className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+              </>
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 opacity-80" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-6xl font-black text-white/20">📅</span>
+                </div>
+              </>
+            )}
+          </div>
 
-        <div className="space-y-6 p-6 sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                {event.visibility === "unlisted" ? (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                    {copy.unlisted}
-                  </span>
-                ) : null}
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  {copy.minSessions}: {event.min_sessions_required}
+          {/* Content Section */}
+          <div className="relative px-6 py-8 sm:px-8">
+            {/* Status Badges */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              {event.visibility === "unlisted" ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700">
+                  🔒 {copy.unlisted}
                 </span>
-              </div>
-              <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950">{event.name}</h1>
+              ) : null}
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700">
+                ✓ {copy.minSessions}: {event.min_sessions_required}
+              </span>
+            </div>
+
+            {/* Title and Description */}
+            <div className="mb-8">
+              <h1 className="text-4xl sm:text-5xl font-black text-slate-900 mb-4 leading-tight">
+                {event.name}
+              </h1>
+
               {event.organization_public_id && event.organization_name ? (
                 <Link
                   href={`/organizations/${event.organization_public_id}`}
-                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  className="inline-flex items-center gap-3 mb-6 rounded-full border-2 border-slate-200 bg-white px-4 py-2 hover:border-blue-300 hover:bg-blue-50 transition duration-300"
                 >
                   {event.organization_logo ? (
-                    <img src={event.organization_logo} alt={event.organization_name} className="h-6 w-6 rounded-full object-cover" />
+                    <img
+                      src={event.organization_logo}
+                      alt={event.organization_name}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
                   ) : (
-                    <Users className="h-4 w-4" />
+                    <Users className="h-5 w-5 text-slate-600" />
                   )}
-                  {event.organization_name}
+                  <span className="font-semibold text-slate-700">
+                    {event.organization_name}
+                  </span>
                 </Link>
               ) : null}
+
               {event.event_description ? (
                 <div
-                  className="rich-text-content mt-4 max-w-3xl text-sm text-slate-600 sm:text-base"
+                  className="rich-text-content mt-6 max-w-3xl text-base text-slate-600 leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: event.event_description }}
                 />
               ) : null}
             </div>
-            {event.registration_closed ? (
-              <span className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-500">
-                {copy.registrationClosed}
-              </span>
-            ) : (
-              <Link href={`/events/${event.public_id}/register`} className="btn-primary inline-flex justify-center">
-                {copy.register}
+
+            {/* Key Info Cards */}
+            <div className="grid gap-4 md:grid-cols-3 mb-8">
+              <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 px-5 py-4 hover:shadow-lg transition duration-300">
+                <div className="flex items-start gap-3">
+                  <CalendarDays className="h-5 w-5 text-blue-600 mt-1" />
+                  <div>
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Tarih</p>
+                    <p className="text-base font-black text-slate-900 mt-1">
+                      {formatDate(event.event_date, lang)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 px-5 py-4 hover:shadow-lg transition duration-300">
+                <div className="flex items-start gap-3">
+                  <MapPin className="h-5 w-5 text-purple-600 mt-1" />
+                  <div>
+                    <p className="text-xs font-bold text-purple-600 uppercase tracking-wider">Konum</p>
+                    <p className="text-base font-black text-slate-900 mt-1">
+                      {event.event_location || "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 border border-pink-200 px-5 py-4 hover:shadow-lg transition duration-300">
+                <div className="flex items-start gap-3">
+                  <Users className="h-5 w-5 text-pink-600 mt-1" />
+                  <div>
+                    <p className="text-xs font-bold text-pink-600 uppercase tracking-wider">Oturumlar</p>
+                    <p className="text-base font-black text-slate-900 mt-1">
+                      {event.sessions.length} {copy.sessions.toLowerCase()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA Button */}
+            <div className="flex gap-3">
+              {event.registration_closed ? (
+                <div className="inline-flex items-center px-6 py-3 rounded-2xl border-2 border-slate-300 bg-slate-100 text-slate-500 font-bold">
+                  {copy.registrationClosed}
+                </div>
+              ) : (
+                <Link
+                  href={`/events/${event.public_id}/register`}
+                  className="inline-flex items-center gap-2 px-8 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold shadow-lg hover:shadow-xl transition duration-300 transform hover:scale-105"
+                >
+                  📋 {copy.register}
+                </Link>
+              )}
+              <Link
+                href={`/events/${event.public_id}/status`}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-blue-200 bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 transition duration-300"
+              >
+                ✓ {copy.status}
               </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Sessions and Fields Grid */}
+        <div className="grid gap-8 lg:grid-cols-2 mb-12">
+          {/* Sessions Section */}
+          <section>
+            <h2 className="text-3xl font-black text-slate-900 mb-6 flex items-center gap-2">
+              <span className="text-3xl">📍</span>
+              {copy.sessions}
+            </h2>
+            <div className="space-y-4">
+              {event.sessions.length === 0 ? (
+                <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center text-sm text-slate-500">
+                  {copy.noSessions}
+                </div>
+              ) : (
+                event.sessions.map((session, index) => (
+                  <div
+                    key={session.id}
+                    className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-md hover:shadow-lg hover:border-blue-300 transition duration-300 transform hover:-translate-y-1"
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">
+                        {copy.sessionLabel} {index + 1}
+                      </p>
+                      <span className="inline-flex px-3 py-1 rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 mb-4">
+                      {session.name}
+                    </h3>
+                    <div className="space-y-2 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-blue-500" />
+                        {formatDate(session.session_date, lang)}
+                      </div>
+                      {session.session_start && (
+                        <div className="flex items-center gap-2">
+                          <Clock3 className="h-4 w-4 text-purple-500" />
+                          {session.session_start}
+                        </div>
+                      )}
+                      {session.session_location && (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-pink-500" />
+                          {session.session_location}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* Registration Fields Section */}
+          <section>
+            <h2 className="text-3xl font-black text-slate-900 mb-6 flex items-center gap-2">
+              <span className="text-3xl">📝</span>
+              {copy.customFields}
+            </h2>
+            <div className="space-y-4">
+              {event.registration_fields.length === 0 ? (
+                <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center text-sm text-slate-500">
+                  {copy.defaultFields}
+                </div>
+              ) : (
+                event.registration_fields.map((field) => (
+                  <div
+                    key={field.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md hover:shadow-lg transition duration-300"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                      <h3 className="font-bold text-slate-900">{field.label}</h3>
+                      <div className="flex gap-2 flex-wrap">
+                        <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                          {field.type}
+                        </span>
+                        {field.required ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600">
+                            ✱ {copy.required}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {field.helper_text && (
+                      <p className="text-xs text-slate-500">{field.helper_text}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* Comments Section */}
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+          <div className="px-6 py-8 sm:px-8 border-b border-slate-100">
+            <h2 className="text-3xl font-black text-slate-900 mb-2 flex items-center gap-2">
+              <span className="text-3xl">💬</span>
+              {copy.commentsTitle}
+            </h2>
+            <p className="text-sm text-slate-500">{copy.commentsSubtitle}</p>
+          </div>
+
+          <div className="px-6 py-8 sm:px-8 space-y-6">
+            {error ? (
+              <div className="rounded-2xl border-2 border-rose-200 bg-rose-50 px-5 py-4 flex items-start gap-3 text-sm text-rose-700">
+                <ShieldAlert className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <div>{error}</div>
+              </div>
+            ) : null}
+
+            {/* Comment Form */}
+            {member ? (
+              <form
+                className="rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-md focus-within:border-blue-400 focus-within:shadow-lg transition duration-300"
+                onSubmit={handleCommentSubmit}
+              >
+                <textarea
+                  value={commentBody}
+                  onChange={(eventArg) => setCommentBody(eventArg.target.value)}
+                  rows={4}
+                  placeholder={copy.commentPlaceholder}
+                  className="w-full resize-none border-none bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                />
+                <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
+                  <p className="text-xs font-semibold text-slate-500">
+                    💬 {member.display_name || member.email}
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={commentBusy || !commentBody.trim()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-2.5 text-sm font-bold text-white transition hover:shadow-lg disabled:opacity-60"
+                  >
+                    {commentBusy ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Gönderiliyor...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        {copy.commentSubmit}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 px-6 py-8 text-center">
+                <MessageSquare className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+                <p className="text-sm text-blue-900 mb-4">{copy.loginPrompt}</p>
+                <Link
+                  href="/login?mode=member"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition"
+                >
+                  🔑 {copy.loginCta}
+                </Link>
+              </div>
+            )}
+
+            {/* Comments List */}
+            {comments.length === 0 ? (
+              <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                <MessageSquare className="h-8 w-8 text-slate-400 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">{copy.noComments}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {comments.map((comment) => (
+                  <article
+                    key={comment.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100/50 transition duration-300 group"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                      <div className="flex items-start gap-3">
+                        <Link
+                          href={`/member/${comment.member_public_id}`}
+                          className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-400 to-purple-500 ring-2 ring-white shadow-md hover:shadow-lg transition duration-300"
+                        >
+                          {comment.member_avatar_url ? (
+                            <img
+                              src={comment.member_avatar_url}
+                              alt={comment.member_name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xs font-bold text-white">
+                              {comment.member_name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </Link>
+                        <div>
+                          <Link
+                            href={`/member/${comment.member_public_id}`}
+                            className="text-sm font-bold text-slate-900 hover:text-blue-600 transition"
+                          >
+                            {comment.member_name}
+                          </Link>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {new Date(comment.created_at).toLocaleString(
+                              lang === "tr" ? "tr-TR" : "en-US"
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      {member && member.public_id !== comment.member_public_id ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleReport(comment.id)}
+                          disabled={reportingId === comment.id}
+                          className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+                        >
+                          {reportingId === comment.id ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {copy.reportBusy}
+                            </>
+                          ) : (
+                            <>
+                              <Flag className="h-3.5 w-3.5" />
+                              {copy.report}
+                            </>
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+                    <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">
+                      {comment.body}
+                    </p>
+                  </article>
+                ))}
+              </div>
             )}
           </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <div className="flex items-center gap-2 text-slate-900">
-                <CalendarDays className="h-4 w-4 text-brand-500" />
-                {formatDate(event.event_date, lang)}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <div className="flex items-center gap-2 text-slate-900">
-                <MapPin className="h-4 w-4 text-brand-500" />
-                {event.event_location || "-"}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <div className="flex items-center gap-2 text-slate-900">
-                <Users className="h-4 w-4 text-brand-500" />
-                {event.sessions.length} {copy.sessions.toLowerCase()}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="card p-6">
-          <h2 className="text-2xl font-bold text-slate-950">{copy.sessions}</h2>
-          <div className="mt-5 space-y-4">
-            {event.sessions.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                {copy.noSessions}
-              </div>
-            ) : (
+        </section>
+      </div>
+    </div>
+  );
+}
               event.sessions.map((session, index) => (
                 <div key={session.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
