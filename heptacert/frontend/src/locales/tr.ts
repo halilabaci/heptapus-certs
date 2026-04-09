@@ -552,6 +552,43 @@
   org_social_profile_error: "Profil güncellenirken hata oluştu",
   org_social_profile_stats_section: "Sosyal İstatistikler",
   org_social_profile_recent_posts: "Son Gönderiler",
+
+  // ── Discovery Page ────────────────────────────────────────────────────────
+  discover_title: "Keşfet",
+  discover_subtitle: "Topluluğun en ilginç gönderilerini ve aktif üyelerini keşfedin",
+  discover_loading: "Gönderiler yükleniyor...",
+  discover_error: "Gönderiler yüklenemedi",
+  discover_empty: "Henüz gönderi yok",
+  discover_searchPlaceholder: "Gönderi veya üye ara...",
+  discover_trending: "Trend",
+  discover_recent: "Yeni",
+  discover_popular: "Popüler",
+  discover_engagement: "Etkileşim",
+  discover_noResults: "Aramanızla eşleşen gönderi bulunamadı",
+  discover_viral: "Viral 🔥",
+  discover_quality: "Kalite ✨",
+  discover_velocity: "Hız ⚡",
+  discover_freshness: "Taze 🌟",
+  discover_algorithm_info: "İçi aktif ve tartışılan gönderiler öne çıkar",
+
+  // ── Members Directory ──────────────────────────────────────────────────────
+  members_title: "Üyeler",
+  members_subtitle: "Topluluğun değerli üyelerini keşfedin ve bağlantı kurun",
+  members_loading: "Üyeler yükleniyor...",
+  members_error: "Üyeler yüklenemedi",
+  members_empty: "Henüz üye yok",
+  members_searchPlaceholder: "Üye adı veya meslek ara...",
+  members_filterLocation: "Konum",
+  members_filterLocationAll: "Tüm konumlar",
+  members_sortBy: "Sırala",
+  members_sortByName: "Ada göre",
+  members_sortByActive: "Aktiviteye göre",
+  members_sortByEvents: "Etkinliklere göre",
+  members_viewProfile: "Profili Gör",
+  members_connectButton: "Bağlan",
+  members_connectedBadge: "Bağlanmış",
+  members_pendingBadge: "Beklemede",
+  members_noResults: "Aramanızla eşleşen üye bulunamadı",
 } as const;
 
 export type TranslationKey = keyof typeof tr;

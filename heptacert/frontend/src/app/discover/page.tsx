@@ -18,16 +18,105 @@ import PostCard from "@/components/CommunityFeed/PostCard";
 interface ScoredPost extends CommunityPost {
   score: number;
   engagement: number;
+  viralityScore: number;
+  velocityScore: number;
+  qualityScore: number;
+  freshnessScore: number;
+  finalScore: number;
+}
+
+// Advanced Viral Score Algorithm (like Instagram/Reddit)
+function calculateViralityScore(post: CommunityPost): number {
+  // Virality = Combined engagement metrics weighted by importance
+  const totalEngagement = post.like_count + (post.comment_count * 2);
+  
+  // Engagement ratio = total engagement per day
+  const ageInHours = (new Date().getTime() - new Date(post.created_at).getTime()) / (1000 * 60 * 60);
+  const ageInDays = Math.max(0.1, ageInHours / 24); // Min 0.1 days to avoid division issues
+  
+  // Posts that get engagement quickly are viral
+  const engagementPerDay = totalEngagement / ageInDays;
+  
+  // Sigmoid function to normalize viral score (0-100)
+  const viralScore = (Math.tanh(engagementPerDay / 10) + 1) * 50;
+  
+  return Math.min(100, viralScore);
+}
+
+// Engagement Velocity Score (how fast engagement is growing)
+function calculateVelocityScore(post: CommunityPost): number {
+  const now = new Date();
+  const postDate = new Date(post.created_at);
+  const ageMs = now.getTime() - postDate.getTime();
+  const ageHours = ageMs / (1000 * 60 * 60);
+  
+  // Recent posts (< 1 hour) get +30 bonus
+  if (ageHours < 1) return 30;
+  // Quick movers (< 6 hours) get +20 bonus
+  if (ageHours < 6) return 20;
+  // Day-old posts get +10 bonus if still getting engagement
+  if (ageHours < 24) return (post.like_count + post.comment_count > 5) ? 10 : 0;
+  
+  return 0;
+}
+
+// Quality Score based on comment depth and discussion
+function calculateQualityScore(post: CommunityPost): number {
+  // More comments = deeper discussion = higher quality
+  const commentBonus = Math.min(50, post.comment_count * 2);
+  
+  // Like to comment ratio (healthy discussion = ~1:3 ratio)
+  const likeCommentRatio = post.comment_count > 0
+    ? post.like_count / post.comment_count
+    : post.like_count; // If no comments, use likes as base
+  
+  // Ideal ratio is 2:1 (2 likes per comment). Pages reward discussions.
+  const ratioPenaline = Math.abs(likeCommentRatio - 2) > 5 ? -10 : 0;
+  
+  return Math.max(0, commentBonus + ratioPenaline);
+}
+
+// Freshness Score: newer = better (but not too new = suspicious)
+function calculateFreshnessScore(post: CommunityPost): number {
+  const now = new Date();
+  const postDate = new Date(post.created_at);
+  const ageMs = now.getTime() - postDate.getTime();
+  const ageHours = ageMs / (1000 * 60 * 60);
+  
+  if (ageHours < 2) return 40; // Super fresh
+  if (ageHours < 6) return 35;
+  if (ageHours < 24) return 25;
+  if (ageHours < 72) return 15;
+  
+  return 5; // Old posts still get minor boost
+}
+
+// Main Algorithm: Combines all signals into one score
+function calculateFinalScore(post: CommunityPost): number {
+  const virality = calculateViralityScore(post);
+  const velocity = calculateVelocityScore(post);
+  const quality = calculateQualityScore(post);
+  const freshness = calculateFreshnessScore(post);
+  
+  // Weighted average:
+  // - Virality: 40% (most important - shows what's trending)
+  // - Quality: 30% (discussions matter)
+  // - Velocity: 20% (momentum matters)
+  // - Freshness: 10% (keep some old content visible)
+  
+  const finalScore = (
+    (virality * 0.40) +
+    (quality * 0.30) +
+    (velocity * 0.20) +
+    (freshness * 0.10)
+  );
+  
+  return Math.min(100, Math.max(0, finalScore));
 }
 
 function calculateEngagementScore(post: CommunityPost): number {
-  // Algorithm: upvotes contribute positively, encourage interaction
-  // Posts with high engagement bubble up to the top
-  const likeWeight = post.like_count * 2; // Each like counts as 2 points
-  const commentWeight = post.comment_count * 1.5; // Each comment counts as 1.5 points
-  const recencyBonus = Math.max(0, 10 - daysSince(post.created_at)); // Newer posts get bonus
-  
-  return likeWeight + commentWeight + recencyBonus;
+  // Simple metric for display
+  return post.like_count + (post.comment_count * 1.5);
 }
 
 function daysSince(dateStr: string): number {
@@ -88,11 +177,16 @@ export default function DiscoveryPage() {
       getPublicMemberToken() ? getPublicMemberMe().catch(() => null) : Promise.resolve(null),
     ])
       .then(([items, viewerData]) => {
-        // Score and sort posts
+        // Score posts with advanced algorithm
         const scored = items.map((post) => ({
           ...post,
-          score: calculateEngagementScore(post),
-          engagement: post.like_count + post.comment_count,
+          score: calculateFinalScore(post),
+          engagement: calculateEngagementScore(post),
+          viralityScore: calculateViralityScore(post),
+          velocityScore: calculateVelocityScore(post),
+          qualityScore: calculateQualityScore(post),
+          freshnessScore: calculateFreshnessScore(post),
+          finalScore: calculateFinalScore(post),
         }));
 
         setPosts(scored);
@@ -120,11 +214,15 @@ export default function DiscoveryPage() {
     return filtered.sort((a, b) => {
       switch (sortBy) {
         case "trending":
-          return b.score - a.score; // Highest engagement score first
+          // Trending = What's hot RIGHT NOW (Virality + Velocity)
+          const trendingScoreA = a.viralityScore * 0.6 + a.velocityScore * 0.4;
+          const trendingScoreB = b.viralityScore * 0.6 + b.velocityScore * 0.4;
+          return trendingScoreB - trendingScoreA;
         case "recent":
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // Newest first
         case "popular":
-          return b.like_count - a.like_count; // Most likes first
+          // Popular = All-time engagement quality (final score)
+          return b.finalScore - a.finalScore;
         default:
           return 0;
       }
@@ -138,39 +236,54 @@ export default function DiscoveryPage() {
     }
     setBusyPostId(post.public_id);
     try {
-      if (post.liked_by_me) {
+        // Unlike handler
         await unlikeCommunityPost(post.public_id);
         setPosts((current) =>
           current.map((item) =>
             item.public_id === post.public_id
-              ? {
-                  ...item,
-                  liked_by_me: false,
-                  like_count: Math.max(0, item.like_count - 1),
-                  score: calculateEngagementScore({
+              ? (() => {
+                  const updated = {
                     ...item,
+                    liked_by_me: false,
                     like_count: Math.max(0, item.like_count - 1),
-                  }),
-                  engagement: item.like_count - 1 + item.comment_count,
-                }
+                  };
+                  return {
+                    ...updated,
+                    score: calculateFinalScore(updated),
+                    engagement: calculateEngagementScore(updated),
+                    viralityScore: calculateViralityScore(updated),
+                    velocityScore: calculateVelocityScore(updated),
+                    qualityScore: calculateQualityScore(updated),
+                    freshnessScore: calculateFreshnessScore(updated),
+                    finalScore: calculateFinalScore(updated),
+                  };
+                })()
               : item
           )
         );
       } else {
+        // Like handler
         await likeCommunityPost(post.public_id);
         setPosts((current) =>
           current.map((item) =>
             item.public_id === post.public_id
-              ? {
-                  ...item,
-                  liked_by_me: true,
-                  like_count: item.like_count + 1,
-                  score: calculateEngagementScore({
+              ? (() => {
+                  const updated = {
                     ...item,
+                    liked_by_me: true,
                     like_count: item.like_count + 1,
-                  }),
-                  engagement: item.like_count + 1 + item.comment_count,
-                }
+                  };
+                  return {
+                    ...updated,
+                    score: calculateFinalScore(updated),
+                    engagement: calculateEngagementScore(updated),
+                    viralityScore: calculateViralityScore(updated),
+                    velocityScore: calculateVelocityScore(updated),
+                    qualityScore: calculateQualityScore(updated),
+                    freshnessScore: calculateFreshnessScore(updated),
+                    finalScore: calculateFinalScore(updated),
+                  };
+                })()
               : item
           )
         );
@@ -280,14 +393,37 @@ export default function DiscoveryPage() {
               </p>
 
               {/* Engagement Stats */}
-              <div className="mb-4 flex flex-wrap gap-3 border-t border-slate-100 pt-3 text-xs">
-                <div className="flex items-center gap-1 text-slate-600">
-                  <span className="font-semibold text-blue-600">👍 {formatNumber(post.like_count)}</span>
-                  <span>beğeni</span>
+              <div className="mb-4 flex flex-col gap-3 border-t border-slate-100 pt-3">
+                {/* Main Metrics Row */}
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <div className="flex items-center gap-1 text-slate-600">
+                    <span className="font-semibold text-blue-600">👍 {formatNumber(post.like_count)}</span>
+                    <span>beğeni</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-600">
+                    <span className="font-semibold text-emerald-600">💬 {formatNumber(post.comment_count)}</span>
+                    <span>yorum</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-slate-600">
-                  <span className="font-semibold text-emerald-600">💬 {formatNumber(post.comment_count)}</span>
-                  <span>yorum</span>
+
+                {/* Algorithm Scores (subtle) */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded bg-slate-50 px-2 py-1.5">
+                    <div className="font-bold text-slate-700">{Math.round(post.viralityScore)}</div>
+                    <div className="text-slate-500">Viral 🔥</div>
+                  </div>
+                  <div className="rounded bg-slate-50 px-2 py-1.5">
+                    <div className="font-bold text-slate-700">{Math.round(post.qualityScore)}</div>
+                    <div className="text-slate-500">Kalite ✨</div>
+                  </div>
+                  <div className="rounded bg-slate-50 px-2 py-1.5">
+                    <div className="font-bold text-slate-700">{Math.round(post.velocityScore)}</div>
+                    <div className="text-slate-500">Hız ⚡</div>
+                  </div>
+                  <div className="rounded bg-slate-50 px-2 py-1.5">
+                    <div className="font-bold text-slate-700">{Math.round(post.freshnessScore)}</div>
+                    <div className="text-slate-500">Taze 🌟</div>
+                  </div>
                 </div>
               </div>
 
