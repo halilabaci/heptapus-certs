@@ -66,7 +66,7 @@ export default function CreatePostPage() {
     setError(null);
 
     try {
-      await createPublicFeedPost({ body: body.trim() });
+      await createPublicFeedPost(body.trim());
       setSuccess(true);
       
       // Yönlendirme
