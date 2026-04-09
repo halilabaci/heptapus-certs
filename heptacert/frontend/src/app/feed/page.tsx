@@ -160,7 +160,7 @@ export default function PublicFeedPage() {
       <div className="mt-8">
         {viewer ? (
           <CreatePostForm
-            userAvatar={viewer.avatar_url}
+            userAvatar={viewer.avatar_url || undefined}
             placeholder={copy.composerPlaceholder}
             isSubmitting={publishing}
             onSubmit={handleCreatePost}
@@ -192,7 +192,7 @@ export default function PublicFeedPage() {
                 commentCount={post.comment_count}
                 upvoteCount={post.like_count}
                 downvoteCount={0}
-                userVote={post.liked_by_me ? "up" : undefined}
+                userVote={post.liked_by_me ? "upvote" : undefined}
                 onUpvote={() => void handleToggleLike(post)}
                 onDownvote={() => {}}
                 onCommentClick={() => void loadComments(post.public_id)}
@@ -212,7 +212,15 @@ export default function PublicFeedPage() {
               {commentsByPost[post.public_id]?.length > 0 && (
                 <div className="ml-4 space-y-3">
                   <CommentTree
-                    comments={commentsByPost[post.public_id] || []}
+                    comments={(commentsByPost[post.public_id] || []).map((c) => ({
+                      id: String(c.id),
+                      authorName: c.member_name,
+                      body: c.body,
+                      timestamp: formatTimestamp(c.created_at, lang),
+                      upvoteCount: 0,
+                      downvoteCount: 0,
+                      parentCommentId: undefined,
+                    }))}
                     maxDepth={3}
                     onUpvote={() => {}}
                     onDownvote={() => {}}
@@ -226,6 +234,7 @@ export default function PublicFeedPage() {
                 <div className="ml-4">
                   <ReplyForm
                     onSubmit={(body) => handleComment(post.public_id, body)}
+                    onCancel={() => {}}
                     isSubmitting={busyPostId === post.public_id}
                     placeholder="Yanıt ekle..."
                   />

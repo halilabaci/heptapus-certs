@@ -236,6 +236,7 @@ export default function DiscoveryPage() {
     }
     setBusyPostId(post.public_id);
     try {
+      if (post.liked_by_me) {
         // Unlike handler
         await unlikeCommunityPost(post.public_id);
         setPosts((current) =>

@@ -57,6 +57,12 @@ export default function MembersDirectoryPage() {
     sortByEvents: "By Events",
   }, [lang]);
 
+  const sortLabelMap = {
+    name: copy.sortByName,
+    active: copy.sortByActive,
+    events: copy.sortByEvents,
+  };
+
   useEffect(() => {
     const loadMembers = async () => {
       try {
@@ -200,7 +206,7 @@ export default function MembersDirectoryPage() {
                     : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                 }`}
               >
-                {copy[`sortBy${option.charAt(0).toUpperCase() + option.slice(1)}`]}
+                {sortLabelMap[option]}
               </button>
             ))}
           </div>
