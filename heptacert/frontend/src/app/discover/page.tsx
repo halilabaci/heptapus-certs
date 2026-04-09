@@ -473,6 +473,7 @@ export default function DiscoveryPage() {
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* CTA Button */}
               {viewer && (
