@@ -345,7 +345,7 @@ export default function PublicEventDetailClient() {
                 href={`/events/${event.public_id}/status`}
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-blue-200 bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 transition duration-300"
               >
-                ✓ {copy.status}
+                ✓ View Status
               </Link>
             </div>
           </div>
