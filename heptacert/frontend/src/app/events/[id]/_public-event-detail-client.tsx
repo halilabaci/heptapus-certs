@@ -591,63 +591,7 @@ export default function PublicEventDetailClient() {
     </div>
   );
 }
-              event.sessions.map((session, index) => (
-                <div key={session.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    {copy.sessionLabel} {index + 1}
-                  </div>
-                  <div className="mt-2 text-lg font-bold text-slate-900">{session.name}</div>
-                  <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-600">
-                    <span className="inline-flex items-center gap-2">
-                      <CalendarDays className="h-4 w-4 text-brand-500" />
-                      {formatDate(session.session_date, lang)}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Clock3 className="h-4 w-4 text-brand-500" />
-                      {session.session_start || "-"}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-brand-500" />
-                      {session.session_location || "-"}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
 
-        <div className="card p-6">
-          <h2 className="text-2xl font-bold text-slate-950">{copy.customFields}</h2>
-          <div className="mt-5 space-y-3">
-            {event.registration_fields.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                {copy.defaultFields}
-              </div>
-            ) : (
-              event.registration_fields.map((field) => (
-                <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{field.label}</p>
-                      <p className="mt-1 text-xs text-slate-500">{field.helper_text || copy.defaultHelper}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600">
-                        {copy.fieldType}: {field.type}
-                      </span>
-                      {field.required ? (
-                        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-semibold text-rose-600">
-                          {copy.required}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
       </section>
 
       <section className="card p-6 sm:p-8">
