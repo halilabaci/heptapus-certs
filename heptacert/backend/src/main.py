@@ -11737,6 +11737,8 @@ async def export_attendance(
     
     # Build data for export
     data = []
+    all_answer_keys = set()  # Track all registration answer keys
+    
     for a in attendees:
         # Get session count
         cnt_res = await db.execute(
@@ -11754,7 +11756,7 @@ async def export_attendance(
         )
         has_certificate = cert_res.scalar_one_or_none() is not None
         
-        data.append({
+        row_data = {
             "İsim": a.name,
             "Email": a.email,
             "Kayıt Tarihi": a.registered_at.isoformat() if a.registered_at else "",
@@ -11763,7 +11765,15 @@ async def export_attendance(
             "Kaynak": a.source or "",
             "Kamu Üye": a.public_member.display_name if a.public_member else "",
             "Kamu Email": a.public_member.email if a.public_member else "",
-        })
+        }
+        
+        # Add registration answers as individual columns
+        if a.registration_answers:
+            for key, value in a.registration_answers.items():
+                all_answer_keys.add(key)
+                row_data[key] = str(value) if value is not None else ""
+        
+        data.append(row_data)
     
     if fmt == "xlsx":
         try:
@@ -11775,7 +11785,11 @@ async def export_attendance(
         ws = wb.active
         ws.title = "Katılımcılar"
         
-        columns = list(data[0].keys()) if data else ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        # Build columns: base columns + dynamic answer keys
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
         ws.append(columns)
         
         for row in data:
@@ -11805,7 +11819,10 @@ async def export_attendance(
     else:
         # CSV export
         buf = io.StringIO()
-        columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
         writer = csv.DictWriter(buf, fieldnames=columns)
         writer.writeheader()
         
