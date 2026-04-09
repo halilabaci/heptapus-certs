@@ -1191,7 +1191,7 @@ class TestCommunitySocialFlows:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             resp = await ac.get(
-                "/api/admin/events/1/attendance",
+                f"/api/admin/events/{event.id}/attendance",
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
         

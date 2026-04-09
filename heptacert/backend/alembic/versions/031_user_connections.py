@@ -1,7 +1,7 @@
 """Add user connections system (LinkedIn-style)
 
-Revision ID: 021_user_connections
-Revises: 020_comment_nesting
+Revision ID: 031_user_connections
+Revises: 030_mem_subs
 Create Date: 2026-04-09 10:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '021_user_connections'
-down_revision = '020_comment_nesting'
+revision = '031_user_connections'
+down_revision = '030_mem_subs'
 branch_labels = None
 depends_on = None
 
