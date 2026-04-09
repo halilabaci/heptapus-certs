@@ -12250,6 +12250,61 @@ async def delete_attendee(
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Attendance matrix & manual check-in Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
+@app.post(
+    "/api/admin/events/{event_id}/sessions/{session_id}/checkin",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def admin_manual_checkin(
+    event_id: int,
+    session_id: int,
+    payload: CheckinIn,
+    request: Request,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_for_admin(event_id, me, db)
+
+    session_res = await db.execute(
+        select(EventSession).where(EventSession.id == session_id, EventSession.event_id == event_id)
+    )
+    session = session_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Oturum bulunamadı")
+
+    email = payload.email.strip().lower()
+    attendee_res = await db.execute(
+        select(Attendee).where(
+            Attendee.event_id == event_id,
+            func.lower(Attendee.email) == email,
+        )
+    )
+    attendee = attendee_res.scalar_one_or_none()
+    if not attendee:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu e-posta ile etkinlikte kayıtlı katılımcı bulunamadı.",
+        )
+
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    insert_stmt = (
+        _pg_insert(AttendanceRecord.__table__)
+        .values(
+            attendee_id=attendee.id,
+            session_id=session_id,
+            ip_address=ip,
+        )
+        .on_conflict_do_nothing(index_elements=["attendee_id", "session_id"])
+        .returning(AttendanceRecord.id)
+    )
+    inserted_res = await db.execute(insert_stmt)
+    inserted_id = inserted_res.scalar_one_or_none()
+    await db.commit()
+
+    if inserted_id is None:
+        return {"ok": False, "message": "Bu katılımcı bu oturum için zaten check-in yapılmış."}
+
+    return {"ok": True, "message": f"Check-in başarılı: {attendee.name}"}
+
 async def _get_raffle_for_admin(
     event_id: int,
     raffle_id: int,
