@@ -169,7 +169,7 @@ export function ConnectionsClient() {
                     <div
                       className="flex-1 cursor-pointer"
                       onClick={() =>
-                        router.push(`/community/profile/${follower.public_id}`)
+                        router.push(`/member/${follower.public_id}`)
                       }
                     >
                       <div className="flex items-center gap-3">
@@ -217,9 +217,7 @@ export function ConnectionsClient() {
                     <div
                       className="flex-1 cursor-pointer"
                       onClick={() =>
-                        router.push(
-                          `/community/profile/${followedMember.public_id}`
-                        )
+                        router.push(`/member/${followedMember.public_id}`)
                       }
                     >
                       <div className="flex items-center gap-3">

@@ -26,7 +26,11 @@ type WaitlistModalProps = {
   onClose: () => void;
 };
 
-export default function PricingPage() {
+type PricingClientProps = {
+  mode?: "all" | "member" | "business";
+};
+
+export default function PricingPage({ mode = "all" }: PricingClientProps) {
   const { lang } = useI18n();
   const t = useT();
 
@@ -110,6 +114,9 @@ export default function PricingPage() {
     memberCta: "Manage from my membership"
   };
 
+  const showMemberSection = mode !== "business";
+  const showBusinessSection = mode !== "member";
+
   return (
     <div className="flex flex-col gap-16 pb-24 pt-12 bg-slate-50 min-h-screen">
 
@@ -131,6 +138,7 @@ export default function PricingPage() {
         </motion.div>
       </section>
 
+      {showMemberSection && (
       <section id="member-premium" className="mx-auto w-full max-w-6xl px-6 lg:px-8">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
@@ -182,8 +190,10 @@ export default function PricingPage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* PRICING SECTION */}
+      {showBusinessSection && (
       <section className="mx-auto w-full max-w-7xl px-6 lg:px-8">
         {loading ? (
           <div className="flex justify-center py-20">
@@ -313,8 +323,10 @@ export default function PricingPage() {
           </>
         )}
       </section>
+      )}
 
       {/* FAQ SECTION */}
+      {showBusinessSection && (
       <motion.section initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mx-auto mt-12 w-full max-w-3xl px-6 lg:px-8">
         <div className="mb-10 text-center">
           <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">{copy.faqTitle}</h2>
@@ -333,6 +345,7 @@ export default function PricingPage() {
           ))}
         </div>
       </motion.section>
+      )}
 
       {/* MODAL */}
       {wlTier && <WaitlistModal tier={wlTier} lang={lang} onClose={() => setWlTier(null)} />}

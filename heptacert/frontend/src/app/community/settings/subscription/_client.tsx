@@ -24,6 +24,8 @@ export default function SubscriptionSettingsClient() {
     planDetails: lang === "tr" ? "Plan Detayları" : "Plan Details",
     renewalDate: lang === "tr" ? "Yenileme Tarihi" : "Renewal Date",
     changePlan: lang === "tr" ? "Planı Değiştir" : "Change Plan",
+    changePlanDisabled:
+      lang === "tr" ? "Plan değişikliği geçici olarak kapalı" : "Plan changes are temporarily disabled",
     manageBilling: lang === "tr" ? "Faturalamayı Yönet" : "Manage Billing",
     cancelPlan: lang === "tr" ? "Planı İptal Et" : "Cancel Plan",
     freePlan: lang === "tr" ? "Ücretsiz Plan" : "Free Plan",
@@ -124,8 +126,8 @@ export default function SubscriptionSettingsClient() {
               >
                 {copy.loginButton} <ArrowRight className="w-4 h-4" />
               </Link>
-              <Link
-                href="/community/pricing"
+                <Link
+                  href="/pricing/member"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-600 transition"
               >
                 {copy.goToPricing}
@@ -226,12 +228,13 @@ export default function SubscriptionSettingsClient() {
 
             {/* Actions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Link
-                href="/community/pricing"
-                className="flex items-center justify-center gap-2 px-6 py-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium transition border border-slate-700"
+              <button
+                className="flex items-center justify-center gap-2 px-6 py-4 rounded-lg bg-slate-800 text-slate-400 font-medium transition border border-slate-700 cursor-not-allowed opacity-60"
+                disabled
+                title={copy.changePlanDisabled}
               >
-                {copy.changePlan} <ArrowRight className="w-4 h-4" />
-              </Link>
+                {copy.changePlan}
+              </button>
 
               <button
                 className="flex items-center justify-center gap-2 px-6 py-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 font-medium transition border border-slate-700 cursor-not-allowed opacity-60"

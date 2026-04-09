@@ -89,7 +89,7 @@ export default function SubscriptionGate({ requiredPlan, children, fallback = 'p
       
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
         <Link
-          href="/pricing#member-premium"
+          href="/pricing/member"
           className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-700"
         >
           <Sparkles className="h-4 w-4" />

@@ -49,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .moderation import moderate_public_text
 from .main import (
+    AuditLog,
     CommunityPost,
     CommunityPostComment,
     CommunityPostCommentOut,
@@ -79,6 +80,17 @@ class CommunityPostCreateIn(BaseModel):
 
 class CommunityCommentCreateIn(BaseModel):
     body: str = Field(min_length=2, max_length=800)
+
+
+class CommunityPostUpdateIn(BaseModel):
+    body: str = Field(min_length=2, max_length=1500)
+
+
+class CommunityPostEditHistoryOut(BaseModel):
+    old_body: str
+    new_body: str
+    edited_at: str
+    edited_by_member_public_id: str
 
 
 async def _load_community_enabled_user_ids(db: AsyncSession, user_ids: list[int]) -> set[int]:
@@ -185,6 +197,14 @@ async def _resolve_post(db: AsyncSession, post_public_id: str) -> tuple[Communit
     if org.user_id not in enabled_user_ids:
         raise HTTPException(status_code=404, detail="Post not found.")
     return post, org
+
+
+def _assert_member_post_owner(post: CommunityPost, member: CurrentPublicMember) -> None:
+    """Only the original public member author can mutate a post."""
+    if post.author_public_member_id is None:
+        raise HTTPException(status_code=403, detail="Only member-authored posts can be changed from this endpoint.")
+    if post.author_public_member_id != member.id:
+        raise HTTPException(status_code=403, detail="You can only change your own posts.")
 
 
 async def _serialize_posts(
@@ -446,6 +466,109 @@ async def unlike_community_post(
         await db.delete(existing)
         await db.commit()
     return {"ok": True}
+
+
+@router.patch("/api/public/posts/{post_public_id}", response_model=CommunityPostOut)
+@limiter.limit("12/hour")
+async def update_public_member_post(
+    request: Request,
+    post_public_id: str,
+    payload: CommunityPostUpdateIn,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    post, org = await _resolve_post(db, post_public_id)
+    _assert_member_post_owner(post, member)
+
+    new_body = moderate_public_text(payload.body)
+    old_body = post.body
+    if old_body.strip() == new_body.strip():
+        org_map = {org.id: org} if org else {}
+        items = await _serialize_posts(db, [post], org_map, member)
+        return items[0]
+
+    post.body = new_body
+    db.add(
+        AuditLog(
+            user_id=None,
+            action="community_post_edited",
+            resource_type="community_post",
+            resource_id=post.public_id,
+            extra={
+                "old_body": old_body,
+                "new_body": new_body,
+                "edited_by_member_public_id": member.public_id,
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(post)
+
+    org_map = {org.id: org} if org else {}
+    items = await _serialize_posts(db, [post], org_map, member)
+    return items[0]
+
+
+@router.delete("/api/public/posts/{post_public_id}")
+@limiter.limit("30/hour")
+async def delete_public_member_post(
+    request: Request,
+    post_public_id: str,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    post, _org = await _resolve_post(db, post_public_id)
+    _assert_member_post_owner(post, member)
+
+    post.status = "hidden"
+    db.add(
+        AuditLog(
+            user_id=None,
+            action="community_post_deleted",
+            resource_type="community_post",
+            resource_id=post.public_id,
+            extra={"deleted_by_member_public_id": member.public_id},
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/api/public/posts/{post_public_id}/history", response_model=list[CommunityPostEditHistoryOut])
+async def list_public_post_edit_history(
+    post_public_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    _post, _org = await _resolve_post(db, post_public_id)
+    rows = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.resource_type == "community_post",
+            AuditLog.resource_id == post_public_id,
+            AuditLog.action == "community_post_edited",
+        )
+        .order_by(AuditLog.created_at.desc())
+    )
+
+    items: list[CommunityPostEditHistoryOut] = []
+    for row in rows.scalars().all():
+        extra = row.extra or {}
+        if not isinstance(extra, dict):
+            continue
+        old_body = str(extra.get("old_body") or "")
+        new_body = str(extra.get("new_body") or "")
+        edited_by = str(extra.get("edited_by_member_public_id") or "")
+        if not old_body and not new_body:
+            continue
+        items.append(
+            CommunityPostEditHistoryOut(
+                old_body=old_body,
+                new_body=new_body,
+                edited_at=row.created_at.isoformat() if row.created_at else "",
+                edited_by_member_public_id=edited_by,
+            )
+        )
+    return items
 
 
 @router.get("/api/public/posts/{post_public_id}/comments", response_model=list[CommunityPostCommentOut])

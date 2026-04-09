@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import CommunityPricingClient from "./_client";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Community Pricing - HeptaCert",
@@ -14,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function CommunityPricingPage() {
-  return <CommunityPricingClient />;
+  redirect("/pricing/member");
 }

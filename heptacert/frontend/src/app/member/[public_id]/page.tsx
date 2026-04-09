@@ -17,11 +17,17 @@ import {
   listPublicFeed,
   getPublicMemberMe,
   getPublicMemberToken,
+  getConnectionStats,
+  getMemberFollowers,
+  getMemberFollowing,
   type PublicMemberProfile,
   type CommunityPost,
   type PublicMemberMe,
+  type ConnectionStats,
+  type ConnectionMemberInfo,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { FollowButton } from "@/components/FollowButton";
 
 interface RecommendedMember {
   public_id: string;
@@ -72,6 +78,11 @@ export default function PublicMemberProfilePage() {
   const [member, setMember] = useState<PublicMemberProfile | null>(null);
   const [recommended, setRecommended] = useState<RecommendedMember[]>([]);
   const [viewer, setViewer] = useState<PublicMemberMe | null>(null);
+  const [connectionStats, setConnectionStats] = useState<ConnectionStats | null>(null);
+  const [followers, setFollowers] = useState<ConnectionMemberInfo[]>([]);
+  const [following, setFollowing] = useState<ConnectionMemberInfo[]>([]);
+  const [hideFollowersList, setHideFollowersList] = useState(false);
+  const [hideFollowingList, setHideFollowingList] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +102,10 @@ export default function PublicMemberProfilePage() {
             visitWebsite: "Web Sitesi",
             contact: "İletişim",
             viewProfile: "Profili İncele",
+            followers: "Takipçiler",
+            following: "Takip Edilenler",
+            hiddenFollowers: "Bu kullanıcı takipçi listesini gizliyor.",
+            hiddenFollowing: "Bu kullanıcı takip ettiklerini gizliyor.",
           }
         : {
             back: "Back",
@@ -105,6 +120,10 @@ export default function PublicMemberProfilePage() {
             visitWebsite: "Visit Website",
             contact: "Contact",
             viewProfile: "View Profile",
+            followers: "Followers",
+            following: "Following",
+            hiddenFollowers: "This member hides their followers list.",
+            hiddenFollowing: "This member hides who they follow.",
           },
     [lang]
   );
@@ -124,7 +143,7 @@ export default function PublicMemberProfilePage() {
       listPublicFeed({ limit: 50 }),
       getPublicMemberToken() ? getPublicMemberMe().catch(() => null) : Promise.resolve(null),
     ])
-      .then(([memberData, postsData, viewerData]) => {
+      .then(async ([memberData, postsData, viewerData]) => {
         setMember(memberData);
         setViewer(viewerData);
         const recommended = getRecommendedMembers(
@@ -133,6 +152,33 @@ export default function PublicMemberProfilePage() {
           viewerData?.public_id
         );
         setRecommended(recommended);
+
+        try {
+          const stats = await getConnectionStats(memberData.public_id);
+          setConnectionStats(stats);
+
+          if (!stats.hide_followers || viewerData?.public_id === memberData.public_id) {
+            const data = await getMemberFollowers(memberData.public_id, 6);
+            setFollowers(data);
+            setHideFollowersList(false);
+          } else {
+            setFollowers([]);
+            setHideFollowersList(true);
+          }
+
+          if (!stats.hide_following || viewerData?.public_id === memberData.public_id) {
+            const data = await getMemberFollowing(memberData.public_id, 6);
+            setFollowing(data);
+            setHideFollowingList(false);
+          } else {
+            setFollowing([]);
+            setHideFollowingList(true);
+          }
+        } catch {
+          setConnectionStats(null);
+          setFollowers([]);
+          setFollowing([]);
+        }
       })
       .catch((err: any) => setError(err?.message || copy.error))
       .finally(() => setLoading(false));
@@ -206,8 +252,6 @@ export default function PublicMemberProfilePage() {
                     </span>
                   </div>
                 )}
-                {/* Subtle Status Indicator */}
-                <div className="absolute bottom-2 right-2 h-4 w-4 rounded-full bg-emerald-500 border-2 border-white" title="Active" />
               </div>
 
               {/* Info Section */}
@@ -254,10 +298,21 @@ export default function PublicMemberProfilePage() {
                       {copy.comments}
                     </span>
                   </div>
+                  <div className="flex flex-col justify-center rounded-xl bg-gray-50 px-5 py-3 border border-gray-100 min-w-[120px]">
+                    <span className="text-2xl font-bold text-slate-800">{connectionStats?.follower_count ?? 0}</span>
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mt-0.5">{copy.followers}</span>
+                  </div>
+                  <div className="flex flex-col justify-center rounded-xl bg-gray-50 px-5 py-3 border border-gray-100 min-w-[120px]">
+                    <span className="text-2xl font-bold text-slate-800">{connectionStats?.following_count ?? 0}</span>
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mt-0.5">{copy.following}</span>
+                  </div>
                 </div>
 
                 {/* Action Buttons - Minimalist */}
                 <div className="flex flex-wrap gap-3">
+                  {viewer && viewer.public_id !== member.public_id ? (
+                    <FollowButton memberId={member.public_id} isFollowing={!!connectionStats?.is_following} />
+                  ) : null}
                   <a
                     href={`https://heptapusgroup.com/contact?member=${member.display_name}`}
                     target="_blank"
@@ -282,6 +337,53 @@ export default function PublicMemberProfilePage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Recommended Members Section */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-10">
+          <section className="rounded-xl border border-gray-200 bg-white p-5">
+            <h2 className="mb-3 text-lg font-bold text-gray-900">{copy.followers}</h2>
+            {hideFollowersList ? (
+              <p className="text-sm text-gray-500">{copy.hiddenFollowers}</p>
+            ) : followers.length === 0 ? (
+              <p className="text-sm text-gray-500">-</p>
+            ) : (
+              <div className="space-y-3">
+                {followers.map((f) => (
+                  <Link key={f.public_id} href={`/member/${f.public_id}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-gray-50">
+                    <div className="h-9 w-9 rounded-full bg-slate-100 border border-gray-100 overflow-hidden flex items-center justify-center">
+                      {f.avatar_url ? <img src={f.avatar_url} alt={f.display_name} className="h-full w-full object-cover" /> : <span className="text-xs font-semibold text-slate-500">{f.display_name.charAt(0).toUpperCase()}</span>}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{f.display_name}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-5">
+            <h2 className="mb-3 text-lg font-bold text-gray-900">{copy.following}</h2>
+            {hideFollowingList ? (
+              <p className="text-sm text-gray-500">{copy.hiddenFollowing}</p>
+            ) : following.length === 0 ? (
+              <p className="text-sm text-gray-500">-</p>
+            ) : (
+              <div className="space-y-3">
+                {following.map((f) => (
+                  <Link key={f.public_id} href={`/member/${f.public_id}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-gray-50">
+                    <div className="h-9 w-9 rounded-full bg-slate-100 border border-gray-100 overflow-hidden flex items-center justify-center">
+                      {f.avatar_url ? <img src={f.avatar_url} alt={f.display_name} className="h-full w-full object-cover" /> : <span className="text-xs font-semibold text-slate-500">{f.display_name.charAt(0).toUpperCase()}</span>}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{f.display_name}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Recommended Members Section */}

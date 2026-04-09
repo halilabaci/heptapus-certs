@@ -9,6 +9,10 @@ import {
   Heart,
   MessageCircle,
   Send,
+  Pencil,
+  Trash2,
+  History,
+  X,
 } from "lucide-react";
 import {
   listPublicFeed,
@@ -18,8 +22,12 @@ import {
   unlikeCommunityPost,
   listCommunityPostComments,
   createCommunityPostComment,
+  updateCommunityPost,
+  deleteCommunityPost,
+  listCommunityPostEditHistory,
   type CommunityPost,
   type CommunityPostComment,
+  type CommunityPostEditHistoryItem,
   type PublicMemberMe,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -59,6 +67,13 @@ export default function PostDetailPage() {
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [busyLike, setBusyLike] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingPost, setDeletingPost] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [editHistory, setEditHistory] = useState<CommunityPostEditHistoryItem[]>([]);
 
   const copy = {
     back: lang === "tr" ? "Geri" : "Back",
@@ -68,7 +83,16 @@ export default function PostDetailPage() {
     commentPlaceholder: lang === "tr" ? "Yorumunu yaz..." : "Write a comment...",
     send: lang === "tr" ? "Gönder" : "Send",
     loginRequired: lang === "tr" ? "Yorum yapmak için giriş yapın" : "Sign in to comment",
+    edit: lang === "tr" ? "Düzenle" : "Edit",
+    delete: lang === "tr" ? "Sil" : "Delete",
+    save: lang === "tr" ? "Kaydet" : "Save",
+    cancel: lang === "tr" ? "İptal" : "Cancel",
+    editHistory: lang === "tr" ? "Düzenleme Geçmişi" : "Edit History",
+    deleting: lang === "tr" ? "Siliniyor..." : "Deleting...",
+    confirmDelete: lang === "tr" ? "Bu gönderiyi silmek istediğine emin misin?" : "Are you sure you want to delete this post?",
   };
+
+  const isOwner = !!(viewer && post && post.author_type === "member" && post.author_public_id === viewer.public_id);
 
   // Load post and comments
   useEffect(() => {
@@ -178,6 +202,55 @@ export default function PostDetailPage() {
     }
   };
 
+  const handleStartEdit = () => {
+    if (!post) return;
+    setEditText(post.body);
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!post || !editText.trim()) return;
+    setSavingEdit(true);
+    try {
+      const updated = await updateCommunityPost(post.public_id, editText.trim());
+      setPost(updated);
+      setEditing(false);
+    } catch (err: any) {
+      alert(err?.message || (lang === "tr" ? "Gönderi güncellenemedi" : "Failed to update post"));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeletePost = async () => {
+    if (!post) return;
+    if (!window.confirm(copy.confirmDelete)) return;
+    setDeletingPost(true);
+    try {
+      await deleteCommunityPost(post.public_id);
+      window.location.href = "/discover";
+    } catch (err: any) {
+      alert(err?.message || (lang === "tr" ? "Gönderi silinemedi" : "Failed to delete post"));
+      setDeletingPost(false);
+    }
+  };
+
+  const handleToggleHistory = async () => {
+    if (!post) return;
+    const next = !showHistory;
+    setShowHistory(next);
+    if (!next || editHistory.length > 0) return;
+    setHistoryLoading(true);
+    try {
+      const items = await listCommunityPostEditHistory(post.public_id);
+      setEditHistory(items);
+    } catch {
+      setEditHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto min-h-screen max-w-2xl px-4 sm:px-6 py-10">
@@ -255,12 +328,103 @@ export default function PostDetailPage() {
                 <span>{formatTimeAgo(post.created_at, lang)}</span>
               </div>
             </div>
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleHistory}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  {copy.editHistory}
+                </button>
+                {!editing ? (
+                  <button
+                    onClick={handleStartEdit}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    {copy.edit}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    {copy.cancel}
+                  </button>
+                )}
+                <button
+                  onClick={handleDeletePost}
+                  disabled={deletingPost}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deletingPost ? copy.deleting : copy.delete}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Content */}
-          <p className="text-base text-gray-800 leading-relaxed mb-6 whitespace-pre-wrap">
-            {post.body}
-          </p>
+          {editing ? (
+            <div className="mb-6">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={5}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-y"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => setEditing(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-200 transition"
+                >
+                  {copy.cancel}
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={!editText.trim() || savingEdit}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition disabled:opacity-50"
+                >
+                  {savingEdit ? copy.loading : copy.save}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-base text-gray-800 leading-relaxed mb-6 whitespace-pre-wrap">
+              {post.body}
+            </p>
+          )}
+
+          {showHistory && (
+            <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">{copy.editHistory}</h3>
+              {historyLoading ? (
+                <div className="text-sm text-gray-500">{copy.loading}</div>
+              ) : editHistory.length === 0 ? (
+                <div className="text-sm text-gray-500">{lang === "tr" ? "Henüz düzenleme yok" : "No edits yet"}</div>
+              ) : (
+                <div className="space-y-3">
+                  {editHistory.map((item, idx) => (
+                    <div key={`${item.edited_at}-${idx}`} className="rounded-md border border-gray-200 bg-white p-3">
+                      <div className="mb-2 text-xs text-gray-500">{formatTimeAgo(item.edited_at, lang)}</div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div>
+                          <div className="mb-1 text-xs font-semibold text-gray-600">{lang === "tr" ? "Eski" : "Old"}</div>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.old_body}</p>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs font-semibold text-gray-600">{lang === "tr" ? "Yeni" : "New"}</div>
+                          <p className="text-sm text-gray-900 whitespace-pre-wrap">{item.new_body}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Engagement */}
           <div className="flex items-center gap-6 pt-4 border-t border-gray-100">
@@ -322,7 +486,7 @@ export default function PostDetailPage() {
                     onClick={() => setCommentText("")}
                     className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-200 transition"
                   >
-                    {lang === "tr" ? "İptal" : "Cancel"}
+                    {copy.cancel}
                   </button>
                   <button
                     onClick={handleAddComment}

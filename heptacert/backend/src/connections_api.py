@@ -15,9 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .main import (
     CurrentPublicMember,
     PublicMember,
-    SessionLocal,
+    SystemConfig,
     get_current_public_member,
     get_db,
+    get_optional_public_member,
     limiter,
     Base,
 )
@@ -118,6 +119,38 @@ class ConnectionStatsOut(BaseModel):
     following_count: int
     is_following: bool
     is_blocked: bool
+    hide_followers: bool = False
+    hide_following: bool = False
+
+
+class ConnectionPrivacyIn(BaseModel):
+    hide_followers: bool = False
+    hide_following: bool = False
+
+
+class ConnectionPrivacyOut(BaseModel):
+    hide_followers: bool
+    hide_following: bool
+
+
+def _privacy_key(member_public_id: str) -> str:
+    return f"member_privacy:{member_public_id}"
+
+
+async def _get_member_privacy(db: AsyncSession, member_public_id: str) -> ConnectionPrivacyOut:
+    row_res = await db.execute(select(SystemConfig).where(SystemConfig.key == _privacy_key(member_public_id)))
+    row = row_res.scalar_one_or_none()
+    if not row or not isinstance(row.value, dict):
+        return ConnectionPrivacyOut(hide_followers=False, hide_following=False)
+
+    return ConnectionPrivacyOut(
+        hide_followers=bool(row.value.get("hide_followers", False)),
+        hide_following=bool(row.value.get("hide_following", False)),
+    )
+
+
+def _can_view_private_list(target: PublicMember, viewer: Optional[CurrentPublicMember]) -> bool:
+    return bool(viewer and viewer.public_id == target.public_id)
 
 
 # API Endpoints
@@ -132,7 +165,7 @@ async def follow_member(
     """Follow a public member (create connection)."""
     
     # Prevent self-follow
-    if member.id == int(member_public_id):
+    if member.public_id == member_public_id:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
     
     # Get target member
@@ -220,6 +253,7 @@ async def get_member_followers(
     member_public_id: str,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    viewer: Optional[CurrentPublicMember] = Depends(get_optional_public_member),
     db: AsyncSession = Depends(get_db),
 ):
     """Get list of members following a user."""
@@ -231,6 +265,10 @@ async def get_member_followers(
     target = target_res.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    privacy = await _get_member_privacy(db, target.public_id)
+    if privacy.hide_followers and not _can_view_private_list(target, viewer):
+        raise HTTPException(status_code=403, detail="This member hides followers list")
     
     # Get followers
     followers_res = await db.execute(
@@ -256,6 +294,7 @@ async def get_member_following(
     member_public_id: str,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    viewer: Optional[CurrentPublicMember] = Depends(get_optional_public_member),
     db: AsyncSession = Depends(get_db),
 ):
     """Get list of members a user is following."""
@@ -267,6 +306,10 @@ async def get_member_following(
     target = target_res.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    privacy = await _get_member_privacy(db, target.public_id)
+    if privacy.hide_following and not _can_view_private_list(target, viewer):
+        raise HTTPException(status_code=403, detail="This member hides following list")
     
     # Get following
     following_res = await db.execute(
@@ -290,7 +333,7 @@ async def get_member_following(
 async def get_connection_stats(
     request: Request,
     member_public_id: str,
-    member: Optional[CurrentPublicMember] = None,
+    member: Optional[CurrentPublicMember] = Depends(get_optional_public_member),
     db: AsyncSession = Depends(get_db),
 ):
     """Get connection statistics for a member."""
@@ -302,6 +345,9 @@ async def get_connection_stats(
     target = target_res.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    privacy = await _get_member_privacy(db, target.public_id)
+    can_view_private = _can_view_private_list(target, member)
     
     # Count followers
     follower_count_res = await db.execute(
@@ -341,10 +387,12 @@ async def get_connection_stats(
         is_blocked = block_res.scalar_one_or_none() is not None
     
     return ConnectionStatsOut(
-        follower_count=int(follower_count),
-        following_count=int(following_count),
+        follower_count=int(follower_count if (not privacy.hide_followers or can_view_private) else 0),
+        following_count=int(following_count if (not privacy.hide_following or can_view_private) else 0),
         is_following=is_following,
         is_blocked=is_blocked,
+        hide_followers=privacy.hide_followers,
+        hide_following=privacy.hide_following,
     )
 
 
@@ -360,7 +408,7 @@ async def block_member(
     """Block a member (removes all connections and prevents interaction)."""
     
     # Prevent self-block
-    if member.id == int(member_public_id):
+    if member.public_id == member_public_id:
         raise HTTPException(status_code=400, detail="Cannot block yourself")
     
     # Get target member
@@ -433,3 +481,36 @@ async def unblock_member(
         await db.commit()
     
     return {"status": "unblocked"}
+
+
+@router.get("/api/public/members/me/privacy", response_model=ConnectionPrivacyOut)
+async def get_my_connection_privacy(
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _get_member_privacy(db, member.public_id)
+
+
+@router.patch("/api/public/members/me/privacy", response_model=ConnectionPrivacyOut)
+async def update_my_connection_privacy(
+    payload: ConnectionPrivacyIn,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    key = _privacy_key(member.public_id)
+    row_res = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
+    row = row_res.scalar_one_or_none()
+
+    value = {
+        "hide_followers": bool(payload.hide_followers),
+        "hide_following": bool(payload.hide_following),
+    }
+
+    if row is None:
+        row = SystemConfig(key=key, value=value)
+        db.add(row)
+    else:
+        row.value = value
+
+    await db.commit()
+    return ConnectionPrivacyOut(**value)

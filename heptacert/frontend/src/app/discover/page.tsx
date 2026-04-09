@@ -357,14 +357,14 @@ export default function DiscoveryPage() {
         </div>
       )}
 
-      {/* Posts Masonry/Grid */}
+      {/* Posts Feed (single-column scroll) */}
       {!loading && filteredAndSortedPosts.length > 0 && (
-        <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
+        <div className="mx-auto max-w-2xl space-y-4">
           {filteredAndSortedPosts.map((post) => (
             <Link
               key={post.public_id}
               href={`/post/${post.public_id}`}
-              className="block break-inside-avoid bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all"
+              className="block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all"
             >
               <div className="p-5 cursor-pointer">
                 {/* Header: Author */}

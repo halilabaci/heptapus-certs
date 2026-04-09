@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { AlertTriangle, ArrowRight, Camera, Globe, KeyRound, Loader2, MapPin, Save, UserCircle2 } from "lucide-react";
-import { PUBLIC_MEMBER_TOKEN_EVENT, changePublicMemberPassword, clearPublicMemberToken, deletePublicMemberAccount, getPublicMemberMe, getPublicMemberSubscription, updatePublicMemberProfile, uploadPublicMemberAvatar, type PublicMemberSubscriptionInfo } from "@/lib/api";
+import { PUBLIC_MEMBER_TOKEN_EVENT, changePublicMemberPassword, clearPublicMemberToken, deletePublicMemberAccount, getMyConnectionPrivacy, getPublicMemberMe, getPublicMemberSubscription, updateMyConnectionPrivacy, updatePublicMemberProfile, uploadPublicMemberAvatar, type PublicMemberSubscriptionInfo } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import SubscriptionGate from "@/components/SubscriptionGate";
 
@@ -52,6 +52,13 @@ export default function ProfilePage() {
             memberPlanExpires: "Bitiş tarihi",
             memberPlanCta: "Üyelik planlarını incele",
             memberPlanBody: "Topluluk, profil ve sosyal özellikler için üye premium planları kullanabilirsin.",
+            privacyCard: "Takip Gizliliği",
+            hideFollowers: "Takipçilerimi gizle",
+            hideFollowing: "Takip ettiklerimi gizle",
+            privacyHint: "Bu ayarlar açıkken sadece sen takip listelerini görebilirsin.",
+            savePrivacy: "Gizlilik Ayarlarını Kaydet",
+            savingPrivacy: "Kaydediliyor...",
+            privacySuccess: "Takip gizliliği güncellendi.",
           }
         : {
             eyebrow: "Member Profile",
@@ -92,6 +99,13 @@ export default function ProfilePage() {
             memberPlanExpires: "Expiry",
             memberPlanCta: "Explore membership plans",
             memberPlanBody: "Use member premium plans for community, profile, and social features.",
+            privacyCard: "Follow Privacy",
+            hideFollowers: "Hide my followers",
+            hideFollowing: "Hide members I follow",
+            privacyHint: "When enabled, only you can view these lists.",
+            savePrivacy: "Save Privacy Settings",
+            savingPrivacy: "Saving...",
+            privacySuccess: "Connection privacy updated.",
           },
     [lang],
   );
@@ -105,7 +119,10 @@ export default function ProfilePage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [memberSubscription, setMemberSubscription] = useState<PublicMemberSubscriptionInfo | null>(null);
+  const [hideFollowers, setHideFollowers] = useState(false);
+  const [hideFollowing, setHideFollowing] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -156,6 +173,18 @@ export default function ProfilePage() {
       .catch(() => {
         if (!active) return;
         setMemberSubscription(null);
+      });
+
+    getMyConnectionPrivacy()
+      .then((privacy) => {
+        if (!active) return;
+        setHideFollowers(privacy.hide_followers);
+        setHideFollowing(privacy.hide_following);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHideFollowers(false);
+        setHideFollowing(false);
       });
 
     return () => {
@@ -234,6 +263,26 @@ export default function ProfilePage() {
       setError(err?.message || copy.fallback);
     } finally {
       setSavingPassword(false);
+    }
+  }
+
+  async function handlePrivacySubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setProfileMessage(null);
+    setSavingPrivacy(true);
+    try {
+      const updated = await updateMyConnectionPrivacy({
+        hide_followers: hideFollowers,
+        hide_following: hideFollowing,
+      });
+      setHideFollowers(updated.hide_followers);
+      setHideFollowing(updated.hide_following);
+      setProfileMessage(copy.privacySuccess);
+    } catch (err: any) {
+      setError(err?.message || copy.fallback);
+    } finally {
+      setSavingPrivacy(false);
     }
   }
 
@@ -388,7 +437,7 @@ export default function ProfilePage() {
               </p>
             ) : null}
             <Link
-              href="/pricing#member-premium"
+              href="/pricing/member"
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
             >
               {copy.memberPlanCta}
@@ -396,6 +445,27 @@ export default function ProfilePage() {
             </Link>
           </div>
         </section>
+
+        <form onSubmit={handlePrivacySubmit} className="card space-y-5 p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+              <UserCircle2 className="h-5 w-5" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">{copy.privacyCard}</h2>
+          </div>
+          <p className="text-sm text-slate-600">{copy.privacyHint}</p>
+          <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <span className="text-sm font-medium text-slate-800">{copy.hideFollowers}</span>
+            <input type="checkbox" checked={hideFollowers} onChange={(event) => setHideFollowers(event.target.checked)} className="h-4 w-4" />
+          </label>
+          <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <span className="text-sm font-medium text-slate-800">{copy.hideFollowing}</span>
+            <input type="checkbox" checked={hideFollowing} onChange={(event) => setHideFollowing(event.target.checked)} className="h-4 w-4" />
+          </label>
+          <button type="submit" disabled={savingPrivacy} className="btn-primary justify-center">
+            {savingPrivacy ? copy.savingPrivacy : copy.savePrivacy}
+          </button>
+        </form>
 
         <form onSubmit={handlePasswordSubmit} className="card space-y-5 p-8">
           <div className="flex items-center gap-3">

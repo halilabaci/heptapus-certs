@@ -345,6 +345,13 @@ export interface CommunityPost {
   updated_at: string;
 }
 
+export interface CommunityPostEditHistoryItem {
+  old_body: string;
+  new_body: string;
+  edited_at: string;
+  edited_by_member_public_id: string;
+}
+
 export interface PublicSurveyAccess {
   attendee_id: number;
   attendee_name: string;
@@ -992,6 +999,26 @@ export async function unlikeCommunityPost(postPublicId: string): Promise<{ ok: b
   return res.json();
 }
 
+export async function updateCommunityPost(postPublicId: string, body: string): Promise<CommunityPost> {
+  const res = await memberApiFetch(`/public/posts/${postPublicId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
+}
+
+export async function deleteCommunityPost(postPublicId: string): Promise<{ ok: boolean }> {
+  const res = await memberApiFetch(`/public/posts/${postPublicId}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function listCommunityPostEditHistory(postPublicId: string): Promise<CommunityPostEditHistoryItem[]> {
+  const token = getPublicMemberToken();
+  const path = `/public/posts/${postPublicId}/history`;
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
+  return res.json();
+}
+
 export async function listCommunityPostComments(postPublicId: string, params: {
   limit?: number;
 } = {}): Promise<CommunityPostComment[]> {
@@ -1351,17 +1378,24 @@ export interface ConnectionStats {
   following_count: number;
   is_following: boolean;
   is_blocked: boolean;
+  hide_followers?: boolean;
+  hide_following?: boolean;
+}
+
+export interface ConnectionPrivacySettings {
+  hide_followers: boolean;
+  hide_following: boolean;
 }
 
 export async function followMember(memberId: string): Promise<{ status: string }> {
-  const res = await apiFetch(`/public/members/${memberId}/follow`, {
+  const res = await memberApiFetch(`/public/members/${memberId}/follow`, {
     method: "POST",
   });
   return res.json();
 }
 
 export async function unfollowMember(memberId: string): Promise<{ status: string }> {
-  const res = await apiFetch(`/public/members/${memberId}/follow`, {
+  const res = await memberApiFetch(`/public/members/${memberId}/follow`, {
     method: "DELETE",
   });
   return res.json();
@@ -1372,9 +1406,9 @@ export async function getMemberFollowers(
   limit: number = 20,
   offset: number = 0
 ): Promise<ConnectionMemberInfo[]> {
-  const res = await apiFetch(
-    `/public/members/${memberId}/followers?limit=${limit}&offset=${offset}`
-  );
+  const path = `/public/members/${memberId}/followers?limit=${limit}&offset=${offset}`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
   return res.json();
 }
 
@@ -1383,16 +1417,18 @@ export async function getMemberFollowing(
   limit: number = 20,
   offset: number = 0
 ): Promise<ConnectionMemberInfo[]> {
-  const res = await apiFetch(
-    `/public/members/${memberId}/following?limit=${limit}&offset=${offset}`
-  );
+  const path = `/public/members/${memberId}/following?limit=${limit}&offset=${offset}`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
   return res.json();
 }
 
 export async function getConnectionStats(
   memberId: string
 ): Promise<ConnectionStats> {
-  const res = await apiFetch(`/public/members/${memberId}/connection-stats`);
+  const path = `/public/members/${memberId}/connection-stats`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
   return res.json();
 }
 
@@ -1400,7 +1436,7 @@ export async function blockMember(
   memberId: string,
   reason?: string
 ): Promise<{ status: string }> {
-  const res = await apiFetch(`/public/members/${memberId}/block`, {
+  const res = await memberApiFetch(`/public/members/${memberId}/block`, {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
@@ -1408,8 +1444,23 @@ export async function blockMember(
 }
 
 export async function unblockMember(memberId: string): Promise<{ status: string }> {
-  const res = await apiFetch(`/public/members/${memberId}/block`, {
+  const res = await memberApiFetch(`/public/members/${memberId}/block`, {
     method: "DELETE",
+  });
+  return res.json();
+}
+
+export async function getMyConnectionPrivacy(): Promise<ConnectionPrivacySettings> {
+  const res = await memberApiFetch("/public/members/me/privacy");
+  return res.json();
+}
+
+export async function updateMyConnectionPrivacy(
+  data: ConnectionPrivacySettings,
+): Promise<ConnectionPrivacySettings> {
+  const res = await memberApiFetch("/public/members/me/privacy", {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
   return res.json();
 }
