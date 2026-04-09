@@ -4,14 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { 
   Loader2, 
-  TrendingUp, 
   Search, 
   Heart, 
-  MessageCircle, 
-  Flame, 
-  Sparkles, 
-  Zap, 
-  Clock 
+  MessageCircle,
 } from "lucide-react";
 import {
   listPublicFeed,
@@ -366,58 +361,48 @@ export default function DiscoveryPage() {
       {!loading && filteredAndSortedPosts.length > 0 && (
         <div className="columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
           {filteredAndSortedPosts.map((post) => (
-            <div
+            <Link
               key={post.public_id}
-              className="break-inside-avoid bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:border-gray-300 transition-colors"
+              href={`/post/${post.public_id}`}
+              className="block break-inside-avoid bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all"
             >
-              <div className="p-5">
-                {/* Header: Author & Score */}
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {post.author_avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={post.author_avatar_url}
-                          alt={post.author_name}
-                          className="h-full w-full object-cover"
-                        />
+              <div className="p-5 cursor-pointer">
+                {/* Header: Author */}
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="h-10 w-10 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {post.author_avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={post.author_avatar_url}
+                        alt={post.author_name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-500">
+                        {post.author_name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {post.author_public_id && post.author_type === "member" ? (
+                        <Link
+                          href={`/member/${post.author_public_id}`}
+                          className="text-sm font-semibold text-gray-900 hover:text-blue-600 transition truncate"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {post.author_name}
+                        </Link>
                       ) : (
-                        <span className="text-sm font-semibold text-slate-500">
-                          {post.author_name.charAt(0).toUpperCase()}
-                        </span>
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {post.author_name}
+                        </p>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        {post.author_public_id && post.author_type === "member" ? (
-                          <Link
-                            href={`/member/${post.author_public_id}`}
-                            className="text-sm font-semibold text-gray-900 hover:text-blue-600 transition truncate"
-                          >
-                            {post.author_name}
-                          </Link>
-                        ) : (
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {post.author_name}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <span className="truncate">{post.organization_name || "Üye"}</span>
-                        <span>•</span>
-                        <span>{formatTimeAgo(post.created_at, lang)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Clean Score Display */}
-                  <div className="shrink-0 text-right bg-gray-50 rounded-lg px-2 py-1 border border-gray-100">
-                    <div className="text-sm font-bold text-gray-900 leading-none">
-                      {formatNumber(post.score)}
-                    </div>
-                    <div className="text-[9px] font-semibold text-gray-500 uppercase mt-0.5 tracking-wider">
-                      Skor
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <span className="truncate">{post.organization_name || "Üye"}</span>
+                      <span>•</span>
+                      <span>{formatTimeAgo(post.created_at, lang)}</span>
                     </div>
                   </div>
                 </div>
@@ -433,7 +418,10 @@ export default function DiscoveryPage() {
                   {/* Primary Actions (Like / Comment) */}
                   <div className="flex items-center gap-4">
                     <button
-                      onClick={() => viewer ? handleToggleLike(post) : (window.location.href = "/login?mode=member")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        viewer ? handleToggleLike(post) : (window.location.href = "/login?mode=member");
+                      }}
                       disabled={busyPostId === post.public_id}
                       className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
                         post.liked_by_me
@@ -449,38 +437,11 @@ export default function DiscoveryPage() {
                       <MessageCircle className="h-4 w-4" />
                       <span>{formatNumber(post.comment_count)}</span>
                     </div>
-
-                    {post.score >= 80 && (
-                      <div className="ml-auto inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-600 border border-rose-100">
-                        <TrendingUp className="h-3 w-3" />
-                        {lang === "tr" ? "Trend" : "Trending"}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Analytics "Nerd Stats" (Subtle) */}
-                  <div className="flex items-center justify-between bg-slate-50/50 rounded-md p-2 border border-slate-100">
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500" title="Virality">
-                      <Flame className="h-3 w-3 text-orange-500" />
-                      {Math.round(post.viralityScore)}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500" title="Velocity">
-                      <Zap className="h-3 w-3 text-blue-500" />
-                      {Math.round(post.velocityScore)}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500" title="Quality">
-                      <Sparkles className="h-3 w-3 text-purple-500" />
-                      {Math.round(post.qualityScore)}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500" title="Freshness">
-                      <Clock className="h-3 w-3 text-emerald-500" />
-                      {Math.round(post.freshnessScore)}
-                    </div>
                   </div>
 
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
