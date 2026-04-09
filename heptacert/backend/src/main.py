@@ -11190,9 +11190,9 @@ async def upload_public_registration_document(
     raw = await file.read()
     if not raw:
         raise bad_request("Document file is empty")
-    max_size = 10 * 1024 * 1024
+    max_size = 2 * 1024 * 1024
     if len(raw) > max_size:
-        raise HTTPException(status_code=413, detail="Document exceeds 10 MB limit")
+        raise HTTPException(status_code=413, detail="Document exceeds 2 MB limit")
 
     ext = Path(file.filename or "").suffix.lower().strip()
     if not ext:
@@ -11280,7 +11280,7 @@ async def public_event_register(
             if not str(abs_path).startswith(str(storage_root)) or not abs_path.exists() or not abs_path.is_file():
                 raise bad_request("Registration document not found")
             stat_info = abs_path.stat()
-            if stat_info.st_size > 10 * 1024 * 1024:
+            if stat_info.st_size > 2 * 1024 * 1024:
                 raise bad_request("Registration document exceeds size limit")
             sanitized_docs.append(
                 {

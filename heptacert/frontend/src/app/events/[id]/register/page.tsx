@@ -55,6 +55,8 @@ type BrandingData = {
   } | null;
 };
 
+const REGISTRATION_DOCUMENT_MAX_SIZE_BYTES = 2 * 1024 * 1024;
+
 export default function EventRegisterPage() {
   const params = useParams();
   const rawEventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -106,9 +108,10 @@ export default function EventRegisterPage() {
             kvkkAccept: "KVKK aydinlatma metnini okudum ve kabul ediyorum.",
             kvkkRequired: "Devam etmek için KVKK onayı gereklidir.",
             documentTitle: "Belge Yükleme (Opsiyonel)",
-            documentHint: "PDF/JPG/PNG/WEBP formatında dekont veya benzeri belge yükleyebilirsiniz.",
+            documentHint: "PDF/JPG/PNG/WEBP formatında belge yükleyebilirsiniz (maks. 2 MB / dosya).",
             documentPick: "Belge Seç",
             documentRequired: "Lütfen zorunlu belge alanları için en az bir dosya yükleyin.",
+            documentTooLarge: "{name} dosyası 2 MB sınırını aşıyor.",
             documentUploading: "Belgeler yükleniyor...",
             submit: "Kayıt Ol",
             cardRuleLabel: "Min. {count} oturum",
@@ -156,9 +159,10 @@ export default function EventRegisterPage() {
             kvkkAccept: "I have read and accept the KVKK disclosure text.",
             kvkkRequired: "KVKK consent is required to continue.",
             documentTitle: "Document Upload (Optional)",
-            documentHint: "You can upload receipt or similar documents as PDF/JPG/PNG/WEBP.",
+            documentHint: "You can upload documents as PDF/JPG/PNG/WEBP (max. 2 MB per file).",
             documentPick: "Choose Document",
             documentRequired: "Please upload at least one file for required document fields.",
+            documentTooLarge: "{name} exceeds the 2 MB file size limit.",
             documentUploading: "Uploading documents...",
             submit: "Register",
             cardRuleLabel: "Min. {count} sessions",
@@ -702,9 +706,20 @@ export default function EventRegisterPage() {
                                     onChange={(eventArg) => {
                                       const files = Array.from(eventArg.target.files || []);
                                       if (!files.length) return;
+                                      const acceptedFiles = files.filter((file) => {
+                                        const ok = file.size <= REGISTRATION_DOCUMENT_MAX_SIZE_BYTES;
+                                        if (!ok) {
+                                          toast.error(copy.documentTooLarge.replace("{name}", file.name));
+                                        }
+                                        return ok;
+                                      });
+                                      if (!acceptedFiles.length) {
+                                        eventArg.currentTarget.value = "";
+                                        return;
+                                      }
                                       setRegistrationFilesByField((current) => ({
                                         ...current,
-                                        [field.id]: [...(current[field.id] || []), ...files].slice(0, 5),
+                                        [field.id]: [...(current[field.id] || []), ...acceptedFiles].slice(0, 5),
                                       }));
                                       eventArg.currentTarget.value = "";
                                     }}
