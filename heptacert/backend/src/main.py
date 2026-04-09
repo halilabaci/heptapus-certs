@@ -11726,6 +11726,10 @@ async def export_attendance(
     """Export attendees list as CSV or XLSX file."""
     ev = await _get_event_for_admin(event_id, me, db)
     
+    # Get registration fields mapping (field_id -> field_label)
+    registration_fields = _get_event_registration_fields(ev)
+    field_id_to_label = {field.get("id"): field.get("label", field.get("id")) for field in registration_fields}
+    
     # Fetch all attendees without pagination
     res = await db.execute(
         select(Attendee)
@@ -11770,8 +11774,10 @@ async def export_attendance(
         # Add registration answers as individual columns
         if a.registration_answers:
             for key, value in a.registration_answers.items():
-                all_answer_keys.add(key)
-                row_data[key] = str(value) if value is not None else ""
+                # Convert field ID to field label using the mapping
+                field_label = field_id_to_label.get(key, key)
+                all_answer_keys.add(field_label)
+                row_data[field_label] = str(value) if value is not None else ""
         
         data.append(row_data)
     
