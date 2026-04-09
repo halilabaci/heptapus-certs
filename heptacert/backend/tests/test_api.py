@@ -1165,7 +1165,7 @@ class TestCommunitySocialFlows:
             record = AttendanceRecord(
                 attendee_id=attendee.id,
                 session_id=session.id,
-                checked_in_at=db.func.now(),
+                checked_in_at=func.now(),
             )
             db.add(record)
             await db.commit()

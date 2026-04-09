@@ -215,28 +215,3 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Deployment (manual approval required)
   # ─────────────────────────────────────────────────────────────────────────
-  deploy-prod:
-    name: Deploy to Production
-    needs: [docker-build]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: https://heptapus-certs.com
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Deploy to production
-        run: |
-          echo "🚀 Deployment checklist passed!"
-          echo "✅ Backend tests passed"
-          echo "✅ Frontend build successful"
-          echo "✅ Security checks passed"
-          echo "✅ Docker images built and pushed"
-          echo ""
-          echo "Next steps (manual):"
-          echo "1. Verify images in Container Registry"
-          echo "2. Update Kubernetes manifests or Docker Compose"
-          echo "3. Run smoke tests in staging"
-          echo "4. Promote to production"
