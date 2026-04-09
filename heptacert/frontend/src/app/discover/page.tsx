@@ -161,7 +161,7 @@ export default function DiscoveryPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      listPublicFeed({ limit: 100 }).catch((err: any) => {
+      listPublicFeed({ limit: 50 }).catch((err: any) => {
         console.error("Error fetching public feed:", err);
         throw err;
       }),
