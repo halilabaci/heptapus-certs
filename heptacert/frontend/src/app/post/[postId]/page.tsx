@@ -83,7 +83,7 @@ export default function PostDetailPage() {
       .then(([viewerData]) => {
         setViewer(viewerData);
         // Fetch all posts to find this one
-        return listPublicFeed({ limit: 100 }).then((items) => {
+        return listPublicFeed({ limit: 50 }).then((items) => {
           const found = items.find((p: CommunityPost) => p.public_id === postId);
           if (!found) {
             throw new Error(copy.error);
