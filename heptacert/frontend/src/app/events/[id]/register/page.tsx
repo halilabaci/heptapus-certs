@@ -57,6 +57,16 @@ type BrandingData = {
 
 const REGISTRATION_DOCUMENT_MAX_SIZE_BYTES = 2 * 1024 * 1024;
 
+function isFieldConditionMet(field: RegistrationField, answers: Record<string, string>): boolean {
+  const conditionFieldId = (field.required_when_field_id || "").trim();
+  const conditionValue = (field.required_when_equals || "").trim();
+  if (!conditionFieldId || !conditionValue) {
+    return false;
+  }
+  const currentValue = (answers[conditionFieldId] || "").trim();
+  return currentValue.toLocaleLowerCase() === conditionValue.toLocaleLowerCase();
+}
+
 export default function EventRegisterPage() {
   const params = useParams();
   const rawEventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -238,8 +248,12 @@ export default function EventRegisterPage() {
     [event?.registration_fields]
   );
   const isDocumentRequirementMissing = useMemo(
-    () => fileFields.some((field) => field.required && !(registrationFilesByField[field.id]?.length)),
-    [fileFields, registrationFilesByField]
+    () =>
+      fileFields.some((field) => {
+        const isRequired = field.required || isFieldConditionMet(field, registrationAnswers);
+        return isRequired && !(registrationFilesByField[field.id]?.length);
+      }),
+    [fileFields, registrationFilesByField, registrationAnswers]
   );
 
   const pageBg = useMemo(
@@ -689,11 +703,12 @@ export default function EventRegisterPage() {
                         <div className="space-y-3">
                           {fileFields.map((field) => {
                             const fieldFiles = registrationFilesByField[field.id] || [];
+                            const isRequired = field.required || isFieldConditionMet(field, registrationAnswers);
                             return (
                               <div key={field.id} className="rounded-2xl border border-gray-200 bg-white p-3">
                                 <label className="mb-2 block text-sm font-semibold text-gray-700">
                                   {field.label}
-                                  {field.required ? <span className="ml-1 text-red-500">*</span> : null}
+                                  {isRequired ? <span className="ml-1 text-red-500">*</span> : null}
                                 </label>
                                 {field.helper_text && <p className="mb-2 text-xs text-gray-500">{field.helper_text}</p>}
                                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100">

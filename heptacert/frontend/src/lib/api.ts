@@ -385,6 +385,8 @@ export interface RegistrationField {
   label: string;
   type: RegistrationFieldType;
   required: boolean;
+  required_when_field_id?: string;
+  required_when_equals?: string;
   placeholder?: string | null;
   helper_text?: string | null;
   options?: string[];

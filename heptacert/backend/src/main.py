@@ -3823,6 +3823,8 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
         placeholder = str(item.get("placeholder") or "").strip()[:200] or None
         helper_text = str(item.get("helper_text") or "").strip()[:300] or None
         required = bool(item.get("required"))
+        required_when_field_id = str(item.get("required_when_field_id") or "").strip()[:64]
+        required_when_equals = str(item.get("required_when_equals") or "").strip()[:120]
 
         options: List[str] = []
         raw_options = item.get("options")
@@ -3843,9 +3845,20 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
         }
         if field_type == "select":
             normalized_item["options"] = options
+        if required_when_field_id and required_when_equals:
+            normalized_item["required_when_field_id"] = required_when_field_id
+            normalized_item["required_when_equals"] = required_when_equals
 
         normalized.append(normalized_item)
         seen_ids.add(field_id)
+
+    valid_ids = {item["id"] for item in normalized}
+    for item in normalized:
+        cond_id = str(item.get("required_when_field_id") or "").strip()
+        cond_value = str(item.get("required_when_equals") or "").strip()
+        if not cond_id or not cond_value or cond_id not in valid_ids or cond_id == item["id"]:
+            item.pop("required_when_field_id", None)
+            item.pop("required_when_equals", None)
 
     return normalized
 
@@ -4045,7 +4058,8 @@ def _normalize_registration_answers(
         else:
             raise bad_request(f'"{field["label"]}" alanı için geçerli bir değer girin.')
 
-        if field.get("required") and not value:
+        is_required = bool(field.get("required")) or _is_registration_field_condition_met(field, raw_map)
+        if is_required and not value:
             raise bad_request(f'"{field["label"]}" alanı zorunludur.')
 
         if not value:
@@ -4059,6 +4073,26 @@ def _normalize_registration_answers(
         normalized[field_id] = value[:1000]
 
     return normalized
+
+
+def _is_registration_field_condition_met(field: Dict[str, Any], answers: Dict[str, Any]) -> bool:
+    condition_field_id = str(field.get("required_when_field_id") or "").strip()
+    condition_value = str(field.get("required_when_equals") or "").strip()
+    if not condition_field_id or not condition_value:
+        return False
+
+    raw_value = answers.get(condition_field_id)
+    if raw_value is None:
+        return False
+
+    if isinstance(raw_value, str):
+        actual_value = raw_value.strip()
+    elif isinstance(raw_value, (int, float, bool)):
+        actual_value = str(raw_value).strip()
+    else:
+        return False
+
+    return actual_value.casefold() == condition_value.casefold()
 
 
 async def _get_checkin_context_by_token(checkin_token: str, db: AsyncSession) -> Optional[Dict[str, Any]]:
@@ -11254,15 +11288,18 @@ async def public_event_register(
     registration_fields = _get_event_registration_fields(ev)
     file_fields = [field for field in registration_fields if field.get("type") == "file"]
     file_field_ids = {str(field.get("id")) for field in file_fields if field.get("id")}
-    required_file_field_ids = {
-        str(field.get("id"))
-        for field in file_fields
-        if field.get("id") and bool(field.get("required"))
-    }
     registration_answers = _normalize_registration_answers(
         registration_fields,
         payload.registration_answers,
     )
+    required_file_field_ids = {
+        str(field.get("id"))
+        for field in file_fields
+        if field.get("id") and (
+            bool(field.get("required"))
+            or _is_registration_field_condition_met(field, registration_answers)
+        )
+    }
     if payload.registration_documents:
         if not file_field_ids:
             raise bad_request("Document upload is not enabled for this event")
