@@ -193,7 +193,12 @@ export default function DiscoveryPage() {
         setViewer(viewerData);
       })
       .catch((err: any) => {
-        const msg = typeof err === 'string' ? err : (err?.message || String(err) || copy.error);
+        let msg = copy.error;
+        if (typeof err === 'string') {
+          msg = err;
+        } else if (err?.message && typeof err.message === 'string') {
+          msg = err.message;
+        }
         setError(msg);
       })
       .finally(() => setLoading(false));

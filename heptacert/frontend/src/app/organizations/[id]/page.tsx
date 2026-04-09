@@ -51,27 +51,29 @@ export default function PublicOrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const copy = useMemo(() => lang === "tr" ? {
-    back: "Topluluklara dön",
+    back: "Topluluklara Dön",
     loading: "Topluluk yükleniyor...",
     error: "Topluluk yüklenemedi.",
-    followers: "takipçi",
-    events: "public etkinlik",
+    followers: "Takipçi",
+    events: "Etkinlik",
     follow: "Takip Et",
     unfollow: "Takibi Bırak",
     loginToFollow: "Takip için giriş yap",
-    upcoming: "Topluluk Etkinlikleri",
-    noEvents: "Bu topluluk henüz public etkinlik yayınlamadı.",
+    feed: "Topluluk Akışı",
+    noEvents: "Bu topluluk henüz etkinlik yayınlamadı.",
+    social: "İletişim Kanalları",
   } : {
-    back: "Back to communities",
+    back: "Back to Communities",
     loading: "Loading community...",
     error: "Failed to load community.",
-    followers: "followers",
-    events: "public events",
+    followers: "Followers",
+    events: "Events",
     follow: "Follow",
     unfollow: "Unfollow",
     loginToFollow: "Sign in to follow",
-    upcoming: "Community Events",
-    noEvents: "This organization has not published any public events yet.",
+    feed: "Community Feed",
+    noEvents: "This organization has not published any events yet.",
+    social: "Social Links",
   }, [lang]);
 
   useEffect(() => {
@@ -270,7 +272,13 @@ export default function PublicOrganizationDetailPage() {
               type="button"
               onClick={() => void handleFollowToggle()}
               disabled={busy}
-              className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-xl px-6 py-3 text-sm font-semibold transition disabled:opacity-60 shrink-0 whitespace-nowrap"
+              style={{
+                backgroundColor: getPublicMemberToken() ? (org.is_following ? '#f0f0f0' : '#3b82f6') : '#3b82f6',
+                color: getPublicMemberToken() ? (org.is_following ? '#374151' : '#ffffff') : '#ffffff',
+                borderWidth: '1px',
+                borderColor: getPublicMemberToken() ? (org.is_following ? '#d1d5db' : 'transparent') : 'transparent',
+              }}
             >
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {getPublicMemberToken() ? (org.is_following ? copy.unfollow : copy.follow) : copy.loginToFollow}
@@ -279,7 +287,7 @@ export default function PublicOrganizationDetailPage() {
         </div>
 
         <div className="border-t border-slate-100 px-6 py-8 sm:px-8">
-          <h2 className="text-2xl font-black text-slate-950">{copy.upcoming}</h2>
+          <h2 className="text-2xl font-black text-slate-950">{copy.feed}</h2>
           {org.events.length === 0 ? (
             <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
               {copy.noEvents}

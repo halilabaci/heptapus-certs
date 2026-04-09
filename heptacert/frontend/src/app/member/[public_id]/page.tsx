@@ -83,12 +83,14 @@ export default function PublicMemberProfilePage() {
             back: "Geri Dön",
             loading: "Profil yükleniyor...",
             error: "Profil yüklenemedi",
-            recommended: "Önerilen Kişiler",
+            recommended: "Önerilen Üyeler",
             noRecommendations: "Henüz kimse önerilmiyor",
             events: "Etkinlik",
-            joined: "Katılması",
+            comments: "Yorum",
+            joined: "Katılma Tarihi",
             location: "Konum",
-            visitWebsite: "Web Sitesini Ziyaret Et",
+            visitWebsite: "Web Sitesi",
+            contact: "İletişim",
             viewProfile: "Profili Gör",
           }
         : {
@@ -98,9 +100,11 @@ export default function PublicMemberProfilePage() {
             recommended: "Recommended People",
             noRecommendations: "No recommendations yet",
             events: "Events",
+            comments: "Comments",
             joined: "Joined",
             location: "Location",
             visitWebsite: "Visit Website",
+            contact: "Contact",
             viewProfile: "View Profile",
           },
     [lang]
@@ -238,7 +242,7 @@ export default function PublicMemberProfilePage() {
                     <div className="text-2xl font-bold text-gray-900">
                       {member.comment_count}
                     </div>
-                    <div className="text-sm text-gray-600">Yorum</div>
+                    <div className="text-sm text-gray-600">{copy.comments}</div>
                   </div>
                 </div>
 
@@ -249,18 +253,20 @@ export default function PublicMemberProfilePage() {
                       href={member.website_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+                      className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition font-semibold text-sm border border-slate-200"
                     >
                       <Globe className="h-4 w-4" />
                       {copy.visitWebsite}
                     </a>
                   )}
                   <a
-                    href={`mailto:${member.display_name}`}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+                    href={`https://heptapusgroup.com/contact?member=${member.display_name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-semibold text-sm shadow-sm hover:shadow-md"
                   >
                     <Mail className="h-4 w-4" />
-                    İletişim
+                    {copy.contact}
                   </a>
                 </div>
               </div>
