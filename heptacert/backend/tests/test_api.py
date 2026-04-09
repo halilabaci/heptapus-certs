@@ -1137,15 +1137,19 @@ class TestCommunitySocialFlows:
     @pytest.mark.asyncio
     async def test_get_attendance_matrix_xlsx(self):
         """Test attendance matrix export in XLSX format (default)"""
-        admin_token = create_access_token(user_id=1, role=Role.admin)
-        
         async with SessionLocal() as db:
             admin = User(email="attendance-admin@test.com", password_hash=hash_password("AdminPass123!"), role=Role.admin)
             db.add(admin)
             await db.flush()
+            await db.refresh(admin)
+            admin_id = admin.id
+            
+            # Add subscription so paid plan checks pass
+            sub = Subscription(user_id=admin_id, plan_id="growth", is_active=True)
+            db.add(sub)
             
             event = Event(
-                admin_id=admin.id,
+                admin_id=admin_id,
                 public_id="evt_attendance_xlsx",
                 name="Attendance Test Event",
                 template_image_url="placeholder",
@@ -1181,6 +1185,9 @@ class TestCommunitySocialFlows:
             db.add(record)
             await db.commit()
         
+        # Create token with correct admin ID
+        admin_token = create_access_token(user_id=admin_id, role=Role.admin)
+        
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             resp = await ac.get(
@@ -1195,15 +1202,19 @@ class TestCommunitySocialFlows:
     @pytest.mark.asyncio
     async def test_get_attendance_matrix_csv(self):
         """Test attendance matrix export in CSV format"""
-        admin_token = create_access_token(user_id=1, role=Role.admin)
-        
         async with SessionLocal() as db:
             admin = User(email="attendance-admin-csv@test.com", password_hash=hash_password("AdminPass123!"), role=Role.admin)
             db.add(admin)
             await db.flush()
+            await db.refresh(admin)
+            admin_id = admin.id
+            
+            # Add subscription so paid plan checks pass
+            sub = Subscription(user_id=admin_id, plan_id="growth", is_active=True)
+            db.add(sub)
             
             event = Event(
-                admin_id=admin.id,
+                admin_id=admin_id,
                 public_id="evt_attendance_csv",
                 name="CSV Attendance Event",
                 template_image_url="placeholder",
@@ -1212,6 +1223,8 @@ class TestCommunitySocialFlows:
             db.add(event)
             await db.commit()
             event_id = event.id
+        
+        admin_token = create_access_token(user_id=admin_id, role=Role.admin)
         
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -1226,15 +1239,19 @@ class TestCommunitySocialFlows:
     @pytest.mark.asyncio
     async def test_get_attendance_matrix_with_registration_fields(self):
         """Test that registration fields are included in attendance export"""
-        admin_token = create_access_token(user_id=1, role=Role.admin)
-        
         async with SessionLocal() as db:
             admin = User(email="attendance-admin-fields@test.com", password_hash=hash_password("AdminPass123!"), role=Role.admin)
             db.add(admin)
             await db.flush()
+            await db.refresh(admin)
+            admin_id = admin.id
+            
+            # Add subscription so paid plan checks pass
+            sub = Subscription(user_id=admin_id, plan_id="growth", is_active=True)
+            db.add(sub)
             
             event = Event(
-                admin_id=admin.id,
+                admin_id=admin_id,
                 public_id="evt_attendance_fields",
                 name="Event with Fields",
                 template_image_url="placeholder",
@@ -1258,6 +1275,8 @@ class TestCommunitySocialFlows:
             db.add(attendee)
             await db.commit()
             event_id = event.id
+        
+        admin_token = create_access_token(user_id=admin_id, role=Role.admin)
         
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
