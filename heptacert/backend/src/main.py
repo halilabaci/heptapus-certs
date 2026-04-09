@@ -9575,6 +9575,10 @@ async def patch_organization_settings(
     existing = getattr(org, "settings", {}) or {}
     if not isinstance(existing, dict):
         existing = {}
+    else:
+        # Avoid mutating the ORM-backed dict in-place; create a fresh copy so
+        # SQLAlchemy consistently detects and persists JSON changes.
+        existing = dict(existing)
 
     # AyrÃ„Â± kolonlar
     if "brand_color" in payload:

@@ -22,7 +22,7 @@ export default function PricingPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Pricing</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">Fiyatlandırma Akışı</h1>
           <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-            Akış sadeleştirildi. Lütfen kullanıcı tipinize uygun fiyatlandırma sayfasını seçin.
+          Lütfen kullanıcı tipinize uygun fiyatlandırma sayfasını seçin.
           </p>
         </div>
 
