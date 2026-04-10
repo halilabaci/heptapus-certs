@@ -163,6 +163,7 @@ export interface PublicMemberMe {
   id: number;
   public_id: string;
   email: string;
+  contact_email?: string | null;
   display_name: string;
   bio?: string | null;
   avatar_url?: string | null;
@@ -181,6 +182,7 @@ export interface PublicMemberSubscriptionInfo {
 export interface PublicMemberProfile {
   public_id: string;
   display_name: string;
+  contact_email?: string | null;
   bio?: string | null;
   avatar_url?: string | null;
   headline?: string | null;
@@ -852,6 +854,7 @@ export async function updatePublicMemberProfile(data: {
   headline?: string | null;
   location?: string | null;
   website_url?: string | null;
+  contact_email?: string | null;
 }): Promise<PublicMemberMe> {
   const res = await memberApiFetch("/public/me", {
     method: "PATCH",

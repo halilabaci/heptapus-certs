@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowRight, Camera, Globe, KeyRound, Loader2, MapPin, Save, UserCircle2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Camera, Globe, KeyRound, Loader2, MapPin, Save, UserCircle2, ShieldAlert, CheckCircle2, Crown, Lock } from "lucide-react";
 import { PUBLIC_MEMBER_TOKEN_EVENT, changePublicMemberPassword, clearPublicMemberToken, deletePublicMemberAccount, getMyConnectionPrivacy, getPublicMemberMe, getPublicMemberSubscription, updateMyConnectionPrivacy, updatePublicMemberProfile, uploadPublicMemberAvatar, type PublicMemberSubscriptionInfo } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import SubscriptionGate from "@/components/SubscriptionGate";
@@ -14,98 +14,122 @@ export default function ProfilePage() {
     () =>
       lang === "tr"
         ? {
-            eyebrow: "Üye Profili",
+            eyebrow: "Hesap Ayarları",
             title: "Profilim",
-            subtitle: "Hesap bilgilerini güncelleyebilir, kendin hakkında kısa bir biyografi ekleyebilir ve şifreni değiştirebilirsin.",
-            loginRequiredTitle: "Giriş Yapman Gerekiyor",
-            loginRequiredBody: "Profilini görüntülemek ve düzenlemek için üye hesabınla giriş yapmalısın.",
-            loginCta: "Üye Girişine Git",
+            subtitle: "Kişisel bilgilerinizi, güvenlik ayarlarınızı ve topluluk tercihlerinizi buradan yönetin.",
+            loginRequiredTitle: "Giriş Yapmanız Gerekiyor",
+            loginRequiredBody: "Profilinizi görüntülemek ve düzenlemek için üye hesabınızla giriş yapmalısınız.",
+            loginCta: "Giriş Ekranına Git",
             profileCard: "Profil Bilgileri",
+            profileDesc: "Bu bilgiler topluluktaki diğer üyeler tarafından görülecektir.",
             displayName: "Görünen Ad",
-            email: "E-posta",
-            bio: "Biyografi",
-            bioPlaceholder: "Kendinden kısaca bahsetmek istersen buraya yazabilirsin.",
-            headline: "Kısa Başlık",
-            headlinePlaceholder: "Örn. Tasarımcı, geliştirici, topluluk meraklısı",
+            email: "E-posta Adresi",
+            contactEmail: "İletişim E-posta Adresi",
+            contactEmailPlaceholder: "iletisim@ornek.com",
+            bio: "Hakkımda (Bio)",
+            bioPlaceholder: "Kendinizden ve ilgi alanlarınızdan kısaca bahsedin.",
+            headline: "Kısa Başlık (Unvan)",
+            headlinePlaceholder: "Örn. Yazılım Geliştirici, UI/UX Tasarımcı",
             location: "Konum",
-            locationPlaceholder: "İstanbul",
-            website: "Website",
+            locationPlaceholder: "İstanbul, Türkiye",
+            website: "Kişisel Website",
             websitePlaceholder: "https://...",
             avatar: "Profil Fotoğrafı",
-            avatarHint: "JPG, PNG veya WEBP yükleyebilirsin.",
-            saveProfile: "Profili Kaydet",
+            avatarHint: "JPG, PNG veya WEBP formatında bir resim yükleyin.",
+            saveProfile: "Değişiklikleri Kaydet",
             savingProfile: "Kaydediliyor...",
-            passwordCard: "Şifreyi Değiştir",
+            passwordCard: "Şifre ve Güvenlik",
+            passwordDesc: "Hesabınızın güvenliği için şifrenizi güçlü tutun.",
             currentPassword: "Mevcut Şifre",
             newPassword: "Yeni Şifre",
-            confirmPassword: "Yeni Şifre Tekrar",
+            confirmPassword: "Yeni Şifre (Tekrar)",
             passwordPlaceholder: "En az 8 karakter",
             savePassword: "Şifreyi Güncelle",
             savingPassword: "Güncelleniyor...",
-            passwordMismatch: "Yeni şifre alanları birbiriyle aynı olmalı.",
-            profileSuccess: "Profil bilgileri güncellendi.",
-            passwordSuccess: "Şifren başarıyla güncellendi.",
-            fallback: "Profil bilgileri yüklenemedi.",
+            passwordMismatch: "Yeni şifreler birbiriyle uyuşmuyor.",
+            profileSuccess: "Profil bilgileriniz başarıyla güncellendi.",
+            passwordSuccess: "Şifreniz başarıyla güncellendi.",
+            fallback: "Bir hata oluştu. Lütfen tekrar deneyin.",
             memberPlanCard: "Üyelik Planı",
-            memberPlanNone: "Ücretsiz üye",
-            memberPlanActive: "Aktif premium",
-            memberPlanExpires: "Bitiş tarihi",
-            memberPlanCta: "Üyelik planlarını incele",
-            memberPlanBody: "Topluluk, profil ve sosyal özellikler için üye premium planları kullanabilirsin.",
-            privacyCard: "Takip Gizliliği",
-            hideFollowers: "Takipçilerimi gizle",
-            hideFollowing: "Takip ettiklerimi gizle",
-            privacyHint: "Bu ayarlar açıkken sadece sen takip listelerini görebilirsin.",
-            savePrivacy: "Gizlilik Ayarlarını Kaydet",
+            memberPlanDesc: "Mevcut abonelik durumunuzu ve plan detaylarını inceleyin.",
+            memberPlanNone: "Ücretsiz Plan",
+            memberPlanActive: "Premium Plan (Aktif)",
+            memberPlanExpires: "Yenilenme / Bitiş Tarihi",
+            memberPlanCta: "Planları İncele",
+            memberPlanBody: "Premium özellikler sayesinde toplulukta öne çıkın ve tüm sosyal araçlara erişin.",
+            privacyCard: "Takip ve Gizlilik",
+            privacyDesc: "Bağlantılarınızın kimler tarafından görülebileceğini seçin.",
+            hideFollowers: "Takipçi listemi gizle",
+            hideFollowing: "Takip ettiğim kişileri gizle",
+            privacyHint: "Aktif edildiğinde bu listeler profilinizde diğer kullanıcılara kapalı olur.",
+            savePrivacy: "Gizliliği Kaydet",
             savingPrivacy: "Kaydediliyor...",
-            privacySuccess: "Takip gizliliği güncellendi.",
+            privacySuccess: "Gizlilik ayarlarınız güncellendi.",
+            dangerZone: "Tehlikeli Bölge",
+            deleteAccount: "Hesabı Sil",
+            deleteDesc: "Hesabınızı ve size ait tüm verileri kalıcı olarak silin. Bu işlem geri alınamaz.",
+            deleteConfirm: "İşlemi onaylamak için mevcut şifrenizi girin",
+            deleteBtn: "Hesabı ve Verileri Kalıcı Olarak Sil",
+            deleting: "Siliniyor...",
           }
         : {
-            eyebrow: "Member Profile",
+            eyebrow: "Account Settings",
             title: "My Profile",
-            subtitle: "Update your account details, add a short bio, and change your password.",
+            subtitle: "Manage your personal information, security settings, and community preferences.",
             loginRequiredTitle: "Sign In Required",
-            loginRequiredBody: "You need to sign in with your member account to edit your profile.",
-            loginCta: "Go to Member Login",
-            profileCard: "Profile Details",
+            loginRequiredBody: "You need to sign in with your member account to access your profile.",
+            loginCta: "Go to Sign In",
+            profileCard: "Profile Information",
+            profileDesc: "This information will be visible to other members in the community.",
             displayName: "Display Name",
-            email: "Email",
+            email: "Email Address",
+            contactEmail: "Public Contact Email",
+            contactEmailPlaceholder: "contact@example.com",
             bio: "Bio",
-            bioPlaceholder: "Write a short introduction about yourself.",
+            bioPlaceholder: "Write a short introduction about yourself and your interests.",
             headline: "Headline",
-            headlinePlaceholder: "Designer, developer, community builder",
+            headlinePlaceholder: "e.g. Software Engineer, UI/UX Designer",
             location: "Location",
-            locationPlaceholder: "Istanbul",
-            website: "Website",
+            locationPlaceholder: "London, UK",
+            website: "Personal Website",
             websitePlaceholder: "https://...",
             avatar: "Profile Photo",
-            avatarHint: "You can upload JPG, PNG, or WEBP.",
-            saveProfile: "Save Profile",
+            avatarHint: "Upload a picture in JPG, PNG, or WEBP format.",
+            saveProfile: "Save Changes",
             savingProfile: "Saving...",
-            passwordCard: "Change Password",
+            passwordCard: "Password & Security",
+            passwordDesc: "Keep your password strong to secure your account.",
             currentPassword: "Current Password",
             newPassword: "New Password",
             confirmPassword: "Confirm New Password",
             passwordPlaceholder: "At least 8 characters",
             savePassword: "Update Password",
             savingPassword: "Updating...",
-            passwordMismatch: "New password fields must match.",
-            profileSuccess: "Profile updated successfully.",
-            passwordSuccess: "Password updated successfully.",
-            fallback: "Failed to load profile.",
+            passwordMismatch: "New passwords do not match.",
+            profileSuccess: "Your profile has been updated successfully.",
+            passwordSuccess: "Your password has been updated successfully.",
+            fallback: "An error occurred. Please try again.",
             memberPlanCard: "Membership Plan",
-            memberPlanNone: "Free member",
-            memberPlanActive: "Premium active",
-            memberPlanExpires: "Expiry",
-            memberPlanCta: "Explore membership plans",
-            memberPlanBody: "Use member premium plans for community, profile, and social features.",
-            privacyCard: "Follow Privacy",
-            hideFollowers: "Hide my followers",
-            hideFollowing: "Hide members I follow",
-            privacyHint: "When enabled, only you can view these lists.",
-            savePrivacy: "Save Privacy Settings",
+            memberPlanDesc: "Review your current subscription status and plan details.",
+            memberPlanNone: "Free Plan",
+            memberPlanActive: "Premium Plan (Active)",
+            memberPlanExpires: "Renewal / Expiry Date",
+            memberPlanCta: "Explore Plans",
+            memberPlanBody: "Unlock premium features to stand out in the community and access all social tools.",
+            privacyCard: "Privacy & Connections",
+            privacyDesc: "Choose who can see your connections.",
+            hideFollowers: "Hide my followers list",
+            hideFollowing: "Hide who I follow",
+            privacyHint: "When enabled, these lists will be hidden from other users on your profile.",
+            savePrivacy: "Save Privacy",
             savingPrivacy: "Saving...",
-            privacySuccess: "Connection privacy updated.",
+            privacySuccess: "Your privacy settings have been updated.",
+            dangerZone: "Danger Zone",
+            deleteAccount: "Delete Account",
+            deleteDesc: "Permanently delete your account and all associated data. This action cannot be undone.",
+            deleteConfirm: "Enter your current password to confirm",
+            deleteBtn: "Permanently Delete Account & Data",
+            deleting: "Deleting...",
           },
     [lang],
   );
@@ -113,19 +137,21 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [profileMessage, setProfileMessage] = useState<string | null>(null);
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
+  
   const [memberSubscription, setMemberSubscription] = useState<PublicMemberSubscriptionInfo | null>(null);
   const [hideFollowers, setHideFollowers] = useState(false);
   const [hideFollowing, setHideFollowing] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [headline, setHeadline] = useState("");
@@ -147,6 +173,7 @@ export default function ProfilePage() {
         if (!active) return;
         setDisplayName(member.display_name || "");
         setEmail(member.email || "");
+        setContactEmail(member.contact_email || "");
         setBio(member.bio || "");
         setAvatarUrl(member.avatar_url || "");
         setHeadline(member.headline || "");
@@ -192,10 +219,15 @@ export default function ProfilePage() {
     };
   }, [copy.fallback]);
 
+  const showSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setError(null);
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
+
   async function handleProfileSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setProfileMessage(null);
     setSavingProfile(true);
     try {
       const member = await updatePublicMemberProfile({
@@ -204,8 +236,10 @@ export default function ProfilePage() {
         headline,
         location,
         website_url: websiteUrl,
+        contact_email: contactEmail.trim() || null,
       });
       setDisplayName(member.display_name || "");
+      setContactEmail(member.contact_email || "");
       setBio(member.bio || "");
       setAvatarUrl(member.avatar_url || "");
       setHeadline(member.headline || "");
@@ -214,7 +248,7 @@ export default function ProfilePage() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event(PUBLIC_MEMBER_TOKEN_EVENT));
       }
-      setProfileMessage(copy.profileSuccess);
+      showSuccess(copy.profileSuccess);
     } catch (err: any) {
       setError(err?.message || copy.fallback);
     } finally {
@@ -225,7 +259,6 @@ export default function ProfilePage() {
   async function handleAvatarChange(file: File | null) {
     if (!file) return;
     setError(null);
-    setProfileMessage(null);
     setUploadingAvatar(true);
     try {
       const member = await uploadPublicMemberAvatar(file);
@@ -233,7 +266,7 @@ export default function ProfilePage() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event(PUBLIC_MEMBER_TOKEN_EVENT));
       }
-      setProfileMessage(copy.profileSuccess);
+      showSuccess(copy.profileSuccess);
     } catch (err: any) {
       setError(err?.message || copy.fallback);
     } finally {
@@ -244,7 +277,6 @@ export default function ProfilePage() {
   async function handlePasswordSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setPasswordMessage(null);
     if (newPassword !== confirmPassword) {
       setError(copy.passwordMismatch);
       return;
@@ -255,7 +287,7 @@ export default function ProfilePage() {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      setPasswordMessage(result.detail || copy.passwordSuccess);
+      showSuccess(result.detail || copy.passwordSuccess);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -269,7 +301,6 @@ export default function ProfilePage() {
   async function handlePrivacySubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setProfileMessage(null);
     setSavingPrivacy(true);
     try {
       const updated = await updateMyConnectionPrivacy({
@@ -278,7 +309,7 @@ export default function ProfilePage() {
       });
       setHideFollowers(updated.hide_followers);
       setHideFollowing(updated.hide_following);
-      setProfileMessage(copy.privacySuccess);
+      showSuccess(copy.privacySuccess);
     } catch (err: any) {
       setError(err?.message || copy.fallback);
     } finally {
@@ -298,29 +329,32 @@ export default function ProfilePage() {
       }
     } catch (err: any) {
       setError(err?.message || copy.fallback);
-    } finally {
       setDeletingAccount(false);
     }
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+      <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-950 flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
+        <p className="text-sm text-gray-500 font-medium">Yükleniyor...</p>
       </div>
     );
   }
 
   if (authError) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center px-6">
-        <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/40">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-            <UserCircle2 className="h-8 w-8 text-slate-400" />
+      <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-950 flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 mb-6">
+            <Lock className="h-8 w-8 text-gray-400" />
           </div>
-          <h1 className="mt-6 text-2xl font-bold text-slate-900">{copy.loginRequiredTitle}</h1>
-          <p className="mt-3 text-sm leading-relaxed text-slate-500">{copy.loginRequiredBody}</p>
-          <Link href="/login?mode=member" className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-sm font-bold text-white transition-colors hover:bg-slate-800">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{copy.loginRequiredTitle}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">{copy.loginRequiredBody}</p>
+          <Link 
+            href="/login?mode=member" 
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-white px-4 py-3 text-sm font-semibold text-white dark:text-slate-900 transition-colors hover:bg-slate-800 dark:hover:bg-gray-100 shadow-sm"
+          >
             {copy.loginCta}
             <ArrowRight className="h-4 w-4" />
           </Link>
@@ -330,224 +364,366 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:px-8">
-      <section>
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-slate-500 shadow-sm">
+    <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-950 pb-20">
+      
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-30 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+        <div className="max-w-3xl mx-auto flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
           <UserCircle2 className="h-4 w-4" />
           {copy.eyebrow}
-        </motion.div>
-        <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mt-6 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
-          {copy.title}
-        </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mt-4 max-w-3xl text-lg leading-relaxed text-slate-600">
-          {copy.subtitle}
-        </motion.p>
-      </section>
-
-      {error ? <div className="error-banner">{error}</div> : null}
-      {profileMessage ? <div className="success-banner">{profileMessage}</div> : null}
-      {passwordMessage ? <div className="success-banner">{passwordMessage}</div> : null}
-
-      <SubscriptionGate requiredPlan="member_plus">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <form onSubmit={handleProfileSubmit} className="card space-y-5 p-8">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">{copy.profileCard}</h2>
-          </div>
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                {avatarUrl ? <img src={avatarUrl} alt={displayName || email} className="h-full w-full object-cover" /> : <UserCircle2 className="h-12 w-12 text-slate-300" />}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900">{copy.avatar}</p>
-                <p className="mt-1 text-sm text-slate-500">{copy.avatarHint}</p>
-                <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-                  {uploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                  {copy.avatar}
-                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void handleAvatarChange(event.target.files?.[0] || null)} />
-                </label>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label className="label">{copy.displayName}</label>
-            <input className="input-field" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required maxLength={120} />
-          </div>
-          <div>
-            <label className="label">{copy.headline}</label>
-            <input className="input-field" value={headline} onChange={(event) => setHeadline(event.target.value)} maxLength={160} placeholder={copy.headlinePlaceholder} />
-          </div>
-          <div>
-            <label className="label">{copy.email}</label>
-            <input className="input-field bg-slate-50 text-slate-500" value={email} disabled />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="label">{copy.location}</label>
-              <div className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input className="input-field pl-10" value={location} onChange={(event) => setLocation(event.target.value)} maxLength={160} placeholder={copy.locationPlaceholder} />
-              </div>
-            </div>
-            <div>
-              <label className="label">{copy.website}</label>
-              <div className="relative">
-                <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input className="input-field pl-10" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} maxLength={2000} placeholder={copy.websitePlaceholder} />
-              </div>
-            </div>
-          </div>
-          <div>
-            <label className="label">{copy.bio}</label>
-            <textarea
-              className="input-field min-h-[180px] resize-y"
-              value={bio}
-              onChange={(event) => setBio(event.target.value)}
-              placeholder={copy.bioPlaceholder}
-              maxLength={1000}
-            />
-          </div>
-          <button type="submit" disabled={savingProfile} className="btn-primary justify-center">
-            {savingProfile ? copy.savingProfile : <><Save className="h-4 w-4" /> {copy.saveProfile}</>}
-          </button>
-        </form>
-
-        <div className="space-y-8">
-        <section className="card space-y-5 p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-              <UserCircle2 className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">{copy.memberPlanCard}</h2>
-          </div>
-          <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-              {memberSubscription?.active && memberSubscription.plan_id ? copy.memberPlanActive : copy.memberPlanNone}
-            </p>
-            <p className="mt-2 text-2xl font-black text-slate-900">
-              {memberSubscription?.active && memberSubscription.plan_id
-                ? memberSubscription.plan_id.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
-                : copy.memberPlanNone}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{copy.memberPlanBody}</p>
-            {memberSubscription?.active && memberSubscription.expires_at ? (
-              <p className="mt-4 text-sm font-semibold text-slate-700">
-                {copy.memberPlanExpires}: {new Date(memberSubscription.expires_at).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-US")}
-              </p>
-            ) : null}
-            <Link
-              href="/pricing/member"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-            >
-              {copy.memberPlanCta}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </section>
-
-        <form onSubmit={handlePrivacySubmit} className="card space-y-5 p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
-              <UserCircle2 className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">{copy.privacyCard}</h2>
-          </div>
-          <p className="text-sm text-slate-600">{copy.privacyHint}</p>
-          <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <span className="text-sm font-medium text-slate-800">{copy.hideFollowers}</span>
-            <input type="checkbox" checked={hideFollowers} onChange={(event) => setHideFollowers(event.target.checked)} className="h-4 w-4" />
-          </label>
-          <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <span className="text-sm font-medium text-slate-800">{copy.hideFollowing}</span>
-            <input type="checkbox" checked={hideFollowing} onChange={(event) => setHideFollowing(event.target.checked)} className="h-4 w-4" />
-          </label>
-          <button type="submit" disabled={savingPrivacy} className="btn-primary justify-center">
-            {savingPrivacy ? copy.savingPrivacy : copy.savePrivacy}
-          </button>
-        </form>
-
-        <form onSubmit={handlePasswordSubmit} className="card space-y-5 p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
-              <KeyRound className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">{copy.passwordCard}</h2>
-          </div>
-          <div>
-            <label className="label">{copy.currentPassword}</label>
-            <input
-              className="input-field"
-              type="password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </div>
-          <div>
-            <label className="label">{copy.newPassword}</label>
-            <input
-              className="input-field"
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
-              placeholder={copy.passwordPlaceholder}
-            />
-          </div>
-          <div>
-            <label className="label">{copy.confirmPassword}</label>
-            <input
-              className="input-field"
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
-              placeholder={copy.passwordPlaceholder}
-            />
-          </div>
-          <button type="submit" disabled={savingPassword} className="btn-primary justify-center">
-            {savingPassword ? copy.savingPassword : <><KeyRound className="h-4 w-4" /> {copy.savePassword}</>}
-          </button>
-        </form>
-
-        <form onSubmit={handleDeleteAccount} className="card space-y-5 border border-rose-200 bg-rose-50/70 p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-bold text-rose-900">{lang === "tr" ? "Hesabi Sil" : "Delete Account"}</h2>
-          </div>
-          <p className="text-sm leading-6 text-rose-800">
-            {lang === "tr"
-              ? "KVKK kapsaminda hesabini ve buna bagli kisisel verilerini kalici olarak silebilirsin. Bu islem geri alinamaz."
-              : "You can permanently delete your account and related personal data. This action cannot be undone."}
-          </p>
-          <div>
-            <label className="label text-rose-900">{lang === "tr" ? "Mevcut Sifre ile Onay" : "Confirm with Current Password"}</label>
-            <input
-              className="input-field border-rose-200 bg-white"
-              type="password"
-              value={deletePassword}
-              onChange={(event) => setDeletePassword(event.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </div>
-          <button type="submit" disabled={deletingAccount} className="inline-flex items-center justify-center rounded-xl bg-rose-700 py-3.5 text-sm font-bold text-white transition hover:bg-rose-800 disabled:opacity-60">
-            {deletingAccount
-              ? (lang === "tr" ? "Siliniyor..." : "Deleting...")
-              : (lang === "tr" ? "Hesabi ve Verileri Sil" : "Delete Account and Data")}
-          </button>
-        </form>
         </div>
       </div>
-      </SubscriptionGate>
+
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 pt-10">
+        
+        <div className="mb-10">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white mb-3">
+            {copy.title}
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {copy.subtitle}
+          </p>
+        </div>
+
+        {/* Global Notifications */}
+        <div className="mb-8 space-y-3 empty:hidden">
+          {error && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 dark:border-red-900/30 dark:bg-red-900/10 p-4 text-sm text-red-700 dark:text-red-400">
+              <ShieldAlert className="h-5 w-5 flex-shrink-0" />
+              <p className="font-medium">{error}</p>
+            </motion.div>
+          )}
+          {successMsg && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10 p-4 text-sm text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+              <p className="font-medium">{successMsg}</p>
+            </motion.div>
+          )}
+        </div>
+
+        <SubscriptionGate requiredPlan="member_plus">
+          <div className="space-y-8">
+            
+            {/* PROFILE SECTION */}
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{copy.profileCard}</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{copy.profileDesc}</p>
+              </div>
+              
+              <form onSubmit={handleProfileSubmit} className="p-6">
+                {/* Avatar Row */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 mb-8 pb-8 border-b border-gray-100 dark:border-gray-800">
+                  <div className="h-20 w-20 flex-shrink-0 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                    ) : (
+                      <UserCircle2 className="h-10 w-10 text-gray-400" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{copy.avatar}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-3">{copy.avatarHint}</p>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm">
+                      {uploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                      Fotoğraf Değiştir
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void handleAvatarChange(e.target.files?.[0] || null)} disabled={uploadingAvatar} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.displayName}</label>
+                      <input 
+                        type="text" 
+                        value={displayName} 
+                        onChange={(e) => setDisplayName(e.target.value)} 
+                        required 
+                        maxLength={120} 
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.headline}</label>
+                      <input 
+                        type="text" 
+                        value={headline} 
+                        onChange={(e) => setHeadline(e.target.value)} 
+                        placeholder={copy.headlinePlaceholder} 
+                        maxLength={160} 
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">{copy.email}</label>
+                    <input 
+                      type="email" 
+                      value={email} 
+                      disabled 
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.contactEmail}</label>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      placeholder={copy.contactEmailPlaceholder}
+                      maxLength={320}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.location}</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          value={location} 
+                          onChange={(e) => setLocation(e.target.value)} 
+                          placeholder={copy.locationPlaceholder} 
+                          maxLength={160} 
+                          className="w-full pl-9 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.website}</label>
+                      <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input 
+                          type="url" 
+                          value={websiteUrl} 
+                          onChange={(e) => setWebsiteUrl(e.target.value)} 
+                          placeholder={copy.websitePlaceholder} 
+                          maxLength={2000} 
+                          className="w-full pl-9 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.bio}</label>
+                    <textarea 
+                      value={bio} 
+                      onChange={(e) => setBio(e.target.value)} 
+                      placeholder={copy.bioPlaceholder} 
+                      maxLength={1000} 
+                      rows={4}
+                      className="w-full resize-y rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <button 
+                    type="submit" 
+                    disabled={savingProfile} 
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 dark:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-slate-900 transition-colors hover:bg-slate-800 dark:hover:bg-gray-100 disabled:opacity-50 w-full sm:w-auto shadow-sm"
+                  >
+                    {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {savingProfile ? copy.savingProfile : copy.saveProfile}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* MEMBERSHIP PLAN */}
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-500">
+                  <Crown className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{copy.memberPlanCard}</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{copy.memberPlanDesc}</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                      {memberSubscription?.active && memberSubscription.plan_id ? copy.memberPlanActive : copy.memberPlanNone}
+                    </p>
+                    <p className="text-xl font-black text-gray-900 dark:text-white">
+                      {memberSubscription?.active && memberSubscription.plan_id
+                        ? memberSubscription.plan_id.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+                        : copy.memberPlanNone}
+                    </p>
+                    {memberSubscription?.active && memberSubscription.expires_at && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                        <span className="font-semibold">{copy.memberPlanExpires}:</span> {new Date(memberSubscription.expires_at).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-US")}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href="/pricing/member"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm whitespace-nowrap"
+                  >
+                    {copy.memberPlanCta}
+                  </Link>
+                </div>
+                <p className="mt-4 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  {copy.memberPlanBody}
+                </p>
+              </div>
+            </section>
+
+            {/* PRIVACY SETTINGS */}
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{copy.privacyCard}</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{copy.privacyDesc}</p>
+              </div>
+              <form onSubmit={handlePrivacySubmit} className="p-6">
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{copy.hideFollowers}</span>
+                    <input 
+                      type="checkbox" 
+                      checked={hideFollowers} 
+                      onChange={(e) => setHideFollowers(e.target.checked)} 
+                      className="h-4 w-4 rounded border-gray-300 text-slate-900 focus:ring-slate-900" 
+                    />
+                  </label>
+                  <label className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{copy.hideFollowing}</span>
+                    <input 
+                      type="checkbox" 
+                      checked={hideFollowing} 
+                      onChange={(e) => setHideFollowing(e.target.checked)} 
+                      className="h-4 w-4 rounded border-gray-300 text-slate-900 focus:ring-slate-900" 
+                    />
+                  </label>
+                </div>
+                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">{copy.privacyHint}</p>
+                <div className="mt-6 flex justify-end">
+                  <button 
+                    type="submit" 
+                    disabled={savingPrivacy} 
+                    className="inline-flex items-center justify-center rounded-lg bg-slate-900 dark:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-slate-900 transition-colors hover:bg-slate-800 dark:hover:bg-gray-100 disabled:opacity-50 w-full sm:w-auto shadow-sm"
+                  >
+                    {savingPrivacy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    {savingPrivacy ? copy.savingPrivacy : copy.savePrivacy}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* PASSWORD & SECURITY */}
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{copy.passwordCard}</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{copy.passwordDesc}</p>
+              </div>
+              <form onSubmit={handlePasswordSubmit} className="p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.currentPassword}</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.newPassword}</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      placeholder={copy.passwordPlaceholder}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-gray-900 dark:text-white">{copy.confirmPassword}</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      placeholder={copy.passwordPlaceholder}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+                <div className="mt-8 flex justify-end">
+                  <button 
+                    type="submit" 
+                    disabled={savingPassword} 
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 dark:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-slate-900 transition-colors hover:bg-slate-800 dark:hover:bg-gray-100 disabled:opacity-50 w-full sm:w-auto shadow-sm"
+                  >
+                    {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                    {savingPassword ? copy.savingPassword : copy.savePassword}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* DANGER ZONE */}
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-900/30 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-red-100 dark:border-red-900/20 bg-red-50/50 dark:bg-red-900/10">
+                <h2 className="text-lg font-bold text-red-700 dark:text-red-500">{copy.dangerZone}</h2>
+              </div>
+              <form onSubmit={handleDeleteAccount} className="p-6">
+                <div className="flex items-start gap-4 mb-6">
+                  <div className="h-10 w-10 flex-shrink-0 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-500">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{copy.deleteAccount}</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                      {copy.deleteDesc}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
+                  <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-1.5">{copy.deleteConfirm}</label>
+                  <input
+                    type="password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                  />
+                  <div className="mt-4 flex justify-end">
+                    <button 
+                      type="submit" 
+                      disabled={deletingAccount} 
+                      className="inline-flex items-center justify-center rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 w-full sm:w-auto shadow-sm"
+                    >
+                      {deletingAccount ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {deletingAccount ? copy.deleting : copy.deleteBtn}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+          </div>
+        </SubscriptionGate>
+      </div>
     </div>
   );
 }

@@ -359,6 +359,7 @@ class PublicMember(Base):
     headline: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     website_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -1146,6 +1147,7 @@ class PublicMemberProfileUpdateIn(BaseModel):
     headline: Optional[str] = Field(default=None, max_length=160)
     location: Optional[str] = Field(default=None, max_length=160)
     website_url: Optional[str] = Field(default=None, max_length=2000)
+    contact_email: Optional[EmailStr] = None
 
 
 class PublicMemberChangePasswordIn(BaseModel):
@@ -1270,6 +1272,7 @@ class PublicMemberMeOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
 
 
@@ -1281,6 +1284,7 @@ class PublicMemberProfileOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
     event_count: int = 0
     comment_count: int = 0
@@ -7881,6 +7885,7 @@ async def public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7938,11 +7943,13 @@ async def update_public_me(
     headline = (data.headline or "").strip()
     location = (data.location or "").strip()
     website_url = (data.website_url or "").strip()
+    contact_email = (str(data.contact_email).strip().lower() if data.contact_email else "")
     db_member.display_name = display_name
     db_member.bio = bio or None
     db_member.headline = headline or None
     db_member.location = location or None
     db_member.website_url = website_url or None
+    db_member.contact_email = contact_email or None
     await db.commit()
     await db.refresh(db_member)
     return PublicMemberMeOut(
@@ -7955,6 +7962,7 @@ async def update_public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7992,6 +8000,7 @@ async def upload_public_member_avatar(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -8017,6 +8026,7 @@ async def get_public_member_profile(member_public_id: str, db: AsyncSession = De
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
         event_count=int(event_count_res.scalar_one() or 0),
         comment_count=int(comment_count_res.scalar_one() or 0),
