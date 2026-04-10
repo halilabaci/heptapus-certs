@@ -7496,6 +7496,10 @@ async def update_pricing_config(payload: PricingConfigOut, db: AsyncSession = De
 # Ã¢â€â‚¬Ã¢â€â‚¬ Public Stats Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 DEFAULT_STATS = {
+    "active_members": "12.4K+",
+    "hosted_events": "850+",
+    "issued_certificates": "50.000+",
+    # Backward compatibility keys
     "active_orgs": "500+",
     "certs_issued": "50.000+",
     "uptime_pct": "%100",
@@ -7504,6 +7508,9 @@ DEFAULT_STATS = {
 
 
 class StatsOut(BaseModel):
+    active_members: str
+    hosted_events: str
+    issued_certificates: str
     active_orgs: str
     certs_issued: str
     uptime_pct: str
@@ -7511,6 +7518,9 @@ class StatsOut(BaseModel):
 
 
 class StatsIn(BaseModel):
+    active_members: Optional[str] = None
+    hosted_events: Optional[str] = None
+    issued_certificates: Optional[str] = None
     active_orgs: Optional[str] = None
     certs_issued: Optional[str] = None
     uptime_pct: Optional[str] = None
@@ -7527,9 +7537,11 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
 
     if overrides.get("use_real_counts", True):
         # Real DB counts
-        org_count_res = await db.execute(
-            select(func.count(func.distinct(Event.admin_id)))
-        )
+        member_count_res = await db.execute(select(func.count()).select_from(PublicMember))
+        member_count = member_count_res.scalar_one() or 0
+        event_count_res = await db.execute(select(func.count()).select_from(Event))
+        event_count = event_count_res.scalar_one() or 0
+        org_count_res = await db.execute(select(func.count(func.distinct(Event.admin_id))))
         org_count = org_count_res.scalar_one() or 0
         cert_count_res = await db.execute(
             select(func.count()).select_from(Certificate).where(Certificate.deleted_at.is_(None))
@@ -7537,6 +7549,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         cert_count = cert_count_res.scalar_one() or 0
 
         return StatsOut(
+            active_members=overrides.get("active_members") or f"{member_count:,}".replace(",", "."),
+            hosted_events=overrides.get("hosted_events") or f"{event_count:,}".replace(",", "."),
+            issued_certificates=overrides.get("issued_certificates") or f"{cert_count:,}".replace(",", "."),
             active_orgs=overrides.get("active_orgs") or f"{org_count:,}".replace(",", "."),
             certs_issued=overrides.get("certs_issued") or f"{cert_count:,}".replace(",", "."),
             uptime_pct=overrides.get("uptime_pct") or DEFAULT_STATS["uptime_pct"],
@@ -7544,6 +7559,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         )
 
     return StatsOut(
+        active_members=overrides.get("active_members", DEFAULT_STATS["active_members"]),
+        hosted_events=overrides.get("hosted_events", DEFAULT_STATS["hosted_events"]),
+        issued_certificates=overrides.get("issued_certificates", DEFAULT_STATS["issued_certificates"]),
         active_orgs=overrides.get("active_orgs", DEFAULT_STATS["active_orgs"]),
         certs_issued=overrides.get("certs_issued", DEFAULT_STATS["certs_issued"]),
         uptime_pct=overrides.get("uptime_pct", DEFAULT_STATS["uptime_pct"]),

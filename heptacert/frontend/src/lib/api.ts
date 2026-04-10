@@ -1363,18 +1363,15 @@ export interface AdminOut {
   created_at?: string;
   heptacoin_balance: number;
 }
-export interface SuperAdminStatsOut {
-  total_users: number;
-  active_users: number;
-  total_events: number;
-  completed_events: number;
-  total_attendees: number;
-  total_certificates: number;
-  issued_certificates: number;
-  total_emails: number;
-  delivered_emails: number;
-  total_admins: number;
-  total_organizations: number;
+export interface SuperAdminLandingStatsConfig {
+  active_members?: string;
+  hosted_events?: string;
+  issued_certificates?: string;
+  active_orgs?: string;
+  certs_issued?: string;
+  uptime_pct?: string;
+  availability?: string;
+  use_real_counts?: boolean;
 }
 export async function listSuperAdmins(): Promise<AdminOut[]> {
   const res = await apiFetch(`/superadmin/admins`);
@@ -1532,8 +1529,18 @@ export async function listAuditLogs(params?: {
   return { items, total: items.length };
 }
 
-export async function getSuperAdminStats(): Promise<SuperAdminStatsOut> {
+export async function getSuperAdminStats(): Promise<SuperAdminLandingStatsConfig> {
   const res = await apiFetch(`/superadmin/stats`);
+  return res.json();
+}
+
+export async function updateSuperAdminStats(
+  data: SuperAdminLandingStatsConfig,
+): Promise<SuperAdminLandingStatsConfig> {
+  const res = await apiFetch(`/superadmin/stats`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
   return res.json();
 }
 

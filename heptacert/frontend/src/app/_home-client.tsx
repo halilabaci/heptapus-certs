@@ -8,7 +8,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 
 type Branding = { org_name?: string; brand_logo?: string | null; brand_color?: string | null; settings?: { hide_heptacert_home?: boolean } };
-type StatsData = { active_orgs: string; certs_issued: string; uptime_pct: string; availability: string };
+type StatsData = {
+  active_members?: string;
+  hosted_events?: string;
+  issued_certificates?: string;
+  active_orgs?: string;
+  certs_issued?: string;
+  uptime_pct?: string;
+  availability?: string;
+};
 
 const HOSTS = new Set(["heptacert.com", "www.heptacert.com", "cert.heptapusgroup.com", "localhost", "127.0.0.1"]);
 
@@ -47,7 +55,7 @@ export default function LandingPage() {
   const copy = useMemo(() => lang === "tr" ? {
     heroBadge: "Yeni Nesil Topluluk Ekosistemi",
     heroTitle: "Etkinlikleri Keşfet, Topluluğa Katıl, Sertifikanı Al",
-    heroDesc: "Binlerce kişinin buluştuğu etkinliklere katılın, tartışmalara dahil olun ve katılımınızı doğrulanabilir blokzincir tabanlı sertifikalarla kanıtlayın.",
+    heroDesc: "Binlerce kişinin buluştuğu etkinliklere katılın, tartışmalara dahil olun ve katılımınızı doğrulanabilir sertifikalarla kanıtlayın.",
     searchPlaceholder: "Etkinlik, topluluk veya konu ara...",
     primaryBtn: "Etkinlikleri Keşfet",
     secondaryBtn: "Topluluklara Göz At",
@@ -144,7 +152,7 @@ export default function LandingPage() {
                 placeholder={copy.searchPlaceholder}
                 className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white placeholder-gray-500 px-4 py-2 outline-none"
               />
-              <Link href="/discover" className="hidden sm:flex items-center justify-center px-6 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold rounded-xl hover:bg-slate-800 dark:hover:bg-gray-100 transition-colors shadow-sm whitespace-nowrap">
+              <Link href="/events" className="hidden sm:flex items-center justify-center px-6 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold rounded-xl hover:bg-slate-800 dark:hover:bg-gray-100 transition-colors shadow-sm whitespace-nowrap">
                 {copy.primaryBtn}
               </Link>
             </div>
@@ -175,15 +183,15 @@ export default function LandingPage() {
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center divide-y sm:divide-y-0 sm:divide-x divide-gray-100 dark:divide-gray-800">
               <div className="flex flex-col py-4 sm:py-0">
-                <span className="text-3xl font-black text-gray-900 dark:text-white">12.4K+</span>
+                <span className="text-3xl font-black text-gray-900 dark:text-white">{stats?.active_members || "0"}</span>
                 <span className="text-sm font-medium text-gray-500 mt-1">{copy.statsUsers}</span>
               </div>
               <div className="flex flex-col py-4 sm:py-0">
-                <span className="text-3xl font-black text-gray-900 dark:text-white">850+</span>
+                <span className="text-3xl font-black text-gray-900 dark:text-white">{stats?.hosted_events || "0"}</span>
                 <span className="text-sm font-medium text-gray-500 mt-1">{copy.statsEvents}</span>
               </div>
               <div className="flex flex-col py-4 sm:py-0">
-                <span className="text-3xl font-black text-gray-900 dark:text-white">{stats?.certs_issued || "45.2K"}</span>
+                <span className="text-3xl font-black text-gray-900 dark:text-white">{stats?.issued_certificates || stats?.certs_issued || "0"}</span>
                 <span className="text-sm font-medium text-gray-500 mt-1">{copy.statsCerts}</span>
               </div>
             </div>

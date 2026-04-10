@@ -129,8 +129,8 @@ export default function DiscoveryPage() {
   const [sortBy, setSortBy] = useState<"trending" | "recent" | "popular">("trending");
 
   const copy = useMemo(() => lang === "tr" ? {
-    title: "Keşfet",
-    subtitle: "Topluluktaki en ilginç gönderileri ve aktif üyeleri bulun",
+    title: "Merkez",
+    subtitle: "Topluluklardan gündemi takip edin, etkinlik odaklı paylaşımları ve öne çıkan üyeleri görün",
     loading: "Gönderiler yükleniyor...",
     error: "Gönderiler yüklenemedi",
     empty: "Henüz gönderi yok",
@@ -140,8 +140,8 @@ export default function DiscoveryPage() {
     popular: "Popüler",
     noResults: "Aramanızla eşleşen gönderi bulunamadı",
   } : {
-    title: "Discover",
-    subtitle: "Find the most interesting posts and active members in the community",
+    title: "Hub",
+    subtitle: "Follow the community pulse with event-focused updates and standout members",
     loading: "Loading posts...",
     error: "Failed to load posts",
     empty: "No posts yet",
