@@ -30,6 +30,9 @@ type EventOut = {
   name: string;
   config?: {
     registration_fields?: RegistrationField[];
+    registration_closed?: boolean;
+    registration_quota?: number;
+    registration_quota_enabled?: boolean;
     visibility?: "private" | "unlisted" | "public";
     [key: string]: unknown;
   };
@@ -42,6 +45,8 @@ type EventOut = {
   cert_email_template_id?: number | null;
   visibility?: "private" | "unlisted" | "public";
   require_email_verification?: boolean;
+  registration_quota?: number | null;
+  registration_quota_enabled?: boolean;
 };
 
 type EmailTemplate = {
@@ -63,6 +68,8 @@ type FormState = {
   visibility: "private" | "unlisted" | "public";
   registration_fields: RegistrationField[];
   require_email_verification: boolean;
+  registration_quota_enabled: boolean;
+  registration_quota: string;
   auto_email_on_cert: boolean;
   cert_email_template_id: number | null;
 };
@@ -74,6 +81,7 @@ const FIELD_TYPE_OPTIONS: Array<{ value: RegistrationField["type"]; tr: string; 
   { value: "number", tr: "Sayı", en: "Number" },
   { value: "date", tr: "Tarih", en: "Date" },
   { value: "select", tr: "Seçim listesi", en: "Select list" },
+  { value: "file", tr: "Dosya yükleme", en: "File upload" },
 ];
 
 const VISIBILITY_OPTIONS = [
@@ -131,6 +139,10 @@ export default function EventSettingsPage() {
         registrationStatusBody: "Etkinlik bittiğinde veya kapasite dolduğunda kayıt sayfasını sistem üzerinden kapatabilirsiniz.",
         registrationToggle: "Yeni kayıtları kapat",
         registrationHint: "Kapalıysa public kayıt endpoint'i yeni katılımcı kabul etmez.",
+        registrationQuotaLabel: "Kayıt kotası",
+        registrationQuotaToggle: "Kayıt kotasını aktif et",
+        registrationQuotaHint: "Boş bırakılırsa limitsiz olur. Kota dolduğunda kayıt otomatik kapanır.",
+        registrationQuotaPlaceholder: "Örn. 300",
         verificationToggle: "Kayıttan sonra e-posta doğrulaması zorunlu olsun",
         verificationHint: "Kapalıysa katılımcı kayıt olur olmaz aktif sayılır; check-in ve çekiliş akışı doğrulama beklemez.",
         addField: "Alan ekle",
@@ -142,6 +154,11 @@ export default function EventSettingsPage() {
         fieldOptions: "Seçenekler",
         fieldOptionsHint: "Her satıra bir seçenek yazın.",
         requiredField: "Zorunlu alan",
+        conditionalRequirement: "Koşullu zorunluluk",
+        conditionalDependsOn: "Bağlı alan",
+        conditionalValue: "Koşul değeri",
+        conditionalValuePlaceholder: "Seçenek seçin",
+        conditionalHint: "Bu alan, seçilen alandaki değer bu metinle aynıysa zorunlu olur.",
         removeField: "Alanı kaldır",
         labelPlaceholder: "Örn. T.C. Kimlik Numarası",
         helperPlaceholder: "Katılımcının ne girmesi gerektiğini açıklayın",
@@ -203,6 +220,10 @@ export default function EventSettingsPage() {
         registrationStatusBody: "Close the registration flow from the system when the event is over or you no longer want new signups.",
         registrationToggle: "Close new registrations",
         registrationHint: "When enabled, the public registration endpoint rejects new attendees.",
+        registrationQuotaLabel: "Registration quota",
+        registrationQuotaToggle: "Enable registration quota",
+        registrationQuotaHint: "Leave empty for unlimited. Registration auto-closes when quota is reached.",
+        registrationQuotaPlaceholder: "e.g. 300",
         verificationToggle: "Require email verification after registration",
         verificationHint: "When off, attendees become active immediately and check-in or raffle flows do not wait for email confirmation.",
         addField: "Add field",
@@ -214,6 +235,11 @@ export default function EventSettingsPage() {
         fieldOptions: "Options",
         fieldOptionsHint: "Write one option per line.",
         requiredField: "Required field",
+        conditionalRequirement: "Conditional requirement",
+        conditionalDependsOn: "Depends on field",
+        conditionalValue: "Condition value",
+        conditionalValuePlaceholder: "Select an option",
+        conditionalHint: "This field becomes required when the selected field exactly matches this value.",
         removeField: "Remove field",
         labelPlaceholder: "e.g. National ID Number",
         helperPlaceholder: "Explain what the attendee should enter",
@@ -265,6 +291,8 @@ export default function EventSettingsPage() {
     visibility: "private",
     registration_fields: [],
     require_email_verification: true,
+    registration_quota_enabled: false,
+    registration_quota: "",
     auto_email_on_cert: false,
     cert_email_template_id: null,
   });
@@ -319,7 +347,16 @@ export default function EventSettingsPage() {
         event_description: eventData.event_description || "",
         event_location: eventData.event_location || "",
         event_banner_url: eventData.event_banner_url || "",
-        registration_closed: Boolean(eventData.registration_closed),
+        registration_closed: Boolean(eventData.registration_closed ?? eventData.config?.registration_closed),
+        registration_quota_enabled: Boolean(
+          eventData.registration_quota_enabled
+            ?? eventData.config?.registration_quota_enabled
+            ?? ((eventData.registration_quota ?? eventData.config?.registration_quota) != null)
+        ),
+        registration_quota:
+          (eventData.registration_quota ?? eventData.config?.registration_quota) != null
+            ? String(eventData.registration_quota ?? eventData.config?.registration_quota)
+            : "",
         visibility: eventData.visibility || (eventData.config?.visibility as FormState["visibility"]) || "private",
         registration_fields: Array.isArray(eventData.config?.registration_fields)
           ? eventData.config.registration_fields
@@ -388,6 +425,8 @@ export default function EventSettingsPage() {
           label: field.label.trim(),
           type: field.type,
           required: Boolean(field.required),
+          required_when_field_id: field.required_when_field_id?.trim() || null,
+          required_when_equals: field.required_when_equals?.trim() || null,
           placeholder: field.placeholder?.trim() || null,
           helper_text: field.helper_text?.trim() || null,
           options: field.type === "select"
@@ -395,6 +434,10 @@ export default function EventSettingsPage() {
             : [],
         })).filter((field) => field.label),
         require_email_verification: formData.require_email_verification,
+        registration_quota_enabled: formData.registration_quota_enabled,
+        registration_quota: formData.registration_quota_enabled && formData.registration_quota.trim()
+          ? Number(formData.registration_quota)
+          : null,
       };
 
       if (hasGrowthPlan) {
@@ -591,6 +634,46 @@ export default function EventSettingsPage() {
                   <p className="mt-1 text-xs text-surface-500">{copy.registrationHint}</p>
                 </div>
               </label>
+              <div>
+                <label className="mb-3 flex items-start gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                  <input
+                    type="checkbox"
+                    checked={formData.registration_quota_enabled}
+                    onChange={(event) =>
+                      setFormData((current) => ({
+                        ...current,
+                        registration_quota_enabled: event.target.checked,
+                      }))
+                    }
+                    className="mt-1 h-4 w-4 rounded border-surface-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-surface-900">{copy.registrationQuotaToggle}</p>
+                    <p className="mt-1 text-xs text-surface-500">{copy.registrationQuotaHint}</p>
+                  </div>
+                </label>
+                <label className="label">{copy.registrationQuotaLabel}</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formData.registration_quota}
+                  disabled={!formData.registration_quota_enabled}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      registration_quota: event.target.value,
+                    }))
+                  }
+                  className="input-field"
+                  placeholder={copy.registrationQuotaPlaceholder}
+                />
+                {!formData.registration_quota_enabled && (
+                  <p className="mt-1 text-xs text-surface-500">
+                    {lang === "tr" ? "Kota kapalıyken kayıt sınırsız devam eder." : "When quota is off, registration remains unlimited."}
+                  </p>
+                )}
+              </div>
             </div>
           </section>
 
@@ -689,99 +772,163 @@ export default function EventSettingsPage() {
                   <p className="mt-1">{copy.previewHint}</p>
                 </div>
               ) : (
-                formData.registration_fields.map((field, index) => (
-                  <div key={field.id} className="rounded-3xl border border-surface-200 bg-surface-50 p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-surface-900">
-                        #{index + 1} {field.label || copy.fieldLabel}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removeRegistrationField(field.id)}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {copy.removeField}
-                      </button>
-                    </div>
+                formData.registration_fields.map((field, index) => {
+                  const conditionalSourceFields = formData.registration_fields.filter(
+                    (candidate) => candidate.id !== field.id && candidate.type === "select",
+                  );
+                  const selectedConditionalSource = conditionalSourceFields.find(
+                    (candidate) => candidate.id === field.required_when_field_id,
+                  );
+                  const conditionalValueOptions = (selectedConditionalSource?.options || [])
+                    .map((option) => option.trim())
+                    .filter(Boolean);
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="label">{copy.fieldLabel}</label>
-                        <input
-                          value={field.label}
-                          onChange={(event) => updateRegistrationField(field.id, { label: event.target.value })}
-                          className="input-field"
-                          placeholder={copy.labelPlaceholder}
-                        />
-                      </div>
-                      <div>
-                        <label className="label">{copy.fieldType}</label>
-                        <select
-                          value={field.type}
-                          onChange={(event) =>
-                            updateRegistrationField(field.id, {
-                              type: event.target.value as RegistrationField["type"],
-                              options: event.target.value === "select" ? (field.options || [""]) : [],
-                            })
-                          }
-                          className="input-field"
+                  return (
+                    <div key={field.id} className="rounded-3xl border border-surface-200 bg-surface-50 p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-surface-900">
+                          #{index + 1} {field.label || copy.fieldLabel}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => removeRegistrationField(field.id)}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
                         >
-                          {fieldTypeOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                          <Trash2 className="h-4 w-4" />
+                          {copy.removeField}
+                        </button>
                       </div>
-                      <div>
-                        <label className="label">{copy.fieldPlaceholder}</label>
+
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="label">{copy.fieldLabel}</label>
+                          <input
+                            value={field.label}
+                            onChange={(event) => updateRegistrationField(field.id, { label: event.target.value })}
+                            className="input-field"
+                            placeholder={copy.labelPlaceholder}
+                          />
+                        </div>
+                        <div>
+                          <label className="label">{copy.fieldType}</label>
+                          <select
+                            value={field.type}
+                            onChange={(event) =>
+                              updateRegistrationField(field.id, {
+                                type: event.target.value as RegistrationField["type"],
+                                options: event.target.value === "select" ? (field.options || [""]) : [],
+                              })
+                            }
+                            className="input-field"
+                          >
+                            {fieldTypeOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">{copy.fieldPlaceholder}</label>
+                          <input
+                            value={field.placeholder || ""}
+                            onChange={(event) => updateRegistrationField(field.id, { placeholder: event.target.value })}
+                            className="input-field"
+                            placeholder={copy.fieldPlaceholder}
+                          />
+                        </div>
+                        <div>
+                          <label className="label">{copy.fieldHelper}</label>
+                          <input
+                            value={field.helper_text || ""}
+                            onChange={(event) => updateRegistrationField(field.id, { helper_text: event.target.value })}
+                            className="input-field"
+                            placeholder={copy.helperPlaceholder}
+                          />
+                        </div>
+                      </div>
+
+                      {field.type === "select" && (
+                        <div className="mt-4">
+                          <label className="label">{copy.fieldOptions}</label>
+                          <textarea
+                            value={(field.options || []).join("\n")}
+                            onChange={(event) =>
+                              updateRegistrationField(field.id, {
+                                options: event.target.value.split("\n"),
+                              })
+                            }
+                            className="input-field min-h-28"
+                            placeholder={copy.fieldOptionsHint}
+                          />
+                          <p className="mt-2 text-xs text-surface-400">{copy.fieldOptionsHint}</p>
+                        </div>
+                      )}
+
+                      {field.type === "file" && (
+                        <div className="mt-4 rounded-2xl border border-surface-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-surface-800">{copy.conditionalRequirement}</p>
+                          <p className="mt-1 text-xs text-surface-500">{copy.conditionalHint}</p>
+                          <div className="mt-3 grid gap-4 md:grid-cols-2">
+                            <div>
+                              <label className="label">{copy.conditionalDependsOn}</label>
+                              <select
+                                value={field.required_when_field_id || ""}
+                                onChange={(event) => {
+                                  const nextFieldId = event.target.value;
+                                  updateRegistrationField(field.id, {
+                                    required_when_field_id: nextFieldId || undefined,
+                                    required_when_equals: nextFieldId
+                                      ? (field.required_when_equals || "")
+                                      : undefined,
+                                  });
+                                }}
+                                className="input-field"
+                              >
+                                <option value="">{lang === "tr" ? "Yok" : "None"}</option>
+                                {conditionalSourceFields.map((candidate) => (
+                                  <option key={candidate.id} value={candidate.id}>
+                                    {candidate.label || candidate.id}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="label">{copy.conditionalValue}</label>
+                              <select
+                                value={field.required_when_equals || ""}
+                                onChange={(event) =>
+                                  updateRegistrationField(field.id, {
+                                    required_when_equals: event.target.value,
+                                  })
+                                }
+                                disabled={!field.required_when_field_id || !conditionalValueOptions.length}
+                                className="input-field"
+                              >
+                                <option value="">{copy.conditionalValuePlaceholder}</option>
+                                {conditionalValueOptions.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <label className="mt-4 inline-flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm font-medium text-surface-700">
                         <input
-                          value={field.placeholder || ""}
-                          onChange={(event) => updateRegistrationField(field.id, { placeholder: event.target.value })}
-                          className="input-field"
-                          placeholder={copy.fieldPlaceholder}
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(event) => updateRegistrationField(field.id, { required: event.target.checked })}
+                          className="h-4 w-4 accent-brand-600"
                         />
-                      </div>
-                      <div>
-                        <label className="label">{copy.fieldHelper}</label>
-                        <input
-                          value={field.helper_text || ""}
-                          onChange={(event) => updateRegistrationField(field.id, { helper_text: event.target.value })}
-                          className="input-field"
-                          placeholder={copy.helperPlaceholder}
-                        />
-                      </div>
+                        {copy.requiredField}
+                      </label>
                     </div>
-
-                    {field.type === "select" && (
-                      <div className="mt-4">
-                        <label className="label">{copy.fieldOptions}</label>
-                        <textarea
-                          value={(field.options || []).join("\n")}
-                          onChange={(event) =>
-                            updateRegistrationField(field.id, {
-                              options: event.target.value.split("\n"),
-                            })
-                          }
-                          className="input-field min-h-28"
-                          placeholder={copy.fieldOptionsHint}
-                        />
-                        <p className="mt-2 text-xs text-surface-400">{copy.fieldOptionsHint}</p>
-                      </div>
-                    )}
-
-                    <label className="mt-4 inline-flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm font-medium text-surface-700">
-                      <input
-                        type="checkbox"
-                        checked={field.required}
-                        onChange={(event) => updateRegistrationField(field.id, { required: event.target.checked })}
-                        className="h-4 w-4 accent-brand-600"
-                      />
-                      {copy.requiredField}
-                    </label>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

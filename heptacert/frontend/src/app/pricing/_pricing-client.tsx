@@ -26,7 +26,11 @@ type WaitlistModalProps = {
   onClose: () => void;
 };
 
-export default function PricingPage() {
+type PricingClientProps = {
+  mode?: "all" | "member" | "business";
+};
+
+export default function PricingPage({ mode = "all" }: PricingClientProps) {
   const { lang } = useI18n();
   const t = useT();
 
@@ -85,9 +89,9 @@ export default function PricingPage() {
     faqTitle: "Sıkça Sorulan Sorular",
     enterpriseContact: "Satış Ekibiyle Görüşün",
     startFree: "Ücretsiz Başla",
-    memberTitle: "Uyelik Premium",
-    memberSubtitle: "Normal kullanicilar icin tasarlanmis sosyal ve profil odakli premium paketler.",
-    memberCta: "Uyelik hesabimdan incele"
+    memberTitle: "Üyelik Premium",
+    memberSubtitle: "Normal kullanıcılar için tasarlanmış sosyal ve profil odaklı premium paketler.",
+    memberCta: "Üyelik hesabımdan incele"
   } : {
     badge: paymentEnabled ? "Checkout is Live" : "Paid Plans Coming Soon",
     title: "Simple, transparent pricing",
@@ -110,6 +114,9 @@ export default function PricingPage() {
     memberCta: "Manage from my membership"
   };
 
+  const showMemberSection = mode !== "business";
+  const showBusinessSection = mode !== "member";
+
   return (
     <div className="flex flex-col gap-16 pb-24 pt-12 bg-slate-50 min-h-screen">
 
@@ -131,6 +138,7 @@ export default function PricingPage() {
         </motion.div>
       </section>
 
+      {showMemberSection && (
       <section id="member-premium" className="mx-auto w-full max-w-6xl px-6 lg:px-8">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
@@ -148,7 +156,7 @@ export default function PricingPage() {
               title: "Member Plus",
               tone: "border-sky-200 bg-sky-50/70",
               features: lang === "tr"
-                ? ["Gelistirilmis profil gorunumu", "Topluluk ve feed tarafinda premium uye katmani", "Sosyal ozelliklerde premium hazirlik"]
+                ? ["Geliştirilmiş profil görünümü", "Topluluk ve feed tarafında premium üye katmanı", "Sosyal özeliklerde premium hazırlanmış"]
                 : ["Enhanced profile visibility", "Premium member tier across communities and feed", "Premium-ready tier for social features"],
             },
             {
@@ -156,7 +164,7 @@ export default function PricingPage() {
               title: "Member Pro",
               tone: "border-emerald-200 bg-emerald-50/70",
               features: lang === "tr"
-                ? ["Plus ozelliklerinin tamami", "Topluluklarda daha guclu gorunurluk", "Yeni sosyal ozellikler icin oncelikli premium katman"]
+                ? ["Plus özeliklerinin tamamı", "Topluluklarda daha güçlü görünürlük", "Yeni sosyal özellikler için öncelikli premium katman"]
                 : ["Everything in Plus", "Stronger visibility across communities", "Priority premium tier for upcoming social features"],
             },
           ].map((plan) => (
@@ -182,8 +190,10 @@ export default function PricingPage() {
           ))}
         </div>
       </section>
+      )}
 
       {/* PRICING SECTION */}
+      {showBusinessSection && (
       <section className="mx-auto w-full max-w-7xl px-6 lg:px-8">
         {loading ? (
           <div className="flex justify-center py-20">
@@ -313,8 +323,10 @@ export default function PricingPage() {
           </>
         )}
       </section>
+      )}
 
       {/* FAQ SECTION */}
+      {showBusinessSection && (
       <motion.section initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mx-auto mt-12 w-full max-w-3xl px-6 lg:px-8">
         <div className="mb-10 text-center">
           <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">{copy.faqTitle}</h2>
@@ -333,6 +345,7 @@ export default function PricingPage() {
           ))}
         </div>
       </motion.section>
+      )}
 
       {/* MODAL */}
       {wlTier && <WaitlistModal tier={wlTier} lang={lang} onClose={() => setWlTier(null)} />}

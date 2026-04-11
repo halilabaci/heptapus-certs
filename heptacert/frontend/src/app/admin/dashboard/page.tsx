@@ -18,6 +18,7 @@ import {
   ArrowRight,
   AlertTriangle,
   Activity,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/useToast";
@@ -62,6 +63,8 @@ export default function DashboardPage() {
       quickEmailDesc: "Yönet ve takip et",
       quickSettings: "Ayarlar",
       quickSettingsDesc: "Yapılandır ve özelleştir",
+      quickOrgSocial: "Topluluk Profili",
+      quickOrgSocialDesc: "Sosyal ağları yönet",
       totalEvents: "Toplam Etkinlik",
       totalCertificates: "Toplam Sertifika",
       active: "Aktif",
@@ -93,6 +96,8 @@ export default function DashboardPage() {
       quickEmailDesc: "Manage and monitor",
       quickSettings: "Settings",
       quickSettingsDesc: "Configure and customize",
+      quickOrgSocial: "Organization Profile",
+      quickOrgSocialDesc: "Manage social links",
       totalEvents: "Total Events",
       totalCertificates: "Total Certificates",
       active: "Active",
@@ -195,6 +200,15 @@ export default function DashboardPage() {
       color: "bg-purple-50 text-purple-600 group-hover:bg-purple-100",
       hover: "hover:border-purple-400 hover:bg-purple-50",
       arrow: "group-hover:text-purple-500",
+    },
+    {
+      title: copy.quickOrgSocial || "Topluluk Profili",
+      description: copy.quickOrgSocialDesc || "Sosyal ağları yönet",
+      href: "/admin/organization-social",
+      icon: Users,
+      color: "bg-orange-50 text-orange-600 group-hover:bg-orange-100",
+      hover: "hover:border-orange-400 hover:bg-orange-50",
+      arrow: "group-hover:text-orange-500",
     },
   ];
 

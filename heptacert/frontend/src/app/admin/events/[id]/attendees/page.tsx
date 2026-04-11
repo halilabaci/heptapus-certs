@@ -247,15 +247,28 @@ export default function AdminAttendeesPage() {
   const totalPages = Math.ceil(total / limit);
   const eligibleCount = matrix ? matrix.rows.filter((r) => r.meets_threshold && !r.has_certificate).length : 0;
   const getRegistrationPreview = useCallback((attendee: AttendeeOut) => {
-    if (!registrationFields.length) return [];
-    return registrationFields
+    const fieldPreview = registrationFields
       .map((field) => {
         const value = attendee.registration_answers?.[field.id];
         if (!value) return null;
-        return { label: field.label, value };
+        return { label: field.label, value: String(value) };
       })
-      .filter((item): item is { label: string; value: string } => Boolean(item))
-      .slice(0, 2);
+      .filter((item): item is { label: string; value: string } => Boolean(item));
+
+    const extraPreview: Array<{ label: string; value: string }> = [];
+    const docsRaw = attendee.registration_answers?.["__documents"];
+    if (Array.isArray(docsRaw) && docsRaw.length > 0) {
+      extraPreview.push({ label: "Belge", value: `${docsRaw.length} dosya` });
+    }
+    const kvkkRaw = attendee.registration_answers?.["__kvkk"];
+    if (kvkkRaw && typeof kvkkRaw === "object") {
+      const accepted = (kvkkRaw as Record<string, unknown>).accepted;
+      if (accepted === true) {
+        extraPreview.push({ label: "KVKK", value: "Onaylandı" });
+      }
+    }
+
+    return [...fieldPreview, ...extraPreview].slice(0, 3);
   }, [registrationFields]);
 
   return (
@@ -713,10 +726,49 @@ export default function AdminAttendeesPage() {
                 <div className="mt-4 grid gap-3">
                   {registrationFields.map((field) => {
                     const value = selectedAttendee.registration_answers?.[field.id];
+                    const docsRaw = selectedAttendee.registration_answers?.["__documents"];
+                    const docsForField = Array.isArray(docsRaw)
+                      ? docsRaw
+                          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+                          .filter((item) => String(item.field_id || "") === field.id)
+                      : [];
+                    const renderedValue = value == null ? "—" : String(value);
                     return (
                       <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{field.label}</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">{value || "—"}</p>
+                        {field.type === "file" ? (
+                          docsForField.length === 0 ? (
+                            <p className="mt-2 text-sm font-semibold text-slate-900">—</p>
+                          ) : (
+                            <div className="mt-2 space-y-1.5">
+                              {docsForField.map((doc, index) => {
+                                const docName = String(doc.name || `Dosya ${index + 1}`);
+                                const docPath = String(doc.path || "");
+                                if (!docPath) {
+                                  return (
+                                    <p key={`${field.id}-doc-${index}`} className="text-sm font-semibold text-slate-900">
+                                      {docName}
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <a
+                                    key={`${field.id}-doc-${index}`}
+                                    href={`/api/files/${encodeURI(docPath)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block truncate text-sm font-semibold text-indigo-700 underline-offset-2 hover:underline"
+                                    title={docName}
+                                  >
+                                    {docName}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )
+                        ) : (
+                          <p className="mt-2 text-sm font-semibold text-slate-900">{renderedValue}</p>
+                        )}
                       </div>
                     );
                   })}

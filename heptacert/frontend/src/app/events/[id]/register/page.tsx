@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
-import { getPublicEventInfo, getPublicMemberMe, getPublicMemberToken, publicRegisterAttendee, type RegistrationField } from "@/lib/api";
+import { getPublicEventInfo, getPublicMemberMe, getPublicMemberToken, publicRegisterAttendee, uploadPublicRegistrationDocument, type RegistrationField, type RegistrationDocumentUploadOut } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 import {
   CheckCircle2,
@@ -15,6 +15,7 @@ import {
   Shield,
   Award,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -27,6 +28,8 @@ interface EventInfo {
   event_banner_url: string | null;
   min_sessions_required: number;
   registration_closed?: boolean;
+  kvkk_consent_required?: boolean;
+  kvkk_consent_text?: string | null;
   registration_fields?: RegistrationField[];
   survey?: {
     is_required: boolean;
@@ -51,6 +54,18 @@ type BrandingData = {
     hide_heptacert_home?: boolean;
   } | null;
 };
+
+const REGISTRATION_DOCUMENT_MAX_SIZE_BYTES = 2 * 1024 * 1024;
+
+function isFieldConditionMet(field: RegistrationField, answers: Record<string, string>): boolean {
+  const conditionFieldId = (field.required_when_field_id || "").trim();
+  const conditionValue = (field.required_when_equals || "").trim();
+  if (!conditionFieldId || !conditionValue) {
+    return false;
+  }
+  const currentValue = (answers[conditionFieldId] || "").trim();
+  return currentValue.toLocaleLowerCase() === conditionValue.toLocaleLowerCase();
+}
 
 export default function EventRegisterPage() {
   const params = useParams();
@@ -98,6 +113,16 @@ export default function EventRegisterPage() {
             email: "E-posta Adresi",
             emailPlaceholder: "ornek@mail.com",
             customInfo: "Ek bilgiler",
+            kvkkTitle: "KVKK Onayı",
+            kvkkRead: "KVKK metnini oku",
+            kvkkAccept: "KVKK aydinlatma metnini okudum ve kabul ediyorum.",
+            kvkkRequired: "Devam etmek için KVKK onayı gereklidir.",
+            documentTitle: "Belge Yükleme (Opsiyonel)",
+            documentHint: "PDF/JPG/PNG/WEBP formatında belge yükleyebilirsiniz (maks. 2 MB / dosya).",
+            documentPick: "Belge Seç",
+            documentRequired: "Lütfen zorunlu belge alanları için en az bir dosya yükleyin.",
+            documentTooLarge: "{name} dosyası 2 MB sınırını aşıyor.",
+            documentUploading: "Belgeler yükleniyor...",
             submit: "Kayıt Ol",
             cardRuleLabel: "Min. {count} oturum",
             poweredFooter: "Bu etkinlik sayfası kurumsal olarak özelleştirilmiş olsa da kayıt, doğrulama ve sertifika altyapısı HeptaCert tarafından sağlanır.",
@@ -139,6 +164,16 @@ export default function EventRegisterPage() {
             email: "Email Address",
             emailPlaceholder: "name@email.com",
             customInfo: "Additional details",
+            kvkkTitle: "KVKK Consent",
+            kvkkRead: "Read KVKK text",
+            kvkkAccept: "I have read and accept the KVKK disclosure text.",
+            kvkkRequired: "KVKK consent is required to continue.",
+            documentTitle: "Document Upload (Optional)",
+            documentHint: "You can upload documents as PDF/JPG/PNG/WEBP (max. 2 MB per file).",
+            documentPick: "Choose Document",
+            documentRequired: "Please upload at least one file for required document fields.",
+            documentTooLarge: "{name} exceeds the 2 MB file size limit.",
+            documentUploading: "Uploading documents...",
             submit: "Register",
             cardRuleLabel: "Min. {count} sessions",
             poweredFooter: "Even if this event page is customized for the organization, registration, verification, and certificate infrastructure are provided by HeptaCert.",
@@ -153,7 +188,11 @@ export default function EventRegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [registrationAnswers, setRegistrationAnswers] = useState<Record<string, string>>({});
+  const [registrationFilesByField, setRegistrationFilesByField] = useState<Record<string, File[]>>({});
+  const [showKvkkModal, setShowKvkkModal] = useState(false);
+  const [kvkkAccepted, setKvkkAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const [success, setSuccess] = useState(false);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [verificationRequired, setVerificationRequired] = useState(false);
@@ -200,6 +239,22 @@ export default function EventRegisterPage() {
   const brandColor = branding?.brand_color || "#7c73ff";
   const locale = lang === "tr" ? "tr-TR" : "en-US";
   const surveyEnabled = Boolean(event?.survey);
+  const fileFields = useMemo(
+    () => (event?.registration_fields || []).filter((field) => field.type === "file"),
+    [event?.registration_fields]
+  );
+  const nonFileFields = useMemo(
+    () => (event?.registration_fields || []).filter((field) => field.type !== "file"),
+    [event?.registration_fields]
+  );
+  const isDocumentRequirementMissing = useMemo(
+    () =>
+      fileFields.some((field) => {
+        const isRequired = field.required || isFieldConditionMet(field, registrationAnswers);
+        return isRequired && !(registrationFilesByField[field.id]?.length);
+      }),
+    [fileFields, registrationFilesByField, registrationAnswers]
+  );
 
   const pageBg = useMemo(
     () => ({
@@ -241,14 +296,39 @@ export default function EventRegisterPage() {
       setSubmitError(copy.registrationClosed);
       return;
     }
+    if ((event?.kvkk_consent_required ?? false) && !kvkkAccepted) {
+      setSubmitError(copy.kvkkRequired);
+      return;
+    }
+    if (isDocumentRequirementMissing) {
+      setSubmitError(copy.documentRequired);
+      return;
+    }
     setSubmitError(null);
     setSubmitting(true);
 
     try {
+      const uploadedDocuments: Array<RegistrationDocumentUploadOut & { field_id: string }> = [];
+      const totalFilesToUpload = fileFields.reduce(
+        (sum, field) => sum + (registrationFilesByField[field.id]?.length || 0),
+        0
+      );
+      if (totalFilesToUpload > 0) {
+        setUploadingDocs(true);
+        for (const field of fileFields) {
+          const fieldFiles = registrationFilesByField[field.id] || [];
+          for (const file of fieldFiles) {
+            const uploaded = await uploadPublicRegistrationDocument(eventId, file);
+            uploadedDocuments.push({ ...uploaded, field_id: field.id });
+          }
+        }
+      }
       const registered = await publicRegisterAttendee(eventId, {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         registration_answers: registrationAnswers,
+        kvkk_accepted: kvkkAccepted,
+        registration_documents: uploadedDocuments,
       });
 
       setAlreadyRegistered(Boolean(registered.already_registered));
@@ -274,6 +354,7 @@ export default function EventRegisterPage() {
     } catch (err: any) {
       setSubmitError(err.message || copy.registerFailed);
     } finally {
+      setUploadingDocs(false);
       setSubmitting(false);
     }
   }
@@ -563,10 +644,10 @@ export default function EventRegisterPage() {
                       )}
                     </div>
 
-                    {event?.registration_fields && event.registration_fields.length > 0 && (
+                    {nonFileFields.length > 0 && (
                       <div className="space-y-4 rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{copy.customInfo}</p>
-                        {event.registration_fields.map((field) => (
+                        {nonFileFields.map((field) => (
                           <div key={field.id}>
                             <label className="mb-2 block text-sm font-semibold text-gray-700">
                               {field.label}
@@ -615,6 +696,99 @@ export default function EventRegisterPage() {
                       </div>
                     )}
 
+                    {fileFields.length > 0 && (
+                      <div className="space-y-4 rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{copy.documentTitle}</p>
+                        <p className="text-xs text-gray-500">{copy.documentHint}</p>
+                        <div className="space-y-3">
+                          {fileFields.map((field) => {
+                            const fieldFiles = registrationFilesByField[field.id] || [];
+                            const isRequired = field.required || isFieldConditionMet(field, registrationAnswers);
+                            return (
+                              <div key={field.id} className="rounded-2xl border border-gray-200 bg-white p-3">
+                                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                                  {field.label}
+                                  {isRequired ? <span className="ml-1 text-red-500">*</span> : null}
+                                </label>
+                                {field.helper_text && <p className="mb-2 text-xs text-gray-500">{field.helper_text}</p>}
+                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100">
+                                  {copy.documentPick}
+                                  <input
+                                    type="file"
+                                    multiple
+                                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                                    className="hidden"
+                                    onChange={(eventArg) => {
+                                      const files = Array.from(eventArg.target.files || []);
+                                      if (!files.length) return;
+                                      const acceptedFiles = files.filter((file) => {
+                                        const ok = file.size <= REGISTRATION_DOCUMENT_MAX_SIZE_BYTES;
+                                        if (!ok) {
+                                          toast.error(copy.documentTooLarge.replace("{name}", file.name));
+                                        }
+                                        return ok;
+                                      });
+                                      if (!acceptedFiles.length) {
+                                        eventArg.currentTarget.value = "";
+                                        return;
+                                      }
+                                      setRegistrationFilesByField((current) => ({
+                                        ...current,
+                                        [field.id]: [...(current[field.id] || []), ...acceptedFiles].slice(0, 5),
+                                      }));
+                                      eventArg.currentTarget.value = "";
+                                    }}
+                                  />
+                                </label>
+                                {fieldFiles.length > 0 && (
+                                  <div className="mt-2 space-y-2">
+                                    {fieldFiles.map((file, index) => (
+                                      <div key={`${field.id}-${file.name}-${index}`} className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                                        <span className="truncate pr-3">{file.name}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setRegistrationFilesByField((current) => ({
+                                              ...current,
+                                              [field.id]: (current[field.id] || []).filter((_, idx) => idx !== index),
+                                            }))
+                                          }
+                                          className="rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                                          aria-label="remove file"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-3 rounded-[24px] border border-gray-200 bg-gray-50/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{copy.kvkkTitle}</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowKvkkModal(true)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {copy.kvkkRead}
+                      </button>
+                      <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={kvkkAccepted}
+                          onChange={(eventArg) => setKvkkAccepted(eventArg.target.checked)}
+                          className="mt-1 h-4 w-4"
+                        />
+                        <span className="text-sm text-gray-700">{copy.kvkkAccept}</span>
+                      </label>
+                    </div>
+
                     <AnimatePresence>
                       {submitError && (
                         <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -625,11 +799,11 @@ export default function EventRegisterPage() {
 
                     <button
                       type="submit"
-                      disabled={submitting || !name.trim() || !email.trim() || Boolean(event.registration_closed)}
+                      disabled={submitting || uploadingDocs || !name.trim() || !email.trim() || Boolean(event.registration_closed) || ((event.kvkk_consent_required ?? false) && !kvkkAccepted) || isDocumentRequirementMissing}
                       className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
                       style={primaryBtnStyle}
                     >
-                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{event.registration_closed ? copy.registrationClosed : copy.submit}<ArrowRight className="h-4 w-4" /></>}
+                      {submitting || uploadingDocs ? <><Loader2 className="h-4 w-4 animate-spin" />{uploadingDocs ? copy.documentUploading : null}</> : <>{event.registration_closed ? copy.registrationClosed : copy.submit}<ArrowRight className="h-4 w-4" /></>}
                     </button>
                   </form>
                 </motion.div>
@@ -638,6 +812,22 @@ export default function EventRegisterPage() {
           </motion.div>
         </div>
       </section>
+
+      {showKvkkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setShowKvkkModal(false)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 text-gray-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-bold text-gray-900">{copy.kvkkTitle}</h3>
+              <button type="button" onClick={() => setShowKvkkModal(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">{event.kvkk_consent_text || copy.kvkkAccept}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="border-t border-white/5 py-8">
         <div className="mx-auto max-w-6xl px-4 text-center md:px-6">

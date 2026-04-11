@@ -163,6 +163,7 @@ export interface PublicMemberMe {
   id: number;
   public_id: string;
   email: string;
+  contact_email?: string | null;
   display_name: string;
   bio?: string | null;
   avatar_url?: string | null;
@@ -181,6 +182,7 @@ export interface PublicMemberSubscriptionInfo {
 export interface PublicMemberProfile {
   public_id: string;
   display_name: string;
+  contact_email?: string | null;
   bio?: string | null;
   avatar_url?: string | null;
   headline?: string | null;
@@ -257,6 +259,8 @@ export interface PublicEventInfo {
   }>;
   visibility: "private" | "unlisted" | "public";
   require_email_verification: boolean;
+  kvkk_consent_required?: boolean;
+  kvkk_consent_text?: string | null;
 }
 
 export interface PublicEventDetail {
@@ -282,6 +286,17 @@ export interface PublicEventDetail {
     session_location?: string | null;
   }>;
   visibility: "private" | "unlisted" | "public";
+  kvkk_consent_required?: boolean;
+  kvkk_consent_text?: string | null;
+}
+
+export interface RegistrationDocumentUploadOut {
+  field_id?: string;
+  path: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
 }
 
 export interface PublicEventComment {
@@ -345,6 +360,13 @@ export interface CommunityPost {
   updated_at: string;
 }
 
+export interface CommunityPostEditHistoryItem {
+  old_body: string;
+  new_body: string;
+  edited_at: string;
+  edited_by_member_public_id: string;
+}
+
 export interface PublicSurveyAccess {
   attendee_id: number;
   attendee_name: string;
@@ -358,13 +380,15 @@ function toEventRouteId(eventId: EventRouteId) {
   return encodeURIComponent(String(eventId));
 }
 
-export type RegistrationFieldType = "text" | "textarea" | "number" | "tel" | "select" | "date";
+export type RegistrationFieldType = "text" | "textarea" | "number" | "tel" | "select" | "date" | "file";
 
 export interface RegistrationField {
   id: string;
   label: string;
   type: RegistrationFieldType;
   required: boolean;
+  required_when_field_id?: string;
+  required_when_equals?: string;
   placeholder?: string | null;
   helper_text?: string | null;
   options?: string[];
@@ -395,7 +419,7 @@ export interface AttendeeOut {
   public_member_id?: number | null;
   public_member_name?: string | null;
   public_member_email?: string | null;
-  registration_answers: Record<string, string>;
+  registration_answers: Record<string, unknown>;
 }
 
 export interface AttendanceMatrixRow {
@@ -706,7 +730,28 @@ export async function exportAttendanceFile(
   eventId: number,
   fmt: "xlsx" | "csv" = "xlsx",
 ): Promise<{ blob: Blob; filename: string }> {
-  const res = await apiFetch(`/admin/events/${eventId}/attendance/export?fmt=${fmt}`);
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(`${API_BASE}/admin/events/${eventId}/attendance/export?fmt=${fmt}`, {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const detail = `Export failed (${res.status})`;
+    try {
+      const json = await res.json();
+      const errorMsg = json?.detail || JSON.stringify(json);
+      throw new ApiError(res.status, errorMsg);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError(res.status, detail);
+    }
+  }
+
   const blob = await res.blob();
   const disposition = res.headers.get("content-disposition") || "";
   const filenameMatch = disposition.match(/filename=\"?([^"]+)\"?/i);
@@ -790,12 +835,26 @@ export async function getPublicMemberSubscription(): Promise<PublicMemberSubscri
   return res.json();
 }
 
+export async function upgradePublicMemberTier(planId: string): Promise<{
+  status: string;
+  message: string;
+  plan_id: string;
+  expires_at?: string | null;
+}> {
+  const res = await memberApiFetch("/public/billing/upgrade", {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+  return res.json();
+}
+
 export async function updatePublicMemberProfile(data: {
   display_name: string;
   bio?: string | null;
   headline?: string | null;
   location?: string | null;
   website_url?: string | null;
+  contact_email?: string | null;
 }): Promise<PublicMemberMe> {
   const res = await memberApiFetch("/public/me", {
     method: "PATCH",
@@ -958,6 +1017,26 @@ export async function unlikeCommunityPost(postPublicId: string): Promise<{ ok: b
   return res.json();
 }
 
+export async function updateCommunityPost(postPublicId: string, body: string): Promise<CommunityPost> {
+  const res = await memberApiFetch(`/public/posts/${postPublicId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
+}
+
+export async function deleteCommunityPost(postPublicId: string): Promise<{ ok: boolean }> {
+  const res = await memberApiFetch(`/public/posts/${postPublicId}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function listCommunityPostEditHistory(postPublicId: string): Promise<CommunityPostEditHistoryItem[]> {
+  const token = getPublicMemberToken();
+  const path = `/public/posts/${postPublicId}/history`;
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
+  return res.json();
+}
+
 export async function listCommunityPostComments(postPublicId: string, params: {
   limit?: number;
 } = {}): Promise<CommunityPostComment[]> {
@@ -1048,7 +1127,13 @@ export async function getPublicEventInfo(eventId: EventRouteId): Promise<PublicE
 
 export async function publicRegisterAttendee(
   eventId: EventRouteId,
-  data: { name: string; email: string; registration_answers?: Record<string, string> }
+  data: {
+    name: string;
+    email: string;
+    registration_answers?: Record<string, string>;
+    kvkk_accepted?: boolean;
+    registration_documents?: Array<RegistrationDocumentUploadOut & { field_id?: string }>;
+  }
 ): Promise<{
   ok: boolean;
   message: string;
@@ -1066,6 +1151,20 @@ export async function publicRegisterAttendee(
   const res = await fetcher(`/events/${toEventRouteId(eventId)}/register`, {
     method: "POST",
     body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function uploadPublicRegistrationDocument(
+  eventId: EventRouteId,
+  file: File,
+): Promise<RegistrationDocumentUploadOut> {
+  const form = new FormData();
+  form.append("file", file);
+  const fetcher = getPublicMemberToken() ? memberApiFetch : publicApiFetch;
+  const res = await fetcher(`/events/${toEventRouteId(eventId)}/registration-document`, {
+    method: "POST",
+    body: form,
   });
   return res.json();
 }
@@ -1264,18 +1363,15 @@ export interface AdminOut {
   created_at?: string;
   heptacoin_balance: number;
 }
-export interface SuperAdminStatsOut {
-  total_users: number;
-  active_users: number;
-  total_events: number;
-  completed_events: number;
-  total_attendees: number;
-  total_certificates: number;
-  issued_certificates: number;
-  total_emails: number;
-  delivered_emails: number;
-  total_admins: number;
-  total_organizations: number;
+export interface SuperAdminLandingStatsConfig {
+  active_members?: string;
+  hosted_events?: string;
+  issued_certificates?: string;
+  active_orgs?: string;
+  certs_issued?: string;
+  uptime_pct?: string;
+  availability?: string;
+  use_real_counts?: boolean;
 }
 export async function listSuperAdmins(): Promise<AdminOut[]> {
   const res = await apiFetch(`/superadmin/admins`);
@@ -1298,6 +1394,108 @@ export async function updateSuperAdminRole(adminId: number, role: string): Promi
   const res = await apiFetch(`/superadmin/admins/${adminId}/role`, {
     method: "PATCH",
     body: JSON.stringify({ role }),
+  });
+  return res.json();
+}
+
+// Connection/Networking API Functions
+
+export interface ConnectionMemberInfo {
+  id: number;
+  public_id: string;
+  display_name: string;
+  avatar_url?: string;
+  headline?: string;
+}
+
+export interface ConnectionStats {
+  follower_count: number;
+  following_count: number;
+  is_following: boolean;
+  is_blocked: boolean;
+  hide_followers?: boolean;
+  hide_following?: boolean;
+}
+
+export interface ConnectionPrivacySettings {
+  hide_followers: boolean;
+  hide_following: boolean;
+}
+
+export async function followMember(memberId: string): Promise<{ status: string }> {
+  const res = await memberApiFetch(`/public/members/${memberId}/follow`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function unfollowMember(memberId: string): Promise<{ status: string }> {
+  const res = await memberApiFetch(`/public/members/${memberId}/follow`, {
+    method: "DELETE",
+  });
+  return res.json();
+}
+
+export async function getMemberFollowers(
+  memberId: string,
+  limit: number = 20,
+  offset: number = 0
+): Promise<ConnectionMemberInfo[]> {
+  const path = `/public/members/${memberId}/followers?limit=${limit}&offset=${offset}`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
+  return res.json();
+}
+
+export async function getMemberFollowing(
+  memberId: string,
+  limit: number = 20,
+  offset: number = 0
+): Promise<ConnectionMemberInfo[]> {
+  const path = `/public/members/${memberId}/following?limit=${limit}&offset=${offset}`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
+  return res.json();
+}
+
+export async function getConnectionStats(
+  memberId: string
+): Promise<ConnectionStats> {
+  const path = `/public/members/${memberId}/connection-stats`;
+  const token = getPublicMemberToken();
+  const res = token ? await memberApiFetch(path) : await publicApiFetch(path);
+  return res.json();
+}
+
+export async function blockMember(
+  memberId: string,
+  reason?: string
+): Promise<{ status: string }> {
+  const res = await memberApiFetch(`/public/members/${memberId}/block`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+  return res.json();
+}
+
+export async function unblockMember(memberId: string): Promise<{ status: string }> {
+  const res = await memberApiFetch(`/public/members/${memberId}/block`, {
+    method: "DELETE",
+  });
+  return res.json();
+}
+
+export async function getMyConnectionPrivacy(): Promise<ConnectionPrivacySettings> {
+  const res = await memberApiFetch("/public/members/me/privacy");
+  return res.json();
+}
+
+export async function updateMyConnectionPrivacy(
+  data: ConnectionPrivacySettings,
+): Promise<ConnectionPrivacySettings> {
+  const res = await memberApiFetch("/public/members/me/privacy", {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
   return res.json();
 }
@@ -1331,8 +1529,18 @@ export async function listAuditLogs(params?: {
   return { items, total: items.length };
 }
 
-export async function getSuperAdminStats(): Promise<SuperAdminStatsOut> {
+export async function getSuperAdminStats(): Promise<SuperAdminLandingStatsConfig> {
   const res = await apiFetch(`/superadmin/stats`);
+  return res.json();
+}
+
+export async function updateSuperAdminStats(
+  data: SuperAdminLandingStatsConfig,
+): Promise<SuperAdminLandingStatsConfig> {
+  const res = await apiFetch(`/superadmin/stats`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
   return res.json();
 }
 

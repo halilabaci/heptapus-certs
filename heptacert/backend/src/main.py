@@ -219,6 +219,10 @@ def sanitize_event_description_html(value: Optional[str]) -> Optional[str]:
 
 class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
+    db_pool_size: int = Field(default=20, alias="DB_POOL_SIZE")
+    db_pool_max_overflow: int = Field(default=20, alias="DB_POOL_MAX_OVERFLOW")
+    db_pool_timeout: int = Field(default=15, alias="DB_POOL_TIMEOUT")
+    db_pool_recycle: int = Field(default=1800, alias="DB_POOL_RECYCLE")
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_expires_minutes: int = Field(default=1440, alias="JWT_EXPIRES_MINUTES")
 
@@ -257,12 +261,21 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = Field(default="", alias="STRIPE_WEBHOOK_SECRET")
     stripe_publishable_key: str = Field(default="", alias="STRIPE_PUBLISHABLE_KEY")
 
+    enable_scheduler: bool = Field(default=True, alias="ENABLE_SCHEDULER")
+
 
 settings = Settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _startup_time: float = time.time()
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+engine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=max(1, settings.db_pool_size),
+    max_overflow=max(0, settings.db_pool_max_overflow),
+    pool_timeout=max(1, settings.db_pool_timeout),
+    pool_recycle=max(60, settings.db_pool_recycle),
+)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 bulk_cert_job_lock = asyncio.Lock()
 
@@ -313,6 +326,29 @@ class User(Base):
 
 
 class PublicMember(Base):
+    """Public member profiles - SHARED between Events and Social systems.
+    
+    Used by:
+    - Social/Community Feed System: Member profiles, post authors, commenters, likers
+    - Events System: Event attendees with public profiles
+    
+    A public member can be:
+    1. An event attendee who also participates in social (comments, likes, posts to global feed)
+    2. A non-attendee who only participates in social (view, comment, like)
+    
+    Fields:
+    - public_id: Shareable profile identifier
+    - email: Unique email, used for both event and social authentication
+    - display_name: Public name shown in both systems
+    - bio, avatar_url, headline, location, website_url: Social profile data
+    - password_hash: Authentication for social platform
+    - attendees: Event registrations (one PublicMember -> many Attendees)
+    - comments: Event comments (comments on specific events)
+    
+    ** When a public member registers for an event, a new Attendee record is created
+       with a foreign key to public_member_id. This allows events to track member data
+       while social system tracks the same person's profile and activity.
+    """
     __tablename__ = "public_members"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -323,6 +359,7 @@ class PublicMember(Base):
     headline: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     website_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -533,6 +570,31 @@ class WebhookDelivery(Base):
 
 
 class Organization(Base):
+    """Organization profiles - SHARED between Events and Social systems.
+    
+    Used by:
+    - Social/Community Feed System: Organization profiles, organization-specific feeds
+    - Events System: Admin's organization context (future - for org-specific event management)
+    
+    Fields:
+    - user_id: Foreign key to Users table (admin who owns this organization)
+    - public_id: Shareable identifier for public-facing URLs
+    - org_name: Organization display name
+    - custom_domain: Optional custom domain for branded experience
+    - brand_logo: Organization logo URL
+    - brand_color: Primary color (hex) for branding
+    - settings: JSON config for organization-specific settings
+    
+    Relationships:
+    - CommunityPost: Organization can have organization-specific feeds
+    - OrganizationFollower: Social followers on this organization
+    
+    Permissions:
+    - Admin (user_id) can create posts via /api/admin/community/posts if they have Growth/Enterprise subscription
+    - Public members can view organization feeds via GET /api/public/organizations/{org_id}/feed
+    - Public members can comment/like on organization posts
+    - Public members cannot create posts to organization feeds (use global feed instead)
+    """
     __tablename__ = "organizations"
     id:            Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id:       Mapped[int]           = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
@@ -591,15 +653,43 @@ class CommunityPostLike(Base):
 
 
 class CommunityPostComment(Base):
+    """Comment on a community post. Supports nested replies (max 2-3 levels deep).
+    
+    - parent_comment_id: If set, this comment is a reply to another comment
+    - upvote_count/downvote_count: Vote tracking
+    - status: 'visible' or 'hidden' for moderation
+    """
     __tablename__ = "community_post_comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("community_posts.id", ondelete="CASCADE"), index=True)
     public_member_id: Mapped[int] = mapped_column(Integer, ForeignKey("public_members.id", ondelete="CASCADE"), index=True)
+    parent_comment_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("community_post_comments.id", ondelete="CASCADE"), nullable=True, index=True)
     body: Mapped[str] = mapped_column(Text)
+    upvote_count: Mapped[int] = mapped_column(Integer, default=0)
+    downvote_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="visible", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+
+class CommunityCommentVote(Base):
+    """Vote tracking for community post comments (upvote/downvote).
+    
+    Stores which member voted on which comment and the vote type.
+    vote_type: 'upvote', 'downvote', or 'none' (to track undo)
+    """
+    __tablename__ = "community_comment_votes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    comment_id: Mapped[int] = mapped_column(Integer, ForeignKey("community_post_comments.id", ondelete="CASCADE"), index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("public_members.id", ondelete="CASCADE"), index=True)
+    vote_type: Mapped[str] = mapped_column(String(20))  # 'upvote', 'downvote', 'none'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('comment_id', 'member_id', name='uq_comment_member_vote'),
+    )
 
 
 class WaitlistEntry(Base):
@@ -830,6 +920,28 @@ class Attendee(Base):
 
 
 class EventComment(Base):
+    """Event-specific comments - SEPARATE from Social Community Feed system.
+    
+    This model is for comments on EVENT pages, NOT for community posts.
+    
+    Completely separate from:
+    - CommunityPost: Global feed posts by members and organizations
+    - CommunityPostComment: Comments on community feed posts
+    
+    Event comments are:
+    - Specific to a single event page
+    - Visible only on that event's detail page
+    - Free for all authenticated public members (no subscription restriction)
+    - NOT shared in global community feed
+    
+    Endpoints (Events system):
+    - GET /api/public/events/{event_id}/comments - List event page comments
+    - POST /api/public/events/{event_id}/comments - Add comment (free tier allowed)
+    
+    Endpoints (Social system for comparison):
+    - GET/POST /api/public/feed - Global community feed
+    - GET/POST /api/public/posts/{post_id}/comments - Comments on community posts
+    """
     __tablename__ = "event_comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True)
@@ -1035,6 +1147,7 @@ class PublicMemberProfileUpdateIn(BaseModel):
     headline: Optional[str] = Field(default=None, max_length=160)
     location: Optional[str] = Field(default=None, max_length=160)
     website_url: Optional[str] = Field(default=None, max_length=2000)
+    contact_email: Optional[EmailStr] = None
 
 
 class PublicMemberChangePasswordIn(BaseModel):
@@ -1083,6 +1196,8 @@ class EventRenameIn(BaseModel):
     visibility: Optional[str] = Field(default=None, max_length=32)
     require_email_verification: Optional[bool] = Field(default=None)
     registration_closed: Optional[bool] = Field(default=None)
+    registration_quota: Optional[int] = Field(default=None, ge=1, le=1_000_000)
+    registration_quota_enabled: Optional[bool] = Field(default=None)
 
 
 class CreditCoinsIn(BaseModel):
@@ -1140,8 +1255,11 @@ class EventOut(BaseModel):
     event_banner_url: Optional[str] = None
     auto_email_on_cert: bool = False
     cert_email_template_id: Optional[int] = None
+    registration_closed: bool = False
     visibility: str = "private"
     require_email_verification: bool = True
+    registration_quota: Optional[int] = None
+    registration_quota_enabled: bool = False
 
 
 class PublicMemberMeOut(BaseModel):
@@ -1154,6 +1272,7 @@ class PublicMemberMeOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
 
 
@@ -1165,6 +1284,7 @@ class PublicMemberProfileOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
     event_count: int = 0
     comment_count: int = 0
@@ -1209,6 +1329,10 @@ class PublicEventDetailOut(BaseModel):
     sessions: List[Dict[str, Any]] = Field(default_factory=list)
     visibility: str = "private"
     require_email_verification: bool = True
+    registration_quota: Optional[int] = None
+    registration_quota_enabled: bool = False
+    kvkk_consent_required: bool = True
+    kvkk_consent_text: Optional[str] = None
 
 
 class PublicMemberEventOut(BaseModel):
@@ -3648,12 +3772,15 @@ async def startup():
                         db_bulk.add(job)
                         await db_bulk.commit()
 
-        scheduler.add_job(_notify_expiring_certs, "cron", hour=2, minute=0)
-        scheduler.add_job(_monthly_hc_renewal, "cron", hour=3, minute=30)
-        scheduler.add_job(_process_bulk_emails, "interval", minutes=5)  # Every 5 minutes
-        scheduler.add_job(_process_bulk_certificate_jobs, "interval", seconds=3)
-        scheduler.start()
-        logger.info("APScheduler started Ã¢â‚¬â€ cert notifications + monthly HC renewal + bulk email processing + bulk certificate queue")
+        if settings.enable_scheduler:
+            scheduler.add_job(_notify_expiring_certs, "cron", hour=2, minute=0)
+            scheduler.add_job(_monthly_hc_renewal, "cron", hour=3, minute=30)
+            scheduler.add_job(_process_bulk_emails, "interval", minutes=5)  # Every 5 minutes
+            scheduler.add_job(_process_bulk_certificate_jobs, "interval", seconds=3)
+            scheduler.start()
+            logger.info("APScheduler started Ã¢â‚¬â€ cert notifications + monthly HC renewal + bulk email processing + bulk certificate queue")
+        else:
+            logger.info("APScheduler skipped because ENABLE_SCHEDULER=false")
     except Exception as e:
         logger.warning("APScheduler init failed (non-fatal): %s", e)
 
@@ -3668,7 +3795,7 @@ def bad_request(msg: str) -> HTTPException:
     return HTTPException(status_code=400, detail=msg)
 
 
-REGISTRATION_FIELD_TYPES = {"text", "textarea", "number", "tel", "select", "date"}
+REGISTRATION_FIELD_TYPES = {"text", "textarea", "number", "tel", "select", "date", "file"}
 EVENT_VISIBILITY_VALUES = {"private", "unlisted", "public"}
 
 
@@ -3700,6 +3827,8 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
         placeholder = str(item.get("placeholder") or "").strip()[:200] or None
         helper_text = str(item.get("helper_text") or "").strip()[:300] or None
         required = bool(item.get("required"))
+        required_when_field_id = str(item.get("required_when_field_id") or "").strip()[:64]
+        required_when_equals = str(item.get("required_when_equals") or "").strip()[:120]
 
         options: List[str] = []
         raw_options = item.get("options")
@@ -3720,9 +3849,20 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
         }
         if field_type == "select":
             normalized_item["options"] = options
+        if required_when_field_id and required_when_equals:
+            normalized_item["required_when_field_id"] = required_when_field_id
+            normalized_item["required_when_equals"] = required_when_equals
 
         normalized.append(normalized_item)
         seen_ids.add(field_id)
+
+    valid_ids = {item["id"] for item in normalized}
+    for item in normalized:
+        cond_id = str(item.get("required_when_field_id") or "").strip()
+        cond_value = str(item.get("required_when_equals") or "").strip()
+        if not cond_id or not cond_value or cond_id not in valid_ids or cond_id == item["id"]:
+            item.pop("required_when_field_id", None)
+            item.pop("required_when_equals", None)
 
     return normalized
 
@@ -3750,6 +3890,70 @@ def _get_event_email_verification_required(event: Event) -> bool:
     if raw_value is None:
         return True
     return bool(raw_value)
+
+
+def _get_event_registration_quota(event: Event) -> Optional[int]:
+    config = event.config or {}
+    raw_value = config.get("registration_quota")
+    if raw_value is None or raw_value == "":
+        return None
+    try:
+        quota = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return quota if quota > 0 else None
+
+
+def _is_event_registration_quota_enabled(event: Event) -> bool:
+    config = event.config or {}
+    raw_value = config.get("registration_quota_enabled")
+    if raw_value is None:
+        # Backward-compatible default: enabled only when quota is set.
+        return _get_event_registration_quota(event) is not None
+    return bool(raw_value)
+
+
+def _is_event_kvkk_consent_required(event: Event) -> bool:
+    config = event.config or {}
+    raw_value = config.get("kvkk_consent_required")
+    if raw_value is None:
+        # Backward compatibility: legacy events without this key are not forced.
+        return False
+    return bool(raw_value)
+
+
+def _get_event_kvkk_consent_text(event: Event) -> str:
+    config = event.config or {}
+    custom = str(config.get("kvkk_consent_text") or "").strip()
+    if custom:
+        return custom
+    return (
+        "KVKK AYDINLATMA METNI\n\n"
+        "1) Veri sorumlusu\n"
+        "Bu etkinlik kaydi kapsaminda paylastiginiz kisisel verileriniz, ilgili organizasyon ve Heptapus Group tarafindan "
+        "6698 sayili Kisisel Verilerin Korunmasi Kanunu (KVKK) hukumlerine uygun sekilde islenebilir.\n\n"
+        "2) Islenen veri kategorileri\n"
+        "Etkinlik kaydi sirasinda ad-soyad, e-posta adresi, kayit formunda girdiginiz ek bilgiler, "
+        "zorunlu/istege bagli yuklediginiz belgeler ve teknik kayitlar (IP, cihaz ve zaman bilgisi) islenebilir.\n\n"
+        "3) Isleme amaclari\n"
+        "Verileriniz; kaydinizin alinmasi, katilimci dogrulama sureclerinin yurutilmesi, yoklama/check-in islemleri, "
+        "sertifika surecleri, destek hizmetleri, guvenlik kontrolleri ve ilgili mevzuattan dogan yukumluluklerin yerine "
+        "getirilmesi amaclariyla kullanilir.\n\n"
+        "4) Hukuki sebep\n"
+        "Kisisel verileriniz KVKK madde 5 ve 6 kapsaminda; acik rizaniz, bir sozlesmenin kurulmasi/ifasi, "
+        "hukuki yukumluluklerin yerine getirilmesi ve mesru menfaat hukuki sebeplerine dayanilarak islenebilir.\n\n"
+        "5) Aktarim\n"
+        "Verileriniz, hizmetin sunulmasi icin gerekli oldugu olcude; altyapi, barindirma, e-posta veya teknik destek "
+        "saglayicilari gibi is ortagi/hizmet saglayicilarla, yalnizca amacla sinirli ve olculu sekilde paylasilabilir.\n\n"
+        "6) Saklama suresi ve guvenlik\n"
+        "Verileriniz ilgili isleme amaci ortadan kalkincaya kadar ve mevzuatta ongorulen saklama sureleri boyunca saklanir. "
+        "Bu sure sonunda veriler silinir, yok edilir veya anonim hale getirilir. Uygun teknik ve idari guvenlik onlemleri uygulanir.\n\n"
+        "7) Haklariniz\n"
+        "KVKK madde 11 kapsaminda; verinize erisim, duzeltme, silme, islemeyi sinirlama, itiraz ve zararin giderilmesini talep etme "
+        "haklarina sahipsiniz.\n\n"
+        "8) Basvuru ve iletisim\n"
+        "KVKK kapsamindaki taleplerinizi contact@heptapusgroup.com adresine iletebilirsiniz."
+    )
 
 
 def _is_event_registration_closed(event: Event) -> bool:
@@ -3845,6 +4049,9 @@ def _normalize_registration_answers(
 
     for field in registration_fields:
         field_id = field["id"]
+        if field.get("type") == "file":
+            # File fields are validated via registration_documents payload.
+            continue
         raw_value = raw_map.get(field_id, "")
         if raw_value is None:
             value = ""
@@ -3855,7 +4062,8 @@ def _normalize_registration_answers(
         else:
             raise bad_request(f'"{field["label"]}" alanı için geçerli bir değer girin.')
 
-        if field.get("required") and not value:
+        is_required = bool(field.get("required")) or _is_registration_field_condition_met(field, raw_map)
+        if is_required and not value:
             raise bad_request(f'"{field["label"]}" alanı zorunludur.')
 
         if not value:
@@ -3869,6 +4077,26 @@ def _normalize_registration_answers(
         normalized[field_id] = value[:1000]
 
     return normalized
+
+
+def _is_registration_field_condition_met(field: Dict[str, Any], answers: Dict[str, Any]) -> bool:
+    condition_field_id = str(field.get("required_when_field_id") or "").strip()
+    condition_value = str(field.get("required_when_equals") or "").strip()
+    if not condition_field_id or not condition_value:
+        return False
+
+    raw_value = answers.get(condition_field_id)
+    if raw_value is None:
+        return False
+
+    if isinstance(raw_value, str):
+        actual_value = raw_value.strip()
+    elif isinstance(raw_value, (int, float, bool)):
+        actual_value = str(raw_value).strip()
+    else:
+        return False
+
+    return actual_value.casefold() == condition_value.casefold()
 
 
 async def _get_checkin_context_by_token(checkin_token: str, db: AsyncSession) -> Optional[Dict[str, Any]]:
@@ -7268,6 +7496,10 @@ async def update_pricing_config(payload: PricingConfigOut, db: AsyncSession = De
 # Ã¢â€â‚¬Ã¢â€â‚¬ Public Stats Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 DEFAULT_STATS = {
+    "active_members": "12.4K+",
+    "hosted_events": "850+",
+    "issued_certificates": "50.000+",
+    # Backward compatibility keys
     "active_orgs": "500+",
     "certs_issued": "50.000+",
     "uptime_pct": "%100",
@@ -7276,6 +7508,9 @@ DEFAULT_STATS = {
 
 
 class StatsOut(BaseModel):
+    active_members: str
+    hosted_events: str
+    issued_certificates: str
     active_orgs: str
     certs_issued: str
     uptime_pct: str
@@ -7283,6 +7518,9 @@ class StatsOut(BaseModel):
 
 
 class StatsIn(BaseModel):
+    active_members: Optional[str] = None
+    hosted_events: Optional[str] = None
+    issued_certificates: Optional[str] = None
     active_orgs: Optional[str] = None
     certs_issued: Optional[str] = None
     uptime_pct: Optional[str] = None
@@ -7299,9 +7537,11 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
 
     if overrides.get("use_real_counts", True):
         # Real DB counts
-        org_count_res = await db.execute(
-            select(func.count(func.distinct(Event.admin_id)))
-        )
+        member_count_res = await db.execute(select(func.count()).select_from(PublicMember))
+        member_count = member_count_res.scalar_one() or 0
+        event_count_res = await db.execute(select(func.count()).select_from(Event))
+        event_count = event_count_res.scalar_one() or 0
+        org_count_res = await db.execute(select(func.count(func.distinct(Event.admin_id))))
         org_count = org_count_res.scalar_one() or 0
         cert_count_res = await db.execute(
             select(func.count()).select_from(Certificate).where(Certificate.deleted_at.is_(None))
@@ -7309,6 +7549,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         cert_count = cert_count_res.scalar_one() or 0
 
         return StatsOut(
+            active_members=overrides.get("active_members") or f"{member_count:,}".replace(",", "."),
+            hosted_events=overrides.get("hosted_events") or f"{event_count:,}".replace(",", "."),
+            issued_certificates=overrides.get("issued_certificates") or f"{cert_count:,}".replace(",", "."),
             active_orgs=overrides.get("active_orgs") or f"{org_count:,}".replace(",", "."),
             certs_issued=overrides.get("certs_issued") or f"{cert_count:,}".replace(",", "."),
             uptime_pct=overrides.get("uptime_pct") or DEFAULT_STATS["uptime_pct"],
@@ -7316,6 +7559,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         )
 
     return StatsOut(
+        active_members=overrides.get("active_members", DEFAULT_STATS["active_members"]),
+        hosted_events=overrides.get("hosted_events", DEFAULT_STATS["hosted_events"]),
+        issued_certificates=overrides.get("issued_certificates", DEFAULT_STATS["issued_certificates"]),
         active_orgs=overrides.get("active_orgs", DEFAULT_STATS["active_orgs"]),
         certs_issued=overrides.get("certs_issued", DEFAULT_STATS["certs_issued"]),
         uptime_pct=overrides.get("uptime_pct", DEFAULT_STATS["uptime_pct"]),
@@ -7657,6 +7903,7 @@ async def public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7682,6 +7929,19 @@ async def get_public_member_subscription(
     }
 
 
+@app.post("/api/public/billing/upgrade")
+async def upgrade_public_member_tier(
+    data: dict,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    # Temporary safeguard: disable member self-service subscription changes.
+    raise HTTPException(
+        status_code=503,
+        detail="Member subscription changes are temporarily disabled.",
+    )
+
+
 @app.patch("/api/public/me", response_model=PublicMemberMeOut)
 async def update_public_me(
     data: PublicMemberProfileUpdateIn,
@@ -7701,11 +7961,13 @@ async def update_public_me(
     headline = (data.headline or "").strip()
     location = (data.location or "").strip()
     website_url = (data.website_url or "").strip()
+    contact_email = (str(data.contact_email).strip().lower() if data.contact_email else "")
     db_member.display_name = display_name
     db_member.bio = bio or None
     db_member.headline = headline or None
     db_member.location = location or None
     db_member.website_url = website_url or None
+    db_member.contact_email = contact_email or None
     await db.commit()
     await db.refresh(db_member)
     return PublicMemberMeOut(
@@ -7718,6 +7980,7 @@ async def update_public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7755,6 +8018,7 @@ async def upload_public_member_avatar(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7780,6 +8044,7 @@ async def get_public_member_profile(member_public_id: str, db: AsyncSession = De
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
         event_count=int(event_count_res.scalar_one() or 0),
         comment_count=int(comment_count_res.scalar_one() or 0),
@@ -7956,6 +8221,8 @@ async def create_event(
 ):
     next_config = dict(payload.config or {})
     next_config["visibility"] = _normalize_event_visibility(next_config.get("visibility"))
+    # New events should require KVKK consent by default.
+    next_config.setdefault("kvkk_consent_required", True)
     public_id = await _generate_event_public_id(db)
     ev = Event(
         public_id=public_id,
@@ -7985,8 +8252,11 @@ def _event_to_out(ev: Event) -> EventOut:
         event_banner_url=ev.event_banner_url,
         auto_email_on_cert=bool(ev.auto_email_on_cert),
         cert_email_template_id=ev.cert_email_template_id,
+        registration_closed=_is_event_registration_closed(ev),
         visibility=_get_event_visibility(ev),
         require_email_verification=_get_event_email_verification_required(ev),
+        registration_quota=_get_event_registration_quota(ev),
+        registration_quota_enabled=_is_event_registration_quota_enabled(ev),
     )
 
 
@@ -8036,8 +8306,26 @@ async def rename_event(
     if "registration_closed" in payload.model_fields_set:
         next_config["registration_closed"] = bool(payload.registration_closed)
         config_dirty = True
+    if "registration_quota" in payload.model_fields_set:
+        if payload.registration_quota is None:
+            next_config.pop("registration_quota", None)
+        else:
+            next_config["registration_quota"] = int(payload.registration_quota)
+        config_dirty = True
+    if "registration_quota_enabled" in payload.model_fields_set:
+        next_config["registration_quota_enabled"] = bool(payload.registration_quota_enabled)
+        config_dirty = True
     if config_dirty:
         ev.config = next_config
+    if payload.registration_quota is not None and bool(next_config.get("registration_quota_enabled")):
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == ev.id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= int(payload.registration_quota):
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
     if "auto_email_on_cert" in payload.model_fields_set:
         ev.auto_email_on_cert = bool(payload.auto_email_on_cert)
     if "cert_email_template_id" in payload.model_fields_set:
@@ -9464,6 +9752,10 @@ async def patch_organization_settings(
     existing = getattr(org, "settings", {}) or {}
     if not isinstance(existing, dict):
         existing = {}
+    else:
+        # Avoid mutating the ORM-backed dict in-place; create a fresh copy so
+        # SQLAlchemy consistently detects and persists JSON changes.
+        existing = dict(existing)
 
     # AyrÃ„Â± kolonlar
     if "brand_color" in payload:
@@ -10433,13 +10725,15 @@ class AttendeeOut(BaseModel):
     public_member_id: Optional[int] = None
     public_member_name: Optional[str] = None
     public_member_email: Optional[str] = None
-    registration_answers: Dict[str, str] = Field(default_factory=dict)
+    registration_answers: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SelfRegisterIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     email: EmailStr
     registration_answers: Dict[str, Any] = Field(default_factory=dict)
+    kvkk_accepted: bool = False
+    registration_documents: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CheckinIn(BaseModel):
@@ -10687,6 +10981,10 @@ def _build_public_event_detail(
         survey=_build_public_survey_info(survey),
         visibility=_get_event_visibility(event),
         require_email_verification=_get_event_email_verification_required(event),
+        registration_quota=_get_event_registration_quota(event),
+        registration_quota_enabled=_is_event_registration_quota_enabled(event),
+        kvkk_consent_required=_is_event_kvkk_consent_required(event),
+        kvkk_consent_text=_get_event_kvkk_consent_text(event),
         sessions=[
             {
                 "id": s.id,
@@ -10927,6 +11225,55 @@ async def public_event_info(event_id: str, db: AsyncSession = Depends(get_db)):
     return _build_public_event_detail(ev, sess_res.scalars().all(), survey_res.scalar_one_or_none()).model_dump()
 
 
+@app.post("/api/events/{event_id}/registration-document")
+@limiter.limit("10/minute")
+async def upload_public_registration_document(
+    request: Request,
+    event_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    ev = await _resolve_public_event(db, event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if _is_event_registration_closed(ev):
+        raise HTTPException(status_code=403, detail="Registration is closed for this event.")
+
+    allowed_content_types = {
+        "application/pdf": ".pdf",
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    ctype = str(file.content_type or "").lower().strip()
+    if ctype not in allowed_content_types:
+        raise bad_request("Only PDF, JPG, PNG or WEBP files are allowed")
+
+    raw = await file.read()
+    if not raw:
+        raise bad_request("Document file is empty")
+    max_size = 2 * 1024 * 1024
+    if len(raw) > max_size:
+        raise HTTPException(status_code=413, detail="Document exceeds 2 MB limit")
+
+    ext = Path(file.filename or "").suffix.lower().strip()
+    if not ext:
+        ext = allowed_content_types[ctype]
+
+    safe_name = f"registration_docs/event_{ev.id}/{secrets.token_hex(16)}{ext}"
+    dest = Path(settings.local_storage_dir) / safe_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(raw)
+
+    return {
+        "path": safe_name,
+        "name": Path(file.filename or f"document{ext}").name[:200],
+        "content_type": ctype,
+        "size_bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
 @app.post("/api/events/{event_id}/register", status_code=201)
 @limiter.limit("10/minute")
 async def public_event_register(
@@ -10941,6 +11288,21 @@ async def public_event_register(
         raise HTTPException(status_code=404, detail="Event not found")
     if _is_event_registration_closed(ev):
         raise HTTPException(status_code=403, detail="Registration is closed for this event.")
+    if _is_event_kvkk_consent_required(ev) and not payload.kvkk_accepted:
+        raise bad_request("KVKK consent is required for this event.")
+    registration_quota = _get_event_registration_quota(ev)
+    quota_enabled = _is_event_registration_quota_enabled(ev)
+    if quota_enabled and registration_quota is not None:
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == ev.id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= registration_quota:
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
+            await db.commit()
+            raise HTTPException(status_code=403, detail="Registration quota reached for this event.")
     event_db_id = ev.id
     require_email_verification = _get_event_email_verification_required(ev)
 
@@ -10952,10 +11314,68 @@ async def public_event_register(
     user_agent = request.headers.get("User-Agent")
     device_id, should_set_device_cookie = _get_registration_device_id(request)
     registration_fields = _get_event_registration_fields(ev)
+    file_fields = [field for field in registration_fields if field.get("type") == "file"]
+    file_field_ids = {str(field.get("id")) for field in file_fields if field.get("id")}
     registration_answers = _normalize_registration_answers(
         registration_fields,
         payload.registration_answers,
     )
+    required_file_field_ids = {
+        str(field.get("id"))
+        for field in file_fields
+        if field.get("id") and (
+            bool(field.get("required"))
+            or _is_registration_field_condition_met(field, registration_answers)
+        )
+    }
+    if payload.registration_documents:
+        if not file_field_ids:
+            raise bad_request("Document upload is not enabled for this event")
+        sanitized_docs: List[Dict[str, Any]] = []
+        storage_root = Path(settings.local_storage_dir).resolve()
+        expected_prefix = f"registration_docs/event_{event_db_id}/"
+        for doc in payload.registration_documents[:10]:
+            field_id = str((doc or {}).get("field_id") or "").strip()
+            if not field_id or field_id not in file_field_ids:
+                raise bad_request("Invalid registration document field")
+            rel_path = str((doc or {}).get("path") or "").strip().lstrip("/")
+            if not rel_path or not rel_path.startswith(expected_prefix):
+                raise bad_request("Invalid registration document path")
+            abs_path = (storage_root / rel_path).resolve()
+            if not str(abs_path).startswith(str(storage_root)) or not abs_path.exists() or not abs_path.is_file():
+                raise bad_request("Registration document not found")
+            stat_info = abs_path.stat()
+            if stat_info.st_size > 2 * 1024 * 1024:
+                raise bad_request("Registration document exceeds size limit")
+            sanitized_docs.append(
+                {
+                    "field_id": field_id,
+                    "path": rel_path,
+                    "name": str((doc or {}).get("name") or Path(rel_path).name)[:200],
+                    "content_type": str((doc or {}).get("content_type") or "application/octet-stream")[:120],
+                    "size_bytes": int((doc or {}).get("size_bytes") or stat_info.st_size),
+                    "sha256": str((doc or {}).get("sha256") or "")[:128],
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        if sanitized_docs:
+            uploaded_field_ids = {
+                str(doc.get("field_id"))
+                for doc in sanitized_docs
+                if str(doc.get("field_id") or "").strip()
+            }
+            missing_required_fields = required_file_field_ids - uploaded_field_ids
+            if missing_required_fields:
+                raise bad_request("Required document fields are missing")
+            registration_answers["__documents"] = sanitized_docs
+    elif required_file_field_ids:
+        raise bad_request("Required document fields are missing")
+    registration_answers["__kvkk"] = {
+        "accepted": bool(payload.kvkk_accepted),
+        "accepted_at": datetime.now(timezone.utc).isoformat(),
+        "ip_address": client_ip,
+        "user_agent": user_agent,
+    }
 
     await _enforce_registration_risk_controls(
         db,
@@ -11130,6 +11550,15 @@ async def public_event_register(
             "verification_required": require_email_verification,
         },
     )
+    if quota_enabled and registration_quota is not None:
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event_db_id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= registration_quota:
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
     await db.commit()
     if require_email_verification:
         await send_attendee_verification_email(attendee=attendee, event=ev)
@@ -11545,6 +11974,135 @@ async def list_attendees(
 
 
 @app.get(
+    "/api/admin/events/{event_id}/attendance/export",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def export_attendance(
+    event_id: int,
+    fmt: str = Query(default="xlsx", pattern="^(csv|xlsx)$"),
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export attendees list as CSV or XLSX file."""
+    ev = await _get_event_for_admin(event_id, me, db)
+    
+    # Get registration fields mapping (field_id -> field_label)
+    registration_fields = _get_event_registration_fields(ev)
+    field_id_to_label = {field.get("id"): field.get("label", field.get("id")) for field in registration_fields}
+    
+    # Fetch all attendees without pagination
+    res = await db.execute(
+        select(Attendee)
+        .options(selectinload(Attendee.public_member))
+        .where(Attendee.event_id == event_id)
+        .order_by(Attendee.registered_at.desc())
+    )
+    attendees = res.scalars().all()
+    
+    # Build data for export
+    data = []
+    all_answer_keys = set()  # Track all registration answer keys
+    
+    for a in attendees:
+        # Get session count
+        cnt_res = await db.execute(
+            select(func.count()).where(AttendanceRecord.attendee_id == a.id)
+        )
+        sessions_attended = int(cnt_res.scalar_one() or 0)
+        
+        # Check if has certificate
+        cert_res = await db.execute(
+            select(Certificate).where(
+                Certificate.event_id == event_id,
+                Certificate.student_name == a.name,
+                Certificate.deleted_at.is_(None),
+            )
+        )
+        has_certificate = cert_res.scalar_one_or_none() is not None
+        
+        row_data = {
+            "İsim": a.name,
+            "Email": a.email,
+            "Kayıt Tarihi": a.registered_at.isoformat() if a.registered_at else "",
+            "Katıldığı Oturumlar": sessions_attended,
+            "Sertifika": "Evet" if has_certificate else "Hayır",
+            "Kaynak": a.source or "",
+            "Kamu Üye": a.public_member.display_name if a.public_member else "",
+            "Kamu Email": a.public_member.email if a.public_member else "",
+        }
+        
+        # Add registration answers as individual columns
+        if a.registration_answers:
+            for key, value in a.registration_answers.items():
+                # Convert field ID to field label using the mapping
+                field_label = field_id_to_label.get(key, key)
+                all_answer_keys.add(field_label)
+                row_data[field_label] = str(value) if value is not None else ""
+        
+        data.append(row_data)
+    
+    if fmt == "xlsx":
+        try:
+            import openpyxl
+        except ImportError:
+            raise HTTPException(status_code=500, detail="openpyxl library not available")
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Katılımcılar"
+        
+        # Build columns: base columns + dynamic answer keys
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
+        ws.append(columns)
+        
+        for row in data:
+            ws.append([row.get(col, "") for col in columns])
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+        
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=katilimcilar-event-{event_id}.xlsx"},
+        )
+    else:
+        # CSV export
+        buf = io.StringIO()
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
+        writer = csv.DictWriter(buf, fieldnames=columns)
+        writer.writeheader()
+        
+        for row in data:
+            writer.writerow({col: row.get(col, "") for col in columns})
+        
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=katilimcilar-event-{event_id}.csv"},
+        )
+
+
+@app.get(
     "/api/admin/events/{event_id}/attendees/{attendee_id}/survey-link",
     dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
 )
@@ -11756,6 +12314,61 @@ async def delete_attendee(
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Attendance matrix & manual check-in Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+@app.post(
+    "/api/admin/events/{event_id}/sessions/{session_id}/checkin",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def admin_manual_checkin(
+    event_id: int,
+    session_id: int,
+    payload: CheckinIn,
+    request: Request,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_for_admin(event_id, me, db)
+
+    session_res = await db.execute(
+        select(EventSession).where(EventSession.id == session_id, EventSession.event_id == event_id)
+    )
+    session = session_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Oturum bulunamadı")
+
+    email = payload.email.strip().lower()
+    attendee_res = await db.execute(
+        select(Attendee).where(
+            Attendee.event_id == event_id,
+            func.lower(Attendee.email) == email,
+        )
+    )
+    attendee = attendee_res.scalar_one_or_none()
+    if not attendee:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu e-posta ile etkinlikte kayıtlı katılımcı bulunamadı.",
+        )
+
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    insert_stmt = (
+        _pg_insert(AttendanceRecord.__table__)
+        .values(
+            attendee_id=attendee.id,
+            session_id=session_id,
+            ip_address=ip,
+        )
+        .on_conflict_do_nothing(index_elements=["attendee_id", "session_id"])
+        .returning(AttendanceRecord.id)
+    )
+    inserted_res = await db.execute(insert_stmt)
+    inserted_id = inserted_res.scalar_one_or_none()
+    await db.commit()
+
+    if inserted_id is None:
+        return {"ok": False, "message": "Bu katılımcı bu oturum için zaten check-in yapılmış."}
+
+    return {"ok": True, "message": f"Check-in başarılı: {attendee.name}"}
 
 async def _get_raffle_for_admin(
     event_id: int,
@@ -12212,6 +12825,7 @@ async def get_attendance_matrix(
     event_id: int,
     me: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    fmt: str = Query(default="json", pattern="^(csv|xlsx|json)$"),
 ):
     ev = await _get_event_for_admin(event_id, me, db)
     sess_res = await db.execute(
@@ -12235,7 +12849,47 @@ async def get_attendance_matrix(
     records = rec_res.all()
     rec_set: dict[tuple, str] = {(r.attendee_id, r.session_id): r.checked_in_at.isoformat() for r in records}
 
-    session_ids = [s.id for s in sessions]
+    # Build certificate lookup by student_name for this event
+    cert_res = await db.execute(
+        select(Certificate.student_name, Certificate.uuid)
+        .where(Certificate.event_id == event_id)
+    )
+    certs = cert_res.all()
+    cert_map: dict[str, str] = {c.student_name: c.uuid for c in certs}
+
+    # Return JSON format if requested
+    if fmt == "json":
+        json_rows = []
+        for a in attendees:
+            checkins: dict[str, str | None] = {}
+            for s in sessions:
+                checkins[str(s.id)] = rec_set.get((a.id, s.id), None)
+            
+            sessions_attended = sum(1 for s in sessions if (a.id, s.id) in rec_set)
+            has_cert = a.name in cert_map
+            cert_uuid = cert_map.get(a.name)
+            
+            row = {
+                "attendee_id": a.id,
+                "name": a.name,
+                "email": a.email,
+                "source": a.source,
+                "sessions_attended": sessions_attended,
+                "meets_threshold": sessions_attended >= ev.min_sessions_required,
+                "has_certificate": has_cert,
+                "certificate_uuid": cert_uuid,
+                "checkins": checkins,
+            }
+            json_rows.append(row)
+        
+        return {
+            "event_id": event_id,
+            "min_sessions_required": ev.min_sessions_required,
+            "sessions": [{"id": s.id, "name": s.name, "session_date": s.session_date.isoformat() if s.session_date else None} for s in sessions],
+            "rows": json_rows,
+        }
+
+    # Excel/CSV format
     rows = []
     for a in attendees:
         row = {
@@ -12250,6 +12904,7 @@ async def get_attendance_matrix(
         row["Katilinan Oturum"] = sum(1 for s in sessions if (a.id, s.id) in rec_set)
         row["Esigi Geciyor"] = "Evet" if row["Katilinan Oturum"] >= ev.min_sessions_required else "Hayir"
         answers = a.registration_answers or {}
+        registration_fields = _get_event_registration_fields(ev)
         for field in registration_fields:
             row[field["label"]] = answers.get(field["id"], "")
         rows.append(row)
@@ -12664,4 +13319,7 @@ app.include_router(_community_api.router)
 
 from . import social_api as _social_api
 app.include_router(_social_api.router)
+
+from . import connections_api as _connections_api
+app.include_router(_connections_api.router)
 

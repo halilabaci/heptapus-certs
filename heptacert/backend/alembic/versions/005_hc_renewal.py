@@ -1,7 +1,7 @@
 """Add last_hc_credited_at to subscriptions table.
 
-Revision ID: 003hcrenewal
-Revises: 002features
+Revision ID: 005hcrenewal
+Revises: 004banner
 Create Date: 2026-03-01
 """
 from __future__ import annotations
