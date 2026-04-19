@@ -887,44 +887,45 @@ function BrandingTab() {
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_380px]">
-      <div className="card border border-slate-200/80 p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><Settings className="h-5 w-5" /></div>
-          <div className="flex-1">
-            <h2 className="font-semibold text-gray-900">Kurumsal Gorunum</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Logo, renk ve diger marka ayarlarini yonetebilirsiniz.</p>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_320px]">
+      <div className="card border border-slate-200/80 p-4 sm:p-6">
+        <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600 flex-shrink-0"><Settings className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-gray-900">Kurumsal Görünüm</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Logo, renk ve diğer marka ayarlarını yönetebilirsiniz.</p>
           </div>
-          <Link href="/admin/organization-social" className="btn-ghost inline-flex items-center gap-2 text-xs">
+          <Link href="/admin/organization-social" className="btn-ghost inline-flex items-center gap-2 text-xs flex-shrink-0">
             <Building2 className="h-4 w-4" />
-            Sosyal Profili Ac
+            <span className="hidden sm:inline">Sosyal Profili Aç</span>
+            <span className="sm:hidden">Sosyal</span>
           </Link>
         </div>
 
         {err && <div className="error-banner">{err}</div>}
 
-        <div className="mb-5 grid gap-2 md:grid-cols-4">
-          <button type="button" data-tour-id="branding-identity-shortcut" onClick={() => scrollToSection("branding-identity")} className="btn-ghost text-xs">Marka Kimligi</button>
-          <button type="button" data-tour-id="branding-social-shortcut" onClick={() => scrollToSection("branding-social")} className="btn-ghost text-xs">Sosyal Profiller</button>
-          <button type="button" data-tour-id="branding-verification-shortcut" onClick={() => scrollToSection("branding-verification")} className="btn-ghost text-xs">Dogrulama ve Footer</button>
-          <button type="button" data-tour-id="branding-community-shortcut" onClick={() => scrollToSection("branding-community")} className="btn-ghost text-xs">Topluluk Akisi</button>
+        <div className="mb-5 grid gap-2 grid-cols-2 sm:grid-cols-4">
+          <button type="button" data-tour-id="branding-identity-shortcut" onClick={() => scrollToSection("branding-identity")} className="btn-ghost text-xs whitespace-nowrap overflow-hidden text-ellipsis">Marka Kimliği</button>
+          <button type="button" data-tour-id="branding-social-shortcut" onClick={() => scrollToSection("branding-social")} className="btn-ghost text-xs whitespace-nowrap overflow-hidden text-ellipsis">Sosyal</button>
+          <button type="button" data-tour-id="branding-verification-shortcut" onClick={() => scrollToSection("branding-verification")} className="btn-ghost text-xs whitespace-nowrap overflow-hidden text-ellipsis">Doğrulama</button>
+          <button type="button" data-tour-id="branding-community-shortcut" onClick={() => scrollToSection("branding-community")} className="btn-ghost text-xs whitespace-nowrap overflow-hidden text-ellipsis">Topluluk</button>
         </div>
 
         <form onSubmit={saveSettings} className="space-y-4">
           <div id="branding-identity" className="scroll-mt-24">
             <label className="label">Logo</label>
-            <div className="flex items-center gap-4">
-              <div className="w-28 h-16 rounded border border-gray-100 bg-white flex items-center justify-center overflow-hidden">
-                {brandLogo ? <img src={brandLogo} alt="brand" className="max-w-full max-h-full" /> : <div className="text-xs text-gray-400">Logo yok</div>}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="w-28 h-16 rounded border border-gray-100 bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+                {brandLogo ? <img src={brandLogo} alt="brand" className="max-w-full max-h-full" /> : <div className="text-xs text-gray-400 text-center px-2">Logo yok</div>}
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="btn-ghost cursor-pointer">
-                  {logoUploading ? 'Yukleniyor...' : 'Logo Yukle'}
+              <div className="flex flex-col gap-2 flex-1">
+                <label className="btn-ghost cursor-pointer text-sm">
+                  {logoUploading ? 'Yükleniyor...' : 'Logo Yükle'}
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => uploadLogo(e.target.files ? e.target.files[0] : null)} />
                 </label>
                 <button
                   type="button"
-                  className="btn-ghost"
+                  className="btn-ghost text-sm"
                   onClick={async () => {
                     setErr(null);
                     try {
@@ -935,28 +936,28 @@ function BrandingTab() {
                       const data = await resp.json();
                       setBrandLogo(data.brand_logo || null);
                     } catch (e: any) {
-                      setErr(e?.message || "Logo kaldirilamadi.");
+                      setErr(e?.message || "Logo kaldırılamadı.");
                     }
                   }}
                 >
-                  Logoyu Kaldir
+                  Logoyu Kaldır
                 </button>
               </div>
             </div>
           </div>
 
           <div>
-            <label className="label">Kurum Adi</label>
-            <input className="input-field" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Sirket / organizasyon adi" />
+            <label className="label">Kurum Adı</label>
+            <input className="input-field" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Şirket / organizasyon adı" />
           </div>
 
           <div id="branding-social" className="scroll-mt-24">
             <label className="label">Topluluk Biyografisi</label>
             <textarea
-              className="input-field min-h-28"
+              className="input-field min-h-24 sm:min-h-28"
               value={settingsState.public_bio || ""}
               onChange={e => setSettingsState(s => ({ ...s, public_bio: e.target.value }))}
-              placeholder="Kulubunuzun veya kurumunuzun ne yaptigini, kimlere hitap ettigini anlatin."
+              placeholder="Kulübünüzün veya kurumunuzun ne yaptığını, kimlere hitap ettiğini anlatın."
             />
           </div>
 
@@ -965,29 +966,29 @@ function BrandingTab() {
             <input className="input-field" value={settingsState.public_website_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_website_url: e.target.value }))} placeholder="https://..." />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
             <div>
               <label className="label">LinkedIn</label>
-              <input className="input-field" value={settingsState.public_linkedin_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_linkedin_url: e.target.value }))} placeholder="https://linkedin.com/..." />
+              <input className="input-field text-sm" value={settingsState.public_linkedin_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_linkedin_url: e.target.value }))} placeholder="https://linkedin.com/..." />
             </div>
             <div>
               <label className="label">GitHub</label>
-              <input className="input-field" value={settingsState.public_github_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_github_url: e.target.value }))} placeholder="https://github.com/..." />
+              <input className="input-field text-sm" value={settingsState.public_github_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_github_url: e.target.value }))} placeholder="https://github.com/..." />
             </div>
             <div>
               <label className="label">X</label>
-              <input className="input-field" value={settingsState.public_x_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_x_url: e.target.value }))} placeholder="https://x.com/..." />
+              <input className="input-field text-sm" value={settingsState.public_x_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_x_url: e.target.value }))} placeholder="https://x.com/..." />
             </div>
             <div>
               <label className="label">Instagram</label>
-              <input className="input-field" value={settingsState.public_instagram_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_instagram_url: e.target.value }))} placeholder="https://instagram.com/..." />
+              <input className="input-field text-sm" value={settingsState.public_instagram_url || ""} onChange={e => setSettingsState(s => ({ ...s, public_instagram_url: e.target.value }))} placeholder="https://instagram.com/..." />
             </div>
           </div>
 
           {publicId ? (
             <div>
-              <label className="label">Topluluk Sayfasi</label>
-              <div className="input-field flex items-center justify-between gap-3">
+              <label className="label">Topluluk Sayfası</label>
+              <div className="input-field flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="truncate text-sm text-gray-700">{publicPageUrl}</span>
                 <CopyBtn text={publicPageUrl} />
               </div>
@@ -996,158 +997,158 @@ function BrandingTab() {
 
           <div>
             <label className="label">Marka Rengi</label>
-            <div className="flex items-center gap-3">
-              <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)} className="w-12 h-8 p-0 border rounded" />
-              <input className="input-field" value={brandColor} onChange={e => setBrandColor(e.target.value)} />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)} className="w-16 h-10 sm:w-12 sm:h-8 p-0 border rounded" />
+              <input className="input-field text-sm" value={brandColor} onChange={e => setBrandColor(e.target.value)} />
             </div>
           </div>
 
           <div id="branding-verification" className="scroll-mt-24">
-            <label className="label">Dogrulama Yolu (verification_path)</label>
+            <label className="label">Doğrulama Yolu (verification_path)</label>
             <input className="input-field" value={settingsState.verification_path || ''} onChange={e => setSettingsState(s => ({ ...s, verification_path: e.target.value }))} placeholder="/verify" />
-            <p className="text-xs text-gray-400 mt-1">Bos birakilirsa varsayilan dogrulama yolu kullanilir.</p>
+            <p className="text-xs text-gray-400 mt-1">Boş bırakılırsa varsayılan doğrulama yolu kullanılır.</p>
           </div>
 
           <div>
             <label className="label">Sertifika Altbilgisi (certificate_footer)</label>
-            <input className="input-field" value={settingsState.certificate_footer || ''} onChange={e => setSettingsState(s => ({ ...s, certificate_footer: e.target.value }))} placeholder="(c) Sirketiniz 2026" />
+            <input className="input-field" value={settingsState.certificate_footer || ''} onChange={e => setSettingsState(s => ({ ...s, certificate_footer: e.target.value }))} placeholder="(c) Şirketiniz 2026" />
           </div>
 
           <div className="flex items-center gap-3">
             <input id="hide" type="checkbox" checked={!!settingsState.hide_heptacert_home} onChange={e => setSettingsState(s => ({ ...s, hide_heptacert_home: e.target.checked }))} />
-            <label htmlFor="hide" className="text-sm text-gray-700">HeptaCert ana sayfasini gizle (`hide_heptacert_home`)</label>
+            <label htmlFor="hide" className="text-sm text-gray-700">HeptaCert ana sayfasını gizle (`hide_heptacert_home`)</label>
           </div>
 
-          <div className="flex gap-2">
-            <button type="submit" data-tour-id="branding-save" disabled={saving} className="btn-primary">{saving ? 'Kaydediliyor...' : 'Ayarlari Kaydet'}</button>
-            <button type="button" onClick={() => { setSettingsState({}); setBrandColor('#6366f1'); setOrgName(''); }} className="btn-ghost">Sifirla</button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="submit" data-tour-id="branding-save" disabled={saving} className="btn-primary flex-1 sm:flex-none">{saving ? 'Kaydediliyor...' : 'Ayarları Kaydet'}</button>
+            <button type="button" onClick={() => { setSettingsState({}); setBrandColor('#6366f1'); setOrgName(''); }} className="btn-ghost flex-1 sm:flex-none">Sıfırla</button>
           </div>
         </form>
 
-        <div id="branding-community" className="mt-8 scroll-mt-24 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
+        <div id="branding-community" className="mt-8 scroll-mt-24 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm flex-shrink-0">
               <Sparkles className="h-5 w-5" />
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Topluluk Akisi</h3>
-              <p className="text-xs text-slate-500">Kurum adina resmi guncelleme ve duyurular paylasin.</p>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-slate-900">Topluluk Akışı</h3>
+              <p className="text-xs text-slate-500">Kurum adına resmi güncelleme ve duyurular paylaşın.</p>
             </div>
           </div>
 
           <div className="mt-4 space-y-3">
             <textarea
-              className="input-field min-h-28"
+              className="input-field min-h-24 sm:min-h-28"
               value={postBody}
               onChange={(e) => setPostBody(e.target.value)}
               maxLength={1500}
-              placeholder="Toplulugunuz icin bir duyuru veya guncelleme yazin."
+              placeholder="Topluluğunuz için bir duyuru veya güncelleme yazın."
             />
             <div className="flex justify-end">
-              <button type="button" onClick={() => void createCommunityPost()} disabled={postSaving || !postBody.trim()} className="btn-primary">
-                {postSaving ? "Paylasiliyor..." : "Gonderi Paylas"}
+              <button type="button" onClick={() => void createCommunityPost()} disabled={postSaving || !postBody.trim()} className="btn-primary text-sm">
+                {postSaving ? "Paylaşılıyor..." : "Gönderi Paylaş"}
               </button>
             </div>
           </div>
 
           <div className="mt-4 space-y-3">
             {postLoading ? (
-              <div className="flex items-center text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Yukleniyor...</div>
+              <div className="flex items-center text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Yükleniyor...</div>
             ) : communityPosts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                Henuz kurum gonderisi yok.
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-4 sm:px-4 sm:py-5 text-sm text-slate-500 text-center">
+                Henüz kurum gönderi yok.
               </div>
             ) : (
               communityPosts.map((post) => (
-                <div key={post.public_id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">{post.author_name}</p>
+                <div key={post.public_id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:px-4 sm:py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{post.author_name}</p>
                       <p className="mt-1 text-xs text-slate-400">{new Date(post.created_at).toLocaleString("tr-TR")}</p>
                     </div>
-                    <button type="button" onClick={() => void removeCommunityPost(post.public_id)} className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition hover:bg-rose-100">
+                    <button type="button" onClick={() => void removeCommunityPost(post.public_id)} className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition hover:bg-rose-100 flex-shrink-0">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{post.body}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 break-words">{post.body}</p>
                 </div>
               ))
             )}
           </div>
         </div>
       </div>
-      <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4">
-        <div className="rounded-[24px] border border-white/80 bg-white p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.28)]">
+      <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5 lg:sticky lg:top-24 lg:h-fit">
+        <div className="rounded-[20px] border border-white/80 bg-white p-3 sm:p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.28)]">
           <div
-            className="overflow-hidden rounded-[22px] border border-slate-200"
+            className="overflow-hidden rounded-[18px] border border-slate-200"
             style={{
               background: `linear-gradient(160deg, ${heroGlow} 0%, ${heroSoft} 42%, rgba(255,255,255,0.96) 100%)`,
             }}
           >
-            <div className="border-b border-white/70 px-5 py-5">
-              <div className="flex items-start justify-between gap-4">
+            <div className="border-b border-white/70 px-4 py-4 sm:px-5 sm:py-5">
+              <div className="flex flex-col gap-3 sm:gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm">
+                  <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm flex-shrink-0">
                     {brandLogo ? (
                       <img src={brandLogo} alt="Brand preview" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-xl font-semibold text-slate-700">{previewLogoLetter}</span>
+                      <span className="text-lg sm:text-xl font-semibold text-slate-700">{previewLogoLetter}</span>
                     )}
                   </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Canli Onizleme</p>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-900">{previewName}</h3>
-                    <p className="mt-1 text-sm text-slate-600">{previewPath}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Canlı Önizleme</p>
+                    <h3 className="mt-1 text-base sm:text-lg font-semibold text-slate-900 truncate">{previewName}</h3>
+                    <p className="mt-0.5 text-xs sm:text-sm text-slate-600 truncate">{previewPath}</p>
                   </div>
                 </div>
-                <div className="rounded-full border border-white/80 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
+                <div className="rounded-full border border-white/80 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 w-fit">
                   Kurumsal Kimlik
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4 px-5 py-5">
-              <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Dogrulama Karti</p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Belge dogrulandi</p>
-                    <p className="mt-1 text-sm text-slate-500">Ziyaretciler marka renginizle hizalanmis guven ekranini gorur.</p>
+            <div className="space-y-3 sm:space-y-4 px-4 py-4 sm:px-5 sm:py-5">
+              <div className="rounded-2xl border border-white/70 bg-white/90 p-3 sm:p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Doğrulama Kartı</p>
+                <div className="mt-3 flex items-start gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs sm:text-sm font-semibold text-slate-900">Belge doğrulandı</p>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-5">Ziyaretçiler marka renginizle hizalanmış güven ekranını görür.</p>
                   </div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm" style={{ backgroundColor: brandColor }}>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-sm flex-shrink-0" style={{ backgroundColor: brandColor }}>
                     <BadgeCheck className="h-5 w-5" />
                   </div>
                 </div>
               </div>
 
               <div className="grid gap-3">
-                <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
+                <div className="rounded-2xl border border-white/70 bg-white/90 p-3 sm:p-4">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Alt Bilgi</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">{previewFooter}</p>
+                  <p className="mt-2 text-xs sm:text-sm leading-5 sm:leading-6 text-slate-700">{previewFooter}</p>
                 </div>
-                <div className="rounded-2xl border border-white/70 bg-white/90 p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Gorunurluk</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                <div className="rounded-2xl border border-white/70 bg-white/90 p-3 sm:p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Görünürlük</p>
+                  <p className="mt-2 text-xs sm:text-sm leading-5 sm:leading-6 text-slate-700">
                     {settingsState.hide_heptacert_home
-                      ? "Ana sayfa gizli, kullanicilar dogrudan kurum deneyimine yonlenir."
-                      : "HeptaCert ana sayfasi gorunur, kurum deneyimiyle birlikte genel giris noktasi korunur."}
+                      ? "Ana sayfa gizli, kullanıcılar doğrudan kurum deneyimine yönlendirilir."
+                      : "HeptaCert ana sayfası görünür, kurum deneyimiyle birlikte genel giriş noktası korunur."}
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="mt-3 sm:mt-4 grid gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4 sm:py-3">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Marka Rengi</p>
               <div className="mt-2 flex items-center gap-3">
                 <span className="h-4 w-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: brandColor }} />
-                <p className="text-sm font-semibold text-slate-900">{brandColor}</p>
+                <p className="text-xs sm:text-sm font-semibold text-slate-900 font-mono">{brandColor}</p>
               </div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4 sm:py-3">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Deneyim Notu</p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">Bu panel, yaptiginiz degisikliklerin ziyaretci tarafinda nasil bir his yarattigini kaydetmeden once gormenizi saglar.</p>
+              <p className="mt-2 text-xs sm:text-sm leading-5 sm:leading-6 text-slate-700">Bu panel, yaptığınız değişikliklerin ziyaretçi tarafından nasıl bir his yaratacağını kaydetmeden önce görmenizi sağlar.</p>
             </div>
           </div>
         </div>

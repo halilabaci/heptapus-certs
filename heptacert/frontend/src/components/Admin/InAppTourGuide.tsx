@@ -52,90 +52,90 @@ const TOUR_LAST_COMPLETED_KEY = "heptacert:tour:last-completed:v1";
 
 const TR_COPY: TourCopy = {
   launcher: "Sistem Turu",
-  launcherOpenAgain: "Turu Yeniden Ac",
-  title: "Sistemin Uctan Uca Isleyisi",
-  subtitle: "Platformu adim adim ogrenip tum operasyonu tek akista yonetin.",
-  stepsLabel: "Adimlar",
-  stepPrefix: "Adim",
-  dontShowAgain: "Bir daha otomatik gosterme",
+  launcherOpenAgain: "Turu Yeniden Aç",
+  title: "Sistemin Uçtan Uca İşleyişi",
+  subtitle: "Platformu adım adım öğrenip tüm operasyonu tek akışta yönetin.",
+  stepsLabel: "Adımlar",
+  stepPrefix: "Adım",
+  dontShowAgain: "Bir daha otomatik gösterme",
   back: "Geri",
-  next: "Ileri",
+  next: "İleri",
   finish: "Turu Bitir",
   close: "Kapat",
-  completed: "Tamamlandi",
-  completedCount: "Tamamlanma Sayisi",
+  completed: "Tamamlandı",
+  completedCount: "Tamamlanma Sayısı",
   lastCompleted: "Son Tamamlama",
-  never: "Henuz yok",
-  historyTitle: "Rehber Gecmisi",
-  restartTour: "Turu Bastan Baslat",
-  actionFallback: "Bu adima git",
-  clickTarget: "Bu elemani tikla",
-  targetNotFound: "Bu ekranda hedef eleman bulunamadi.",
+  never: "Henüz yok",
+  historyTitle: "Rehber Geçmişi",
+  restartTour: "Turu Baştan Başlat",
+  actionFallback: "Bu adıma git",
+  clickTarget: "Bu öğeyi tıkla",
+  targetNotFound: "Bu ekranda hedef öğe bulunamadı.",
   targetHint: "Hedef burada",
   steps: [
     {
-      title: "Dashboard ile Basla",
-      description: "Once Dashboard uzerinden genel durum, uyarilar ve hizli aksiyon kartlarini kontrol edin.",
+      title: "Dashboard ile Başla",
+      description: "Önce Dashboard üzerinden genel durum, uyarılar ve hızlı aksiyon kartlarını kontrol edin.",
       route: "/admin/dashboard",
-      actionLabel: "Dashboard Ac",
+      actionLabel: "Dashboard Aç",
       targetSelector: "[data-tour-id='nav-dashboard']",
     },
     {
-      title: "Etkinlikleri Kurgula",
-      description: "Etkinlik olusturup ayarlarini, gorunurlugunu ve kayit kurallarini netlestirin.",
+      title: "Etkinlikleri Kurguła",
+      description: "Etkinlik oluşturup ayarlarını, görünürlüğünü ve kayıt kurallarını netleştirin.",
       route: "/admin/events",
       actionLabel: "Etkinliklere Git",
       targetSelector: "[data-tour-id='nav-events']",
     },
     {
-      title: "Sertifika Akisi",
-      description: "Editor ve ayarlarda sertifika tasarimini, dogrulama yolunu ve alt bilgileri duzenleyin.",
+      title: "Sertifika Akışı",
+      description: "Editor ve ayarlarda sertifika tasarımını, doğrulama yolunu ve alt bilgileri düzenleyin.",
     },
     {
-      title: "Katilimci Operasyonu",
-      description: "Katilimci listesi, check-in, oturum takibi ve uygunluk kosullarini yonetin.",
+      title: "Katılımcı Operasyonu",
+      description: "Katılımcı listesi, check-in, oturum takibi ve uygunluk koşullarını yönetin.",
     },
     {
-      title: "E-posta Surecleri",
-      description: "Email Merkezi'nde sablonlar, SMTP ve otomasyon akisini test edip yayina alin.",
+      title: "E-posta Süreçleri",
+      description: "Email Merkezi'nde şablonlar, SMTP ve otomasyon akışını test edip yayına alın.",
       route: "/admin/email-dashboard",
-      actionLabel: "Email Merkezi Ac",
+      actionLabel: "Email Merkezi Aç",
       targetSelector: "[data-tour-id='nav-email-dashboard']",
     },
     {
-      title: "Analitik ve Iyilestirme",
-      description: "Acilma, tiklanma ve donusum verileriyle kampanyalari duzenli optimize edin.",
+      title: "Analitik ve İyileştirme",
+      description: "Açılma, tıklanma ve dönüşüm verileriyle kampanyaları düzenli optimize edin.",
       route: "/admin/email-analytics",
-      actionLabel: "Analitige Git",
+      actionLabel: "Analitik'e Git",
       targetSelector: "[data-tour-id='nav-email-analytics']",
     },
     {
       title: "Kurumsal ve Sosyal Kimlik",
-      description: "Ayarlar > Kurumsal sekmesinde marka, sosyal baglantilar ve topluluk gorunumunu tek yerden yonetin.",
+      description: "Ayarlar > Kurumsal sekmesinde marka, sosyal bağlantılar ve topluluk görünümünü tek yerden yönetin.",
       route: "/admin/settings?tab=branding",
       actionLabel: "Kurumsal Sekmeye Git",
       targetSelector: "[data-tour-id='branding-social-shortcut']",
     },
     {
-      title: "Domain ve Guvenlik",
-      description: "Ozel domain, API anahtarlari, 2FA ve erisim politikalariyla sistemi uretime hazir hale getirin.",
+      title: "Domain ve Güvenlik",
+      description: "Özel domain, API anahtarları, 2FA ve erişim politikalarıyla sistemi üretime hazır hale getirin.",
       route: "/admin/settings?tab=domain",
-      actionLabel: "Domain Ayarlari",
+      actionLabel: "Domain Ayarları",
       targetSelector: "[data-tour-id='nav-settings']",
     },
     {
       title: "Entegrasyon",
-      description: "Webhook ve dis entegrasyonlarla sertifika, e-posta ve rapor akislarini otomatiklestirin.",
+      description: "Webhook ve dış entegrasyonlarla sertifika, e-posta ve rapor akışlarını otomatikleştirin.",
       route: "/admin/webhooks",
-      actionLabel: "Webhook Yonetimi",
+      actionLabel: "Webhook Yönetimi",
       targetSelector: "[data-tour-id='nav-webhooks']",
     },
   ],
   superadminStep: {
-    title: "Super Admin Kontrolu",
-    description: "Super Admin panelinden yonetici rolleri, izinler ve platform denetimini tamamlayin.",
+    title: "Super Admin Kontrolü",
+    description: "Super Admin panelinden yönetici rolleri, izinler ve platform denetimini tamamlayın.",
     route: "/admin/superadmin",
-    actionLabel: "Super Admin Ac",
+    actionLabel: "Super Admin Aç",
     targetSelector: "[data-tour-id='nav-superadmin']",
   },
 };
@@ -455,7 +455,7 @@ export default function InAppTourGuide() {
       </div>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[2px] sm:p-4">
           {targetBubble && currentStep?.targetSelector ? (
             <div
               className="pointer-events-none fixed z-[55]"
@@ -468,155 +468,158 @@ export default function InAppTourGuide() {
             </div>
           ) : null}
 
-          <div className="w-full max-w-6xl overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-2xl">
-            <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-cyan-50 px-6 py-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+          <div className="w-full max-h-[90vh] max-w-full overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-2xl sm:rounded-3xl sm:max-w-4xl">
+            <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-cyan-50 px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex items-start justify-between gap-3 sm:gap-4">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600">HeptaCert Guide</p>
-                  <h2 className="mt-1 text-2xl font-bold text-slate-900">{copy.title}</h2>
-                  <p className="mt-1 text-sm text-slate-600">{copy.subtitle}</p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">{copy.title}</h2>
+                  <p className="mt-1 text-xs text-slate-600 sm:text-sm">{copy.subtitle}</p>
+                  <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                     {copy.stepPrefix} {steps.length === 0 ? 0 : stepIndex + 1} / {steps.length}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeGuide}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-white"
+                  className="rounded-lg p-2 text-slate-500 hover:bg-white flex-shrink-0"
                   aria-label={copy.close}
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
                 <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${progress}%` }} />
               </div>
             </div>
 
-            <div className="grid gap-6 p-6 lg:grid-cols-[300px_minmax(0,1fr)_240px]">
-              <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.stepsLabel}</p>
-                <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
-                  {steps.map((step, idx) => {
-                    const active = idx === stepIndex;
-                    return (
-                      <button
-                        key={`${step.title}-${idx}`}
-                        type="button"
-                        onClick={() => setStepIndex(idx)}
-                        className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                          active
-                            ? "bg-white text-slate-900 shadow-sm ring-1 ring-sky-200"
-                            : "text-slate-600 hover:bg-white"
-                        }`}
-                      >
-                        <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-700">
-                          {idx + 1}
-                        </span>
-                        {step.title}
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
-
-              <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-600">
-                  {copy.stepPrefix} {stepIndex + 1}
-                </p>
-                <h3 className="mt-2 text-2xl font-bold text-slate-900">{currentStep.title}</h3>
-                <p className="mt-3 text-base leading-7 text-slate-700">{currentStep.description}</p>
-
-                {currentStep.route ? (
-                  <div className="mt-5">
-                    <Link
-                      href={currentStep.route}
-                      className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      {currentStep.actionLabel || copy.actionFallback}
-                    </Link>
+            <div className="overflow-y-auto" style={{ maxHeight: "calc(90vh - 140px)" }}>
+              <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 sm:grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_220px]">
+                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:col-span-1">
+                  <p className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.stepsLabel}</p>
+                  <div className="max-h-[300px] sm:max-h-[420px] space-y-1 overflow-y-auto pr-1">
+                    {steps.map((step, idx) => {
+                      const active = idx === stepIndex;
+                      return (
+                        <button
+                          key={`${step.title}-${idx}`}
+                          type="button"
+                          onClick={() => setStepIndex(idx)}
+                          className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                            active
+                              ? "bg-white text-slate-900 shadow-sm ring-1 ring-sky-200"
+                              : "text-slate-600 hover:bg-white"
+                          }`}
+                        >
+                          <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-700">
+                            {idx + 1}
+                          </span>
+                          {step.title}
+                        </button>
+                      );
+                    })}
                   </div>
-                ) : null}
+                </aside>
 
-                {currentStep.targetSelector ? (
-                  <div className="mt-3">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-600">
+                    {copy.stepPrefix} {stepIndex + 1}
+                  </p>
+                  <h3 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">{currentStep.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">{currentStep.description}</p>
+
+                  {currentStep.route ? (
+                    <div className="mt-4 sm:mt-5">
+                      <Link
+                        href={currentStep.route}
+                        className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100 sm:px-4 sm:py-2 sm:text-sm"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {currentStep.actionLabel || copy.actionFallback}
+                      </Link>
+                    </div>
+                  ) : null}
+
+                  {currentStep.targetSelector ? (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={handleClickTarget}
+                        className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 sm:px-4 sm:py-2 sm:text-sm"
+                      >
+                        {copy.clickTarget}
+                      </button>
+                      {!targetVisible ? <p className="mt-2 text-xs text-rose-600">{copy.targetNotFound}</p> : null}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-wrap sm:flex-row sm:items-center sm:justify-between">
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
+                      <input
+                        type="checkbox"
+                        checked={dontShowAgain}
+                        onChange={(event) => setDontShowAgain(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      {copy.dontShowAgain}
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={prevStep}
+                        disabled={stepIndex === 0}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-sm"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="hidden sm:inline">{copy.back}</span>
+                      </button>
+                      {stepIndex < steps.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={nextStep}
+                          className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2 py-2 text-xs font-semibold text-white hover:bg-sky-700 sm:px-3 sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">{copy.next}</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={completeGuide}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-xs font-semibold text-white hover:bg-emerald-700 sm:px-3 sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">{copy.finish}</span>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 lg:col-span-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.historyTitle}</p>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{copy.completedCount}</p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">{completedCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{copy.lastCompleted}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900 line-clamp-2">{formattedLastCompleted}</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={handleClickTarget}
-                      className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                      onClick={restartTour}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 sm:text-sm"
                     >
-                      {copy.clickTarget}
+                      <RotateCcw className="h-4 w-4" />
+                      {copy.restartTour}
                     </button>
-                    {!targetVisible ? <p className="mt-2 text-xs text-rose-600">{copy.targetNotFound}</p> : null}
                   </div>
-                ) : null}
-
-                <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-                  <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={dontShowAgain}
-                      onChange={(event) => setDontShowAgain(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                    />
-                    {copy.dontShowAgain}
-                  </label>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={prevStep}
-                      disabled={stepIndex === 0}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      {copy.back}
-                    </button>
-                    {stepIndex < steps.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={nextStep}
-                        className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-                      >
-                        {copy.next}
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={completeGuide}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                      >
-                        {copy.finish}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.historyTitle}</p>
-                <div className="mt-3 space-y-3">
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{copy.completedCount}</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">{completedCount}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{copy.lastCompleted}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{formattedLastCompleted}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={restartTour}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    {copy.restartTour}
-                  </button>
-                </div>
-              </aside>
+                </aside>
+              </div>
             </div>
           </div>
         </div>
