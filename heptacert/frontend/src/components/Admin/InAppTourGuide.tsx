@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { HelpCircle, X, ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, MousePointerClick } from "lucide-react";
+import { HelpCircle, X, ChevronLeft, ChevronRight, CheckCircle2, MousePointerClick } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { getRoleFromToken } from "@/lib/api";
 
@@ -46,7 +46,7 @@ type TargetBubble = {
   left: number;
 };
 
-const TOUR_DISMISSED_KEY = "heptacert:tour:dismissed:v3";
+const TOUR_DISMISSED_KEY = "heptacert:tour:dismissed:v4";
 const TOUR_COMPLETED_COUNT_KEY = "heptacert:tour:completed-count:v1";
 const TOUR_LAST_COMPLETED_KEY = "heptacert:tour:last-completed:v1";
 
@@ -57,10 +57,10 @@ const TR_COPY: TourCopy = {
   subtitle: "Platformu adım adım öğrenip tüm operasyonu tek akışta yönetin.",
   stepsLabel: "Adımlar",
   stepPrefix: "Adım",
-  dontShowAgain: "Bir daha otomatik gösterme",
+  dontShowAgain: "Bir daha gösterme",
   back: "Geri",
   next: "İleri",
-  finish: "Turu Bitir",
+  finish: "Bitir",
   close: "Kapat",
   completed: "Tamamlandı",
   completedCount: "Tamamlanma Sayısı",
@@ -69,7 +69,7 @@ const TR_COPY: TourCopy = {
   historyTitle: "Rehber Geçmişi",
   restartTour: "Turu Baştan Başlat",
   actionFallback: "Bu adıma git",
-  clickTarget: "Bu öğeyi tıkla",
+  clickTarget: "Öğeye odaklan",
   targetNotFound: "Bu ekranda hedef öğe bulunamadı.",
   targetHint: "Hedef burada",
   steps: [
@@ -81,7 +81,7 @@ const TR_COPY: TourCopy = {
       targetSelector: "[data-tour-id='nav-dashboard']",
     },
     {
-      title: "Etkinlikleri Kurguła",
+      title: "Etkinlikleri Kurgula",
       description: "Etkinlik oluşturup ayarlarını, görünürlüğünü ve kayıt kurallarını netleştirin.",
       route: "/admin/events",
       actionLabel: "Etkinliklere Git",
@@ -142,15 +142,15 @@ const TR_COPY: TourCopy = {
 
 const EN_COPY: TourCopy = {
   launcher: "System Tour",
-  launcherOpenAgain: "Open Tour Again",
+  launcherOpenAgain: "Open Tour",
   title: "End-to-End System Flow",
   subtitle: "Learn the platform step by step and manage operations in one flow.",
   stepsLabel: "Steps",
   stepPrefix: "Step",
-  dontShowAgain: "Do not show automatically again",
+  dontShowAgain: "Don't show again",
   back: "Back",
   next: "Next",
-  finish: "Finish Tour",
+  finish: "Finish",
   close: "Close",
   completed: "Completed",
   completedCount: "Completion Count",
@@ -158,9 +158,9 @@ const EN_COPY: TourCopy = {
   never: "Not yet",
   historyTitle: "Tour History",
   restartTour: "Restart Tour",
-  actionFallback: "Go to this step",
-  clickTarget: "Click this element",
-  targetNotFound: "Target element is not available on this screen.",
+  actionFallback: "Go to step",
+  clickTarget: "Focus element",
+  targetNotFound: "Target element not found here.",
   targetHint: "Target is here",
   steps: [
     {
@@ -232,7 +232,7 @@ const EN_COPY: TourCopy = {
 
 function getStepsForRole(copy: TourCopy, role: string | null) {
   const base = [...copy.steps];
-  // Superadmin step removed - not needed
+  // İsteğe bağlı olarak superadmin step eklenebilir, son kararınıza göre kapattım
   return base;
 }
 
@@ -265,9 +265,9 @@ function getTargetBubblePosition(selector: string): TargetBubble | null {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
 
-  const bubbleWidth = 220;
-  const bubbleHeight = 44;
-  const margin = 14;
+  const margin = 12;
+  const bubbleWidth = 140;
+  const bubbleHeight = 36;
 
   let top = rect.top + rect.height / 2 - bubbleHeight / 2;
   let left = rect.right + margin;
@@ -284,9 +284,6 @@ function getTargetBubblePosition(selector: string): TargetBubble | null {
     }
   }
 
-  top = Math.max(8, Math.min(top, viewportHeight - bubbleHeight - 8));
-  left = Math.max(8, Math.min(left, viewportWidth - bubbleWidth - 8));
-
   return { top, left };
 }
 
@@ -300,6 +297,7 @@ export default function InAppTourGuide() {
   const [dismissed, setDismissed] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [targetVisible, setTargetVisible] = useState(true);
   const [targetBubble, setTargetBubble] = useState<TargetBubble | null>(null);
 
@@ -315,7 +313,9 @@ export default function InAppTourGuide() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const storedDismissed = window.localStorage.getItem(TOUR_DISMISSED_KEY) === "1";
-
+    const storedCount = Number(window.localStorage.getItem(TOUR_COMPLETED_COUNT_KEY) || "0");
+    
+    setCompletedCount(Number.isFinite(storedCount) ? storedCount : 0);
     setDismissed(storedDismissed);
     if (!storedDismissed) setOpen(true);
   }, []);
@@ -381,6 +381,13 @@ export default function InAppTourGuide() {
   }
 
   function completeGuide() {
+    const now = new Date().toISOString();
+    const nextCount = completedCount + 1;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TOUR_COMPLETED_COUNT_KEY, String(nextCount));
+      window.localStorage.setItem(TOUR_LAST_COMPLETED_KEY, now);
+    }
+    setCompletedCount(nextCount);
     closeGuide();
   }
 
@@ -400,189 +407,180 @@ export default function InAppTourGuide() {
     setOpen(true);
   }
 
+  const progress = steps.length > 0 ? Math.round(((stepIndex + 1) / steps.length) * 100) : 0;
+
+  // Kapalıysa ve Dismiss edildiyse Sol Altta ufak Launcher
   if (dismissed && !open) {
     return (
-      <div className="fixed bottom-6 right-6 z-40">
+      <div className="fixed bottom-6 left-6 z-40">
         <button
           type="button"
           onClick={restartTour}
-          className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-lg hover:bg-sky-50"
+          className="group flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-lg transition-all hover:w-auto hover:px-4 hover:shadow-xl"
         >
-          <HelpCircle className="h-4 w-4" />
-          {copy.launcherOpenAgain}
+          <HelpCircle className="h-5 w-5 text-slate-500 transition-colors group-hover:text-slate-900" />
+          <span className="hidden whitespace-nowrap pl-2 text-sm font-medium text-slate-900 group-hover:block">
+            {copy.launcherOpenAgain}
+          </span>
         </button>
       </div>
     );
   }
 
-  const progress = steps.length > 0 ? Math.round(((stepIndex + 1) / steps.length) * 100) : 0;
-  const previewName = "Sistemin Turu";
-
   return (
     <>
-      <div className="fixed bottom-6 right-6 z-40">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .hepta-tour-highlight {
+          position: relative !important;
+          z-index: 45 !important;
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9), 0 0 0 7px rgba(15, 23, 42, 0.08) !important;
+          border-radius: 6px;
+          transition: box-shadow 0.3s ease !important;
+        }
+      `}} />
+
+      {/* Launcher (Sol Alt) */}
+      <div className="fixed bottom-6 left-6 z-40">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-lg hover:bg-sky-50"
+          className="group flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-lg transition-all hover:w-auto hover:px-4 hover:shadow-xl"
         >
-          <HelpCircle className="h-4 w-4" />
-          {copy.launcher}
+          <HelpCircle className="h-5 w-5 text-slate-500 transition-colors group-hover:text-slate-900" />
+          <span className="hidden whitespace-nowrap pl-2 text-sm font-medium text-slate-900 group-hover:block">
+            {copy.launcher}
+          </span>
+          {completedCount > 0 && (
+            <span 
+              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center bg-slate-900 text-[9px] font-bold text-white group-hover:relative group-hover:right-0 group-hover:top-0 group-hover:ml-2"
+              style={{ clipPath: "polygon(50% 0%, 90% 20%, 100% 60%, 75% 100%, 25% 100%, 0% 60%, 10% 20%)" }}
+            >
+              {completedCount}
+            </span>
+          )}
         </button>
       </div>
 
-      {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[2px] sm:p-4">
-          {targetBubble && currentStep?.targetSelector ? (
+      {open && (
+        <>
+          {/* Spotlight Bubble */}
+          {targetBubble && currentStep?.targetSelector && (
             <div
-              className="pointer-events-none fixed z-[55]"
+              className="pointer-events-none fixed z-[60] transition-all duration-200 ease-out"
               style={{ top: `${targetBubble.top}px`, left: `${targetBubble.left}px` }}
             >
-              <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 shadow-lg">
-                <MousePointerClick className="h-4 w-4" />
+              <div className="inline-flex animate-bounce items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xl">
+                <MousePointerClick className="h-3.5 w-3.5 text-slate-400" />
                 {copy.targetHint}
               </div>
             </div>
-          ) : null}
+          )}
 
-          <div className="w-full max-h-[75vh] max-w-2xl overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-2xl sm:max-w-3xl md:max-w-4xl lg:max-w-5xl sm:rounded-3xl">
-            <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-cyan-50 px-3 py-3 sm:px-4 sm:py-4 md:px-5 md:py-5">
-              <div className="flex items-start justify-between gap-2 sm:gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-600 sm:text-xs">HeptaCert Guide</p>
-                  <h2 className="mt-1 text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">{copy.title}</h2>
-                  <p className="mt-0.5 text-xs text-slate-600">{copy.subtitle}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {copy.stepPrefix} {steps.length === 0 ? 0 : stepIndex + 1} / {steps.length}
-                  </p>
-                </div>
+          {/* Minimalist In-App Tour Card (Sol Alt) */}
+          <div className="fixed bottom-20 left-6 z-50 w-full max-w-[340px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.1)]">
+            
+            {/* Üst İlerleme Çubuğu */}
+            <div className="h-1 w-full bg-slate-100">
+              <div className="h-full bg-slate-900 transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+            </div>
+
+            {/* İçerik */}
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  {copy.stepPrefix} {stepIndex + 1} / {steps.length}
+                </span>
                 <button
                   type="button"
                   onClick={closeGuide}
-                  className="rounded-lg p-1.5 text-slate-500 hover:bg-white flex-shrink-0"
-                  aria-label={copy.close}
+                  className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
-                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${progress}%` }} />
+              <h3 className="mt-2 text-lg font-semibold text-slate-900">{currentStep.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">{currentStep.description}</p>
+
+              {/* Aksiyon Butonları (Eğer Route varsa) */}
+              {(currentStep.route || currentStep.targetSelector) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {currentStep.route && (
+                    <Link
+                      href={currentStep.route}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                    >
+                      {currentStep.actionLabel || copy.actionFallback}
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                  {currentStep.targetSelector && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        highlightTarget(currentStep.targetSelector || "");
+                        setTargetVisible(highlightTarget(currentStep.targetSelector || ""));
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      <MousePointerClick className="h-3.5 w-3.5" />
+                      {copy.clickTarget}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!targetVisible && currentStep.targetSelector && (
+                <p className="mt-3 text-[11px] font-medium text-red-500">{copy.targetNotFound}</p>
+              )}
+            </div>
+
+            {/* Footer Kontrolleri */}
+            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-500 hover:text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-0"
+                />
+                {copy.dontShowAgain}
+              </label>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={prevStep}
+                  disabled={stepIndex === 0}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                
+                {stepIndex < steps.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={nextStep}
+                    className="flex h-7 px-3 items-center justify-center rounded-md bg-slate-900 text-xs font-semibold text-white transition-colors hover:bg-slate-800"
+                  >
+                    {copy.next}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={completeGuide}
+                    className="flex h-7 px-3 items-center justify-center gap-1.5 rounded-md bg-slate-900 text-xs font-semibold text-white transition-colors hover:bg-slate-800"
+                  >
+                    {copy.finish}
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="overflow-y-auto" style={{ maxHeight: "calc(75vh - 160px)" }}>
-              <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:p-5 grid-cols-1 sm:grid-cols-[140px_minmax(0,1fr)] lg:grid-cols-[180px_minmax(0,1fr)]">
-                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-2 sm:p-3 lg:col-span-1">
-                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs">{copy.stepsLabel}</p>
-                  <div className="max-h-[240px] sm:max-h-[360px] space-y-0.5 overflow-y-auto pr-1">
-                    {steps.map((step, idx) => {
-                      const active = idx === stepIndex;
-                      return (
-                        <button
-                          key={`${step.title}-${idx}`}
-                          type="button"
-                          onClick={() => setStepIndex(idx)}
-                          className={`w-full rounded-lg px-2 py-1.5 text-left text-xs sm:text-sm transition ${
-                            active
-                              ? "bg-white text-slate-900 shadow-sm ring-1 ring-sky-200"
-                              : "text-slate-600 hover:bg-white"
-                          }`}
-                        >
-                          <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">
-                            {idx + 1}
-                          </span>
-                          <span className="truncate text-xs sm:text-sm">{step.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </aside>
-
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 md:p-5 lg:col-span-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-600 sm:text-xs">
-                    {copy.stepPrefix} {stepIndex + 1}
-                  </p>
-                  <h3 className="mt-1.5 text-base font-bold text-slate-900 sm:text-lg md:text-xl">{currentStep.title}</h3>
-                  <p className="mt-2 text-xs leading-5 text-slate-700 sm:text-sm sm:leading-6">{currentStep.description}</p>
-
-                  {currentStep.route ? (
-                    <div className="mt-2.5 sm:mt-3">
-                      <Link
-                        href={currentStep.route}
-                        className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        {currentStep.actionLabel || copy.actionFallback}
-                      </Link>
-                    </div>
-                  ) : null}
-
-                  {currentStep.targetSelector ? (
-                    <div className="mt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpen(false);
-                          highlightTarget(currentStep.targetSelector || "");
-                          setTargetVisible(highlightTarget(currentStep.targetSelector || ""));
-                        }}
-                        className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                      >
-                        {copy.clickTarget}
-                      </button>
-                      {!targetVisible ? <p className="mt-1.5 text-xs text-rose-600">{copy.targetNotFound}</p> : null}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-4 flex flex-col gap-2 sm:gap-3">
-                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={dontShowAgain}
-                        onChange={(event) => setDontShowAgain(event.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                      />
-                      {copy.dontShowAgain}
-                    </label>
-
-                    <div className="flex items-center gap-1.5 justify-between">
-                      <button
-                        type="button"
-                        onClick={prevStep}
-                        disabled={stepIndex === 0}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">{copy.back}</span>
-                      </button>
-                      {stepIndex < steps.length - 1 ? (
-                        <button
-                          type="button"
-                          onClick={nextStep}
-                          className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
-                        >
-                          <span className="hidden sm:inline">{copy.next}</span>
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={completeGuide}
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                        >
-                          <span className="hidden sm:inline">{copy.finish}</span>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              </div>
-            </div>
           </div>
-        </div>
-      ) : null}
+        </>
+      )}
     </>
   );
 }
