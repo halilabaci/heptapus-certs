@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { HelpCircle, X, ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, MousePointerClick } from "lucide-react";
@@ -230,32 +230,28 @@ const EN_COPY: TourCopy = {
   },
 };
 
-function getStepsForRole(copy: TourCopy, role: string | null): TourStep[] {
+function getStepsForRole(copy: TourCopy, role: string | null) {
   const base = [...copy.steps];
-  if (role === "superadmin") base.push(copy.superadminStep);
+  // Superadmin step removed - not needed
   return base;
 }
 
 function highlightTarget(selector: string): boolean {
   if (typeof window === "undefined") return false;
+  
+  document.querySelectorAll('.hepta-tour-highlight').forEach(el => {
+    el.classList.remove('hepta-tour-highlight');
+  });
+
   const node = document.querySelector(selector);
   if (!(node instanceof HTMLElement)) return false;
 
   node.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-
-  const previousOutline = node.style.outline;
-  const previousBoxShadow = node.style.boxShadow;
-  const previousTransition = node.style.transition;
-
-  node.style.transition = "box-shadow 0.25s ease, outline-color 0.25s ease";
-  node.style.outline = "3px solid rgba(245, 158, 11, 0.95)";
-  node.style.boxShadow = "0 0 0 8px rgba(245, 158, 11, 0.25)";
+  node.classList.add('hepta-tour-highlight');
 
   window.setTimeout(() => {
-    node.style.outline = previousOutline;
-    node.style.boxShadow = previousBoxShadow;
-    node.style.transition = previousTransition;
-  }, 2200);
+    if (node) node.classList.remove('hepta-tour-highlight');
+  }, 2500);
 
   return true;
 }
@@ -309,9 +305,10 @@ export default function InAppTourGuide() {
   const [targetVisible, setTargetVisible] = useState(true);
   const [targetBubble, setTargetBubble] = useState<TargetBubble | null>(null);
 
+  const rafRef = useRef<number | null>(null);
+
   const steps = useMemo(() => getStepsForRole(copy, role), [copy, role]);
   const currentStep = useMemo(() => steps[stepIndex], [steps, stepIndex]);
-  const progress = steps.length > 0 ? Math.round(((stepIndex + 1) / steps.length) * 100) : 0;
 
   useEffect(() => {
     setRole(getRoleFromToken());
@@ -331,16 +328,15 @@ export default function InAppTourGuide() {
 
   useEffect(() => {
     if (!steps.length) return;
-    if (stepIndex > steps.length - 1) {
-      setStepIndex(steps.length - 1);
-    }
+    if (stepIndex > steps.length - 1) setStepIndex(steps.length - 1);
   }, [stepIndex, steps]);
 
   useEffect(() => {
-    if (!pathname) return;
-    if (!steps.length) return;
+    if (!pathname || !steps.length) return;
     const directMatch = steps.findIndex((step) => step.route && pathname.startsWith(step.route.split("?")[0]));
-    if (directMatch >= 0) setStepIndex(directMatch);
+    if (directMatch >= 0 && directMatch !== stepIndex) {
+      setStepIndex(directMatch);
+    }
   }, [pathname, steps]);
 
   useEffect(() => {
@@ -349,25 +345,32 @@ export default function InAppTourGuide() {
       setTargetBubble(null);
       return;
     }
-    setTargetVisible(highlightTarget(currentStep.targetSelector));
-    setTargetBubble(getTargetBubblePosition(currentStep.targetSelector));
+    const timer = setTimeout(() => {
+      setTargetVisible(highlightTarget(currentStep.targetSelector || ""));
+      setTargetBubble(getTargetBubblePosition(currentStep.targetSelector || ""));
+    }, 150);
+    return () => clearTimeout(timer);
   }, [open, currentStep]);
+
+  const updateBubbleThrottled = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      if (currentStep?.targetSelector) {
+        setTargetBubble(getTargetBubblePosition(currentStep.targetSelector));
+      }
+    });
+  }, [currentStep]);
 
   useEffect(() => {
     if (!open || !currentStep?.targetSelector) return;
-
-    const updateBubble = () => {
-      setTargetBubble(getTargetBubblePosition(currentStep.targetSelector || ""));
-    };
-
-    window.addEventListener("resize", updateBubble);
-    window.addEventListener("scroll", updateBubble, true);
-
+    window.addEventListener("resize", updateBubbleThrottled);
+    window.addEventListener("scroll", updateBubbleThrottled, true);
     return () => {
-      window.removeEventListener("resize", updateBubble);
-      window.removeEventListener("scroll", updateBubble, true);
+      window.removeEventListener("resize", updateBubbleThrottled);
+      window.removeEventListener("scroll", updateBubbleThrottled, true);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [open, currentStep]);
+  }, [open, currentStep, updateBubbleThrottled]);
 
   function applyDismissPreference() {
     if (typeof window === "undefined") return;
@@ -380,6 +383,7 @@ export default function InAppTourGuide() {
   function closeGuide() {
     setOpen(false);
     applyDismissPreference();
+    document.querySelectorAll('.hepta-tour-highlight').forEach(el => el.classList.remove('hepta-tour-highlight'));
   }
 
   function completeGuide() {
@@ -403,29 +407,16 @@ export default function InAppTourGuide() {
   }
 
   function restartTour() {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(TOUR_DISMISSED_KEY);
-    }
+    if (typeof window !== "undefined") window.localStorage.removeItem(TOUR_DISMISSED_KEY);
     setDismissed(false);
     setDontShowAgain(false);
     setStepIndex(0);
     setOpen(true);
   }
 
-  function handleClickTarget() {
-    if (!currentStep?.targetSelector) return;
-    setOpen(false);
-    const found = highlightTarget(currentStep.targetSelector);
-    setTargetVisible(found);
-  }
-
-  const formattedLastCompleted = lastCompletedAt
-    ? new Date(lastCompletedAt).toLocaleString(lang === "en" ? "en-US" : "tr-TR")
-    : copy.never;
-
-  if (dismissed) {
+  if (dismissed && !open) {
     return (
-      <div className="fixed bottom-20 right-4 z-40 lg:bottom-6 lg:right-6">
+      <div className="fixed bottom-6 right-6 z-40">
         <button
           type="button"
           onClick={restartTour}
@@ -438,9 +429,12 @@ export default function InAppTourGuide() {
     );
   }
 
+  const progress = steps.length > 0 ? Math.round(((stepIndex + 1) / steps.length) * 100) : 0;
+  const previewName = "Sistemin Turu";
+
   return (
     <>
-      <div className="fixed bottom-20 right-4 z-40 lg:bottom-6 lg:right-6">
+      <div className="fixed bottom-6 right-6 z-40">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -495,7 +489,7 @@ export default function InAppTourGuide() {
             </div>
 
             <div className="overflow-y-auto" style={{ maxHeight: "calc(90vh - 140px)" }}>
-              <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 sm:grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_220px]">
+              <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[280px_minmax(0,1fr)_220px]">
                 <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:col-span-1">
                   <p className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.stepsLabel}</p>
                   <div className="max-h-[300px] sm:max-h-[420px] space-y-1 overflow-y-auto pr-1">
@@ -522,7 +516,7 @@ export default function InAppTourGuide() {
                   </div>
                 </aside>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-1">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 sm:col-span-1 lg:col-span-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-600">
                     {copy.stepPrefix} {stepIndex + 1}
                   </p>
@@ -545,7 +539,11 @@ export default function InAppTourGuide() {
                     <div className="mt-3">
                       <button
                         type="button"
-                        onClick={handleClickTarget}
+                        onClick={() => {
+                          setOpen(false);
+                          highlightTarget(currentStep.targetSelector || "");
+                          setTargetVisible(highlightTarget(currentStep.targetSelector || ""));
+                        }}
                         className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 sm:px-4 sm:py-2 sm:text-sm"
                       >
                         {copy.clickTarget}
@@ -598,7 +596,7 @@ export default function InAppTourGuide() {
                   </div>
                 </section>
 
-                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 lg:col-span-1">
+                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4 sm:col-span-2 lg:col-span-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.historyTitle}</p>
                   <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
@@ -607,7 +605,9 @@ export default function InAppTourGuide() {
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{copy.lastCompleted}</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900 line-clamp-2">{formattedLastCompleted}</p>
+                      <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 line-clamp-2">
+                        {lastCompletedAt ? new Date(lastCompletedAt).toLocaleString(lang === "en" ? "en-US" : "tr-TR") : copy.never}
+                      </p>
                     </div>
                     <button
                       type="button"
