@@ -108,7 +108,7 @@ const VISIBILITY_OPTIONS = [
 
 const SETTINGS_TABS = [
   { id: "general", label_tr: "Genel", label_en: "General", icon: FileText },
-  { id: "registration", label_tr: "Kayıt Forması", label_en: "Registration Form", icon: ClipboardList },
+  { id: "registration", label_tr: "Kayıt Formu", label_en: "Registration Form", icon: ClipboardList },
   { id: "banner", label_tr: "Banner", label_en: "Banner", icon: ImageIcon },
   { id: "email", label_tr: "E-posta", label_en: "Email", icon: Mail },
   { id: "comments", label_tr: "Yorumlar", label_en: "Comments", icon: MessageSquare },
