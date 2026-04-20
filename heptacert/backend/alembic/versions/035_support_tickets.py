@@ -1,7 +1,7 @@
 """Add support tickets table for AI assistant escalation
 
-Revision ID: 035
-Revises: 034
+Revision ID: 035_support_tickets
+Revises: 034_public_member_contact_email
 Create Date: 2026-04-20 10:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '035'
-down_revision = '034'
+revision = '035_support_tickets'
+down_revision = '034_public_member_contact_email'
 branch_labels = None
 depends_on = None
 
