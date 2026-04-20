@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.header import Header
+from email.header import Header as EmailHeader
 from email.utils import formataddr
 from enum import Enum
 from html import escape
@@ -2670,7 +2670,7 @@ async def send_email_async(
             return
     
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = str(Header(subject, charset="utf-8"))
+    msg["Subject"] = str(EmailHeader(subject, charset="utf-8"))
     msg["From"] = (
         formataddr((smtp_from_name, smtp_from_email))
         if smtp_from_name
@@ -3023,14 +3023,14 @@ class CurrentPublicMember(BaseModel):
     avatar_url: Optional[str] = None
 
 
-from fastapi import Header
+from fastapi import Header as FastAPIHeader
 
 
 def _hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-async def get_current_user(db: AsyncSession = Depends(get_db), Authorization: Optional[str] = Header(default=None)) -> CurrentUser:
+async def get_current_user(db: AsyncSession = Depends(get_db), Authorization: Optional[str] = FastAPIHeader(default=None)) -> CurrentUser:
     if not Authorization or not Authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = Authorization.split(" ", 1)[1].strip()
@@ -3110,7 +3110,7 @@ async def _resolve_public_member_from_authorization(
 
 async def get_current_public_member(
     db: AsyncSession = Depends(get_db),
-    Authorization: Optional[str] = Header(default=None),
+    Authorization: Optional[str] = FastAPIHeader(default=None),
 ) -> CurrentPublicMember:
     if not Authorization or not Authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -3122,7 +3122,7 @@ async def get_current_public_member(
 
 async def get_optional_public_member(
     db: AsyncSession = Depends(get_db),
-    Authorization: Optional[str] = Header(default=None),
+    Authorization: Optional[str] = FastAPIHeader(default=None),
 ) -> Optional[CurrentPublicMember]:
     return await _resolve_public_member_from_authorization(db, Authorization)
 
@@ -5307,8 +5307,8 @@ async def get_event_survey(
 async def submit_builtin_survey(
     event_id: str,
     survey_resp_in: SurveyResponseIn,
-    attendee_id_header_snake: Optional[int] = Header(default=None, alias="attendee_id"),
-    attendee_id_header_kebab: Optional[int] = Header(default=None, alias="attendee-id"),
+    attendee_id_header_snake: Optional[int] = FastAPIHeader(default=None, alias="attendee_id"),
+    attendee_id_header_kebab: Optional[int] = FastAPIHeader(default=None, alias="attendee-id"),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a built-in survey response. Attendee endpoint."""
@@ -11949,7 +11949,7 @@ async def send_ticket_notification_email(ticket: SupportTicket, user_email: str,
         for superadmin in superadmins:
             # Create email
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = Header(f"Yeni Destek Talebineği: {ticket.subject}", "utf-8")
+            msg["Subject"] = str(EmailHeader(f"Yeni Destek Talebineği: {ticket.subject}", charset="utf-8"))
             msg["From"] = formataddr(("HeptaCert Sistem", settings.smtp_from_email))
             msg["To"] = superadmin.email
             
