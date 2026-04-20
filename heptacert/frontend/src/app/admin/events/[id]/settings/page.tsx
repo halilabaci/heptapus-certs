@@ -950,19 +950,70 @@ export default function EventSettingsPage() {
                             </div>
 
                             <div>
-                              <label className="label text-xs font-semibold text-surface-700">{copy.fieldOptions}</label>
-                              <textarea
-                                value={(field.options || []).join("\n")}
-                                onChange={(event) =>
-                                  updateRegistrationField(field.id, {
-                                    options: event.target.value.split("\n").filter(o => o.trim()),
-                                  })
-                                }
-                                className="input-field text-sm"
-                                rows={4}
-                                placeholder={lang === "tr" ? "Her satırda bir seçenek yazın..." : "Write one option per line..."}
-                              />
-                              <p className="mt-2 text-xs text-surface-500">{copy.fieldOptionsHint}</p>
+                              <label className="label text-xs font-semibold text-surface-700 mb-2">{copy.fieldOptions}</label>
+                              <div className="space-y-2">
+                                {(field.options || []).length > 0 && (
+                                  <div className="flex flex-wrap gap-2 rounded-lg bg-surface-50 p-3">
+                                    {(field.options || []).map((option, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="inline-flex items-center gap-2 rounded-full bg-white border border-surface-300 px-3 py-1.5 text-sm font-medium text-surface-700"
+                                      >
+                                        {option}
+                                        <button
+                                          onClick={() =>
+                                            updateRegistrationField(field.id, {
+                                              options: (field.options || []).filter((_, i) => i !== idx),
+                                            })
+                                          }
+                                          className="text-surface-400 hover:text-rose-600 transition font-bold text-lg leading-none"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                <div className="flex gap-2 items-start">
+                                  <input
+                                    type="text"
+                                    id={`option-input-${field.id}`}
+                                    placeholder={lang === "tr" ? "Yeni seçenek..." : "New option..."}
+                                    className="input-field flex-1 text-sm"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        const input = e.currentTarget;
+                                        const value = input.value.trim();
+                                        if (value && !(field.options || []).includes(value)) {
+                                          updateRegistrationField(field.id, {
+                                            options: [...(field.options || []), value],
+                                          });
+                                          input.value = "";
+                                        }
+                                      }
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const input = document.getElementById(`option-input-${field.id}`) as HTMLInputElement;
+                                      if (input) {
+                                        const value = input.value.trim();
+                                        if (value && !(field.options || []).includes(value)) {
+                                          updateRegistrationField(field.id, {
+                                            options: [...(field.options || []), value],
+                                          });
+                                          input.value = "";
+                                        }
+                                      }
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+                                  >
+                                    {lang === "tr" ? "Ekle" : "Add"}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}
