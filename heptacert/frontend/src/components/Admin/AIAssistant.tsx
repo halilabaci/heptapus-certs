@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send, AlertCircle, Lightbulb } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { getToken } from "@/lib/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -118,6 +119,58 @@ const FAQ_DATABASE = {
     {
       keywords: ["payment", "ticket", "pricing"],
       answer: "To set up a payment system for your event, go to Event Settings > Payment. Configure ticket pricing, early bird discounts, and group discounts. Integrated with Stripe and other payment methods."
+    },
+    {
+      keywords: ["yorum", "comment", "moderasyon", "moderation"],
+      answer: "Etkinlik sayfasına gelen yorumları yönetmek için Ayarlar > Yorumlar sekmesine gidin. Yorumları onaylayabilir, gizleyebilir veya raporlanmış olanları inceleyebilirsiniz. Her yorum için üye bilgisini ve tarihini görebilirsiniz."
+    },
+    {
+      keywords: ["kayıt", "register", "kaydetme", "inscription"],
+      answer: "Katılımcı kaydı açık etkinlik sayfasından otomatik olarak yapılır. Etkinlik Ayarları > Kayıt Forması'nda ek alanlar ekleyebilir, zorunlu/opsiyonel ayarını değiştirebilirsiniz. Kayıt limitini ayarlayabilir ve e-posta doğrulaması zorunluluğunu belirleyebilirsiniz."
+    },
+    {
+      keywords: ["görünürlük", "visibility", "private", "public", "gizli"],
+      answer: "Etkinliğin görünürlüğünü Ayarlar > Genel bölümünde değiştirebilirsiniz. Özel: Listede görünmez (doğrudan bağlantı gerekli). Liste dışı: Sadece doğrudan bağlantıyla açılır. Herkese açık: Keşif ekranında görünür. Mevcut kayıt linkleriniz etkilenmez."
+    },
+    {
+      keywords: ["banner", "görsel", "image", "kapak", "cover"],
+      answer: "Etkinlik bannerını Ayarlar > Banner sekmesinden yükleyebilirsiniz. Önerilen boyut: 1200×400 piksel. JPG, PNG veya WebP formatları desteklenmektedir. Banner, kayıt sayfasında ve etkinlik başlığında görüntülenir."
+    },
+    {
+      keywords: ["template", "şablon", "hazır", "örnek"],
+      answer: "Sertifika şablonları Editor sayfasında özelleştirebilirsiniz. Hazır tasarımlardan seçebilir veya sıfırdan oluşturabilirsiniz. Yazı, renkler, logolar ve arka planlar tamamen özelleştirilebilir. Değişiklikleri anlık önizlemede görebilirsiniz."
+    },
+    {
+      keywords: ["toplu", "bulk", "export", "dışa", "aktarma"],
+      answer: "Katılımcı listesini, sertifikaları ve anket sonuçlarını Excel formatında dışa aktarabilirsiniz. Katılımcılar bölümünden 'Dışa Aktar' butonunu kullanabilirsiniz. Toplu e-posta göndermek için E-posta bölümüne gidin."
+    },
+    {
+      keywords: ["qr", "kod", "kodu", "tarama", "scan"],
+      answer: "Check-in sırasında QR kod taratarak katılımcıları hızlıca işaretleyebilirsiniz. Her katılımcının benzersiz QR kodu vardır. Check-in sayfasında mobil cihazınızı kamera olarak kullanabilir veya kodu manuel olarak girebilirsiniz."
+    },
+    {
+      keywords: ["sorgu", "koşul", "conditional", "zorunlu", "required"],
+      answer: "Alan eklerken 'Koşullu Zorunluluk' seçeneğini kullanarak başka alandaki cevaba bağlı zorunlu alan oluşturabilirsiniz. Örneğin: 'Eğer ülke Türkiye'yse kimlik numarası zorunlu olsun' şeklinde kurallar belirleyebilirsiniz."
+    },
+    {
+      keywords: ["hata", "error", "sorun", "problem", "bug"],
+      answer: "Bir sorunla karşılaştıysanız, tarayıcı konsolunu (F12) açarak hata mesajlarını görebilirsiniz. Sayfayı yenileyin ve işlemi tekrarlayın. Sorun devam ederse, AI Asistan'dan 'Destek Talebi Aç' butonuyla destek ekibimize ulaşabilirsiniz."
+    },
+    {
+      keywords: ["oturum", "session", "login", "logout", "giriş"],
+      answer: "Oturum açmak için e-posta ve şifrenizi girebilir veya magic link kullanabilirsiniz. İki faktörlü kimlik doğrulama aktif ise, doğrulama kodunuzu girmeniz gerekir. Oturum otomatik olarak belirli süre sonra kapanabilir - sayfayı yenileyerek tekrar giriş yapabilirsiniz."
+    },
+    {
+      keywords: ["sertifika", "certificate", "verme", "issue", "teslim"],
+      answer: "Katılımcılara sertifika vermek için Sertifikalar bölümüne gidin. Katılımcıları seçin ve 'Sertifika Ver' butonunu tıklayın. Toplu olarak birden fazla katılımcıya sertifika verebilirsiniz. Otomatik e-posta göndermesini Ayarlar > E-posta'da ayarlayabilirsiniz."
+    },
+    {
+      keywords: ["analiz", "analysis", "istatistik", "statistics", "dashboard"],
+      answer: "İleri Analitik sayfasında etkinliğinizin detaylı verilerini görebilirsiniz. Kayıt trendi, cinsiyet dağılımı, zaman dilimine göre katılımcılar ve daha fazla grafikleri görüntüleyebilirsiniz. Raporları tarih aralığına göre filtreleyebilirsiniz."
+    },
+    {
+      keywords: ["destek", "support", "yardım", "help", "asistan"],
+      answer: "Sorularınız için bu AI Asistan'ı kullanabilirsiniz. Eğer cevap bulamazsanız 'Destek Talebi Aç' butonuyla destek ekibimize doğrudan yazabilirsiniz. Talebiniz oluşturulduktan sonra ekip sizi en kısa sürede çözüme ulaştıracaktır."
     }
   ]
 };
@@ -191,10 +244,7 @@ export default function AIAssistant() {
 
     setLoading(true);
     try {
-      // Try multiple token storage locations
-      let token = localStorage.getItem("token");
-      if (!token) token = sessionStorage.getItem("token");
-      if (!token) token = localStorage.getItem("auth_token");
+      const token = getToken();
       
       if (!token) {
         const assistantMsg: Message = {

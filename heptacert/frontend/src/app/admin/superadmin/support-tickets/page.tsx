@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, MessageCircle, ChevronDown, ChevronUp, Send, X, Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/Admin/PageHeader";
 import type { SubscriptionInfo } from "@/lib/api";
 
@@ -42,7 +43,7 @@ export default function SupportTicketsPage() {
     setLoading(true);
     try {
       const query = filter === "all" ? "" : `?status=${filter}`;
-      const response = await fetch(`/api/superadmin/support-tickets${query}`);
+      const response = await apiFetch(`/superadmin/support-tickets${query}`);
       if (response.ok) {
         const data = await response.json();
         setTickets(data);
@@ -56,9 +57,8 @@ export default function SupportTicketsPage() {
 
   const handleStatusChange = async (ticketId: number, newStatus: string) => {
     try {
-      const response = await fetch(`/api/superadmin/support-tickets/${ticketId}`, {
+      const response = await apiFetch(`/superadmin/support-tickets/${ticketId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
       });
 
@@ -79,9 +79,8 @@ export default function SupportTicketsPage() {
 
     setReplying(true);
     try {
-      const response = await fetch(`/api/superadmin/support-tickets/${selectedTicket.id}`, {
+      const response = await apiFetch(`/superadmin/support-tickets/${selectedTicket.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ admin_reply: adminReply })
       });
 
