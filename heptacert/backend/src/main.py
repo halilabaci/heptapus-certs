@@ -2670,7 +2670,7 @@ async def send_email_async(
             return
     
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = Header(subject, charset="utf-8")
+    msg["Subject"] = str(Header(subject, charset="utf-8"))
     msg["From"] = (
         formataddr((smtp_from_name, smtp_from_email))
         if smtp_from_name
