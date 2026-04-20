@@ -88,13 +88,13 @@ type FormState = {
 };
 
 const FIELD_TYPE_OPTIONS: Array<{ value: RegistrationField["type"]; tr: string; en: string; desc_tr?: string; desc_en?: string; icon?: any }> = [
-  { value: "text", tr: "Kısa metin", en: "Short text", desc_tr: "Tek satır metin (isim, e-posta vb.)", desc_en: "Single line text (name, email, etc.)", icon: Type },
-  { value: "textarea", tr: "Uzun metin", en: "Long text", desc_tr: "Çok satırlı metin alanı", desc_en: "Multi-line text area", icon: AlignLeft },
-  { value: "tel", tr: "Telefon", en: "Phone", desc_tr: "Telefon numarası (otomatik format)", desc_en: "Phone number (auto-formatted)", icon: Phone },
+  { value: "text", tr: "Kısa Metin", en: "Short Text", desc_tr: "Tek satır (isim, e-posta, vb.)", desc_en: "Single line (name, email, etc.)", icon: Type },
+  { value: "textarea", tr: "Uzun Metin", en: "Long Text", desc_tr: "Çok satırlı alan", desc_en: "Multi-line text area", icon: AlignLeft },
+  { value: "tel", tr: "Telefon", en: "Phone", desc_tr: "Telefon numarası", desc_en: "Phone number", icon: Phone },
   { value: "number", tr: "Sayı", en: "Number", desc_tr: "Sayısal değer", desc_en: "Numeric value", icon: Hash },
   { value: "date", tr: "Tarih", en: "Date", desc_tr: "Tarih seçici", desc_en: "Date picker", icon: Calendar },
-  { value: "select", tr: "Seçim listesi", en: "Select list", desc_tr: "Açılır menü (birden fazla seçenek)", desc_en: "Dropdown menu (multiple options)", icon: List },
-  { value: "file", tr: "Dosya yükleme", en: "File upload", desc_tr: "Katılımcılar dosya yükleyebilir", desc_en: "Participants can upload files", icon: FileUp },
+  { value: "select", tr: "Çoktan Seçmeli", en: "Multiple Choice", desc_tr: "Açılır menü - tek veya birden fazla seçenek", desc_en: "Dropdown - single or multiple options", icon: List },
+  { value: "file", tr: "Dosya Yükleme", en: "File Upload", desc_tr: "Katılımcılar dosya yükle", desc_en: "Participants upload files", icon: FileUp },
 ];
 
 const VISIBILITY_OPTIONS = [
@@ -117,6 +117,7 @@ function createRegistrationField(): RegistrationField {
     placeholder: "",
     helper_text: "",
     options: [],
+    selection_mode: "single",
   };
 }
 
@@ -921,19 +922,48 @@ export default function EventSettingsPage() {
                         </div>
 
                         {field.type === "select" && (
-                          <div>
-                            <label className="label">{copy.fieldOptions}</label>
-                            <textarea
-                              value={(field.options || []).join("\n")}
-                              onChange={(event) =>
-                                updateRegistrationField(field.id, {
-                                  options: event.target.value.split("\n"),
-                                })
-                              }
-                              className="input-field min-h-20"
-                              placeholder={copy.fieldOptionsHint}
-                            />
-                            <p className="mt-2 text-xs text-surface-400">{copy.fieldOptionsHint}</p>
+                          <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                            <div>
+                              <label className="label text-xs font-semibold text-surface-700 mb-2">{lang === "tr" ? "Seçim Türü" : "Selection Type"}</label>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => updateRegistrationField(field.id, { selection_mode: "single" })}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                    (field.selection_mode || "single") === "single"
+                                      ? "bg-blue-600 text-white"
+                                      : "bg-white border border-surface-300 text-surface-700 hover:bg-surface-100"
+                                  }`}
+                                >
+                                  {lang === "tr" ? "Tek Seçim" : "Single Choice"}
+                                </button>
+                                <button
+                                  onClick={() => updateRegistrationField(field.id, { selection_mode: "multiple" })}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                    field.selection_mode === "multiple"
+                                      ? "bg-blue-600 text-white"
+                                      : "bg-white border border-surface-300 text-surface-700 hover:bg-surface-100"
+                                  }`}
+                                >
+                                  {lang === "tr" ? "Birden Fazla Seçim" : "Multiple Choices"}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="label text-xs font-semibold text-surface-700">{copy.fieldOptions}</label>
+                              <textarea
+                                value={(field.options || []).join("\n")}
+                                onChange={(event) =>
+                                  updateRegistrationField(field.id, {
+                                    options: event.target.value.split("\n").filter(o => o.trim()),
+                                  })
+                                }
+                                className="input-field text-sm"
+                                rows={4}
+                                placeholder={lang === "tr" ? "Her satırda bir seçenek yazın..." : "Write one option per line..."}
+                              />
+                              <p className="mt-2 text-xs text-surface-500">{copy.fieldOptionsHint}</p>
+                            </div>
                           </div>
                         )}
 

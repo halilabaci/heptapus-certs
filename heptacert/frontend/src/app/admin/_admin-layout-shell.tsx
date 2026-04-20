@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { clearToken, getRoleFromToken } from "@/lib/api";
 import { LanguageToggle, useI18n } from "@/lib/i18n";
 import InAppTourGuide from "@/components/Admin/InAppTourGuide";
+import AIAssistant from "@/components/Admin/AIAssistant";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarCheck2,
@@ -318,6 +319,7 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
         </main>
 
         <InAppTourGuide />
+        <AIAssistant />
 
         <nav className="mobile-bottom-nav" aria-label={lang === "tr" ? "Hızlı gezinti" : "Quick navigation"}>
           <div className="flex items-stretch gap-1">

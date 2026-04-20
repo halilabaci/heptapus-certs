@@ -695,6 +695,23 @@ class CommunityCommentVote(Base):
     )
 
 
+class SupportTicket(Base):
+    """Support tickets created when AI assistant can't help organizationally.
+    
+    Used for escalation when users need human support.
+    Superadmins can view and respond to these tickets.
+    """
+    __tablename__ = "support_tickets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    subject: Mapped[str] = mapped_column(String(255))
+    messages: Mapped[list] = mapped_column(JSONB, default=list)  # [{role: 'user'|'admin', message: str, timestamp: str}, ...]
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)  # open, in_progress, resolved, closed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class WaitlistEntry(Base):
     __tablename__ = "waitlist_entries"
     id:            Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -1677,6 +1694,38 @@ class EventSurveyOut(BaseModel):
     external_provider: Optional[str] = None
     external_url: Optional[str] = None
     external_webhook_key: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SupportTicketMessageIn(BaseModel):
+    """A single message in support ticket"""
+    role: str  # 'user' or 'admin'
+    message: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SupportTicketCreateIn(BaseModel):
+    """Request to create a support ticket"""
+    subject: str = Field(min_length=5, max_length=255)
+    message: str = Field(min_length=10, max_length=5000)
+
+
+class SupportTicketUpdateIn(BaseModel):
+    """Request to update a support ticket (admin reply or status change)"""
+    status: Optional[str] = None  # open, in_progress, resolved, closed
+    admin_reply: Optional[str] = None  # Admin's response message
+
+
+class SupportTicketOut(BaseModel):
+    """Response with support ticket details"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    organization_id: int
+    user_id: int
+    subject: str
+    messages: List[Dict[str, Any]]
+    status: str
     created_at: datetime
     updated_at: datetime
 
@@ -11832,6 +11881,172 @@ async def self_checkin(
         sessions_required=ctx["min_sessions_required"],
         total_sessions=total_sessions,
     )
+
+
+# ============================================================================
+# SUPPORT TICKETS - AI Assistant Escalation
+# ============================================================================
+
+async def send_ticket_notification_email(ticket: SupportTicket, user_email: str, db: AsyncSession):
+    """Send email notification to superadmins when a support ticket is created"""
+    try:
+        # Get all superadmins
+        superadmins_res = await db.execute(
+            select(User).where(User.role == Role.superadmin)
+        )
+        superadmins = superadmins_res.scalars().all()
+        
+        # Get organization details
+        org_res = await db.execute(
+            select(Organization).where(Organization.id == ticket.organization_id)
+        )
+        org = org_res.scalar_one_or_none()
+        
+        for superadmin in superadmins:
+            # Create email
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = Header(f"Yeni Destek Talebineği: {ticket.subject}", "utf-8")
+            msg["From"] = formataddr(("HeptaCert Sistem", settings.smtp_from_email))
+            msg["To"] = superadmin.email
+            
+            html = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>Yeni Destek Talebineği</h2>
+                    <p><strong>Organizasyon:</strong> {org.org_name if org else 'Bilinmiyor'}</p>
+                    <p><strong>Kullanıcı:</strong> {user_email}</p>
+                    <p><strong>Konu:</strong> {ticket.subject}</p>
+                    <p><strong>Durum:</strong> {ticket.status}</p>
+                    <hr>
+                    <p><a href="{settings.frontend_base_url}/admin/superadmin/support-tickets/{ticket.id}">Talepleri Görünt-üleme</a></p>
+                </body>
+            </html>
+            """
+            msg.attach(MIMEText(html, "html", "utf-8"))
+            
+            # Send email (non-blocking)
+            try:
+                await aiosmtplib.send_message(
+                    msg,
+                    hostname=settings.smtp_server,
+                    port=settings.smtp_port,
+                    use_tls=True,
+                    username=settings.smtp_username,
+                    password=settings.smtp_password,
+                    timeout=10,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send support ticket email: {e}")
+    except Exception as e:
+        logger.error(f"Error in send_ticket_notification_email: {e}")
+
+
+@app.post("/api/admin/support-tickets", response_model=SupportTicketOut)
+async def create_support_ticket(
+    req: SupportTicketCreateIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a support ticket - Called when AI assistant can't help"""
+    # User must be an admin/superadmin
+    if me.role not in (Role.admin, Role.superadmin):
+        raise HTTPException(status_code=403, detail="Only admins can create support tickets")
+    
+    # Get user's organization
+    org_res = await db.execute(
+        select(Organization).where(Organization.user_id == me.id)
+    )
+    org = org_res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Create ticket
+    ticket = SupportTicket(
+        organization_id=org.id,
+        user_id=me.id,
+        subject=req.subject,
+        messages=[{
+            "role": "user",
+            "message": req.message,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }],
+        status="open"
+    )
+    
+    db.add(ticket)
+    await db.commit()
+    await db.refresh(ticket)
+    
+    # Send notification email to superadmins (non-blocking)
+    asyncio.create_task(send_ticket_notification_email(ticket, me.email, db))
+    
+    return ticket
+
+
+@app.get("/api/superadmin/support-tickets", response_model=list[SupportTicketOut], dependencies=[Depends(require_role(Role.superadmin))])
+async def list_support_tickets(
+    status: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all support tickets (superadmin only)"""
+    query = select(SupportTicket).order_by(SupportTicket.created_at.desc())
+    
+    if status:
+        query = query.where(SupportTicket.status == status)
+    
+    res = await db.execute(query)
+    tickets = res.scalars().all()
+    return tickets
+
+
+@app.get("/api/superadmin/support-tickets/{ticket_id}", response_model=SupportTicketOut, dependencies=[Depends(require_role(Role.superadmin))])
+async def get_support_ticket(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single support ticket"""
+    ticket_res = await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )
+    ticket = ticket_res.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Support ticket not found")
+    
+    return ticket
+
+
+@app.patch("/api/superadmin/support-tickets/{ticket_id}", response_model=SupportTicketOut, dependencies=[Depends(require_role(Role.superadmin))])
+async def update_support_ticket(
+    ticket_id: int,
+    req: SupportTicketUpdateIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update support ticket status or add admin reply"""
+    ticket_res = await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )
+    ticket = ticket_res.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Support ticket not found")
+    
+    # Update status if provided
+    if req.status:
+        ticket.status = req.status
+    
+    # Add admin reply if provided
+    if req.admin_reply:
+        ticket.messages.append({
+            "role": "admin",
+            "message": req.admin_reply,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    
+    ticket.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(ticket)
+    
+    return ticket
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Sessions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬

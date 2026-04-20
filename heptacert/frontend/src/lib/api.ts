@@ -392,6 +392,7 @@ export interface RegistrationField {
   placeholder?: string | null;
   helper_text?: string | null;
   options?: string[];
+  selection_mode?: "single" | "multiple";  // For "select" type: single choice or multiple choices
 }
 
 export interface SessionOut {
