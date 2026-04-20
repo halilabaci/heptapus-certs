@@ -2609,27 +2609,45 @@ async def send_email_async(
     smtp_reply_to: Optional[str] = None
     smtp_auto_cc: Optional[str] = None
     smtp_use_tls = True
+    using_user_smtp = False
+
+    # Keep a copy for fallback if per-user SMTP is broken.
+    global_smtp_host = settings.smtp_host
+    global_smtp_port = settings.smtp_port
+    global_smtp_user = settings.smtp_user or None
+    global_smtp_password = settings.smtp_password or None
+    global_smtp_from = settings.smtp_from
 
     if sender_user_id is not None:
         async with SessionLocal() as db_mail:
             res = await db_mail.execute(select(UserEmailConfig).where(UserEmailConfig.user_id == sender_user_id))
             user_config = res.scalar_one_or_none()
-            if (
-                user_config
-                and user_config.smtp_enabled
-                and user_config.smtp_host
-                and user_config.smtp_port
-                and (user_config.from_email or user_config.smtp_user)
-            ):
-                smtp_host = user_config.smtp_host
-                smtp_port = int(user_config.smtp_port)
-                smtp_user = user_config.smtp_user or None
-                smtp_password = _decrypt_smtp_password(user_config.smtp_password)
-                smtp_from_email = user_config.from_email or user_config.smtp_user or settings.smtp_from
-                smtp_from_name = (user_config.from_name or "").strip()
-                smtp_reply_to = (user_config.reply_to or "").strip() or None
-                smtp_auto_cc = (user_config.auto_cc or "").strip() or None
-                smtp_use_tls = bool(user_config.smtp_use_tls)
+            if user_config and user_config.smtp_enabled:
+                has_required_core = bool(
+                    user_config.smtp_host
+                    and user_config.smtp_port
+                    and (user_config.from_email or user_config.smtp_user)
+                )
+                decrypted_user_password = _decrypt_smtp_password(user_config.smtp_password)
+                needs_auth = bool(user_config.smtp_user)
+                has_required_auth = (not needs_auth) or bool(decrypted_user_password)
+
+                if has_required_core and has_required_auth:
+                    smtp_host = user_config.smtp_host
+                    smtp_port = int(user_config.smtp_port)
+                    smtp_user = user_config.smtp_user or None
+                    smtp_password = decrypted_user_password
+                    smtp_from_email = user_config.from_email or user_config.smtp_user or settings.smtp_from
+                    smtp_from_name = (user_config.from_name or "").strip()
+                    smtp_reply_to = (user_config.reply_to or "").strip() or None
+                    smtp_auto_cc = (user_config.auto_cc or "").strip() or None
+                    smtp_use_tls = bool(user_config.smtp_use_tls)
+                    using_user_smtp = True
+                else:
+                    logger.warning(
+                        "User SMTP config invalid for user_id=%s; falling back to global SMTP",
+                        sender_user_id,
+                    )
 
     if not smtp_host:
         logger.warning(
@@ -2710,6 +2728,32 @@ async def send_email_async(
         logger.info("Email sent successfully to %s", to)
     except Exception as exc:
         logger.error("SMTP send failed to %s: %s", to, exc)
+
+        # If per-user SMTP fails, try global SMTP once to avoid system-wide email outage.
+        if using_user_smtp and global_smtp_host:
+            try:
+                fallback_from = global_smtp_from or smtp_from_email
+                msg.replace_header("From", fallback_from)
+                msg.replace_header("List-Unsubscribe", f"<mailto:{smtp_reply_to or fallback_from}?subject=unsubscribe>")
+
+                fallback_implicit_tls = bool(int(global_smtp_port or 0) == 465)
+                fallback_starttls = not fallback_implicit_tls
+
+                await aiosmtplib.send(
+                    msg,
+                    hostname=global_smtp_host,
+                    port=global_smtp_port,
+                    username=global_smtp_user,
+                    password=global_smtp_password,
+                    start_tls=fallback_starttls,
+                    use_tls=fallback_implicit_tls,
+                    timeout=20,
+                )
+                logger.info("Email sent successfully to %s using global SMTP fallback", to)
+                return
+            except Exception as fallback_exc:
+                logger.error("Global SMTP fallback also failed to %s: %s", to, fallback_exc)
+
         if raise_on_error:
             raise
 
