@@ -468,7 +468,7 @@ export default function SurveysPage() {
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Anketi tamamen kapat</p>
                       <p className="mt-1 text-sm text-slate-600">
-                        Bu mod aÃ§Ä±ksa katÄ±lÄ±mcÄ± kartÄ±nda ve kayÄ±t sonrasÄ± akÄ±ÅŸta anket adÄ±mÄ± hiÃ§ gÃ¶sterilmez.
+                        Bu mod açıksa katılımcı kartında ve kayıt sonrası akışta anket adımı hiç gösterilmez.
                       </p>
                     </div>
                     <button
@@ -483,7 +483,7 @@ export default function SurveysPage() {
                           : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                       }`}
                     >
-                      {surveyType === "disabled" ? "Anket kapalÄ±" : "Anketi kapat"}
+                      {surveyType === "disabled" ? "Anket kapalı" : "Anketi kapat"}
                     </button>
                   </div>
                 </div>
@@ -761,7 +761,7 @@ export default function SurveysPage() {
 
                 {surveyType === "disabled" ? (
                   <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    Anket kapalÄ± olduÄŸu iÃ§in katÄ±lÄ±mcÄ±ya ayrÄ± bir anket baÄŸlantÄ±sÄ± gÃ¶sterilmez.
+                    Anket kapalı olduğu için katılımcıya ayrı bir anket bağlantısı gösterilmez.
                   </div>
                 ) : (
                   <>

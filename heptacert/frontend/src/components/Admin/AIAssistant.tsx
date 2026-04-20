@@ -281,18 +281,29 @@ export default function AIAssistant() {
         setSupportMessage("");
         setShowSupportForm(false);
       } else {
-        const error = await response.json();
-        const assistantMsg: Message = {
-          role: "assistant",
-          message: lang === "tr" ? `❌ Hata: ${error.detail || "Destek talebini oluşturmada hata oluştu"}` : `❌ Error: ${error.detail || "Failed to create support ticket"}`,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, assistantMsg]);
+        try {
+          const error = await response.json();
+          const errorDetail = error?.detail || error?.message || (lang === "tr" ? "Destek talebini oluşturmada hata oluştu" : "Failed to create support ticket");
+          const assistantMsg: Message = {
+            role: "assistant",
+            message: lang === "tr" ? `❌ Hata: ${errorDetail}` : `❌ Error: ${errorDetail}`,
+            timestamp: new Date().toISOString()
+          };
+          setMessages(prev => [...prev, assistantMsg]);
+        } catch {
+          const assistantMsg: Message = {
+            role: "assistant",
+            message: lang === "tr" ? "❌ Hata: Destek talebini oluşturmada hata oluştu" : "❌ Error: Failed to create support ticket",
+            timestamp: new Date().toISOString()
+          };
+          setMessages(prev => [...prev, assistantMsg]);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error?.message || (lang === "tr" ? "Bağlantı hatası" : "Connection error");
       const assistantMsg: Message = {
         role: "assistant",
-        message: lang === "tr" ? "❌ Bağlantı hatası. Lütfen daha sonra tekrar deneyin." : "❌ Connection error. Please try again later.",
+        message: lang === "tr" ? `❌ ${errorMsg}. Lütfen daha sonra tekrar deneyin.` : `❌ ${errorMsg}. Please try again later.`,
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, assistantMsg]);
