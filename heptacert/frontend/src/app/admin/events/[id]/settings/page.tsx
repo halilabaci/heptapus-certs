@@ -1163,6 +1163,18 @@ export default function EventSettingsPage() {
                 })
               )}
             </div>
+
+            {/* Sticky footer bar for adding fields (visible when scrolled down) */}
+            {formData.registration_fields.length > 0 && (
+              <div className="sticky bottom-0 left-0 right-0 z-10 border-t border-surface-200 bg-white px-5 py-3 shadow-md flex items-center justify-between gap-3 sm:gap-4">
+                <p className="text-xs sm:text-sm text-surface-600 font-medium">{formData.registration_fields.length} {lang === "tr" ? "alan eklendi" : "fields added"}</p>
+                <button type="button" onClick={addRegistrationField} className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">{copy.addField}</span>
+                  <span className="inline sm:hidden">{lang === "tr" ? "Ekle" : "Add"}</span>
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -1405,6 +1417,36 @@ export default function EventSettingsPage() {
             )}
           </section>
         )}
+
+        {/* Floating Action Buttons - Bottom Center */}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col gap-3 items-center">
+          {/* Add Field Button - Only on registration tab */}
+          {activeTab === "registration" && (
+            <button
+              onClick={addRegistrationField}
+              className="group relative flex items-center gap-2 rounded-full bg-violet-600 text-white px-6 py-3 font-semibold shadow-lg transition hover:bg-violet-700 hover:shadow-xl"
+              title={copy.addField}
+            >
+              <Plus className="h-5 w-5" />
+              <span>{copy.addField}</span>
+            </button>
+          )}
+
+          {/* Save Button - Always visible */}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="group relative flex items-center gap-2 rounded-full bg-brand-600 text-white px-6 py-3 font-semibold shadow-lg transition hover:bg-brand-700 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
+            title={copy.save}
+          >
+            {saving ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Save className="h-5 w-5" />
+            )}
+            <span>{saving ? copy.saving : copy.save}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
