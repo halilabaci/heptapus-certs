@@ -982,10 +982,9 @@ export default function EventSettingsPage() {
 
                         <div>
                           <label className="label text-xs font-semibold text-surface-700">{copy.fieldHelper}</label>
-                          <input
+                          <RichTextEditor
                             value={field.helper_text || ""}
-                            onChange={(event) => updateRegistrationField(field.id, { helper_text: event.target.value })}
-                            className="input-field text-sm"
+                            onChange={(value) => updateRegistrationField(field.id, { helper_text: value })}
                             placeholder={copy.helperPlaceholder}
                           />
                         </div>

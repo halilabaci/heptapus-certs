@@ -654,7 +654,7 @@ export default function EventRegisterPage() {
                               {field.required ? <span className="ml-1 text-red-500">*</span> : null}
                             </label>
                             {field.helper_text && (
-                              <p className="mb-2 text-xs text-gray-500">{field.helper_text}</p>
+                              <div className="mb-2 text-xs text-gray-500 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: field.helper_text }} />
                             )}
                             {field.type === "textarea" ? (
                               <textarea
@@ -710,7 +710,7 @@ export default function EventRegisterPage() {
                                   {field.label}
                                   {isRequired ? <span className="ml-1 text-red-500">*</span> : null}
                                 </label>
-                                {field.helper_text && <p className="mb-2 text-xs text-gray-500">{field.helper_text}</p>}
+                                {field.helper_text && <div className="mb-2 text-xs text-gray-500 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: field.helper_text }} />}
                                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100">
                                   {copy.documentPick}
                                   <input
