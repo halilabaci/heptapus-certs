@@ -3929,7 +3929,7 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
             field_type = "text"
 
         placeholder = str(item.get("placeholder") or "").strip()[:200] or None
-        helper_text = str(item.get("helper_text") or "").strip()[:300] or None
+        helper_text = str(item.get("helper_text") or "").strip()[:5000] or None
         required = bool(item.get("required"))
         required_when_field_id = str(item.get("required_when_field_id") or "").strip()[:64]
         required_when_equals = str(item.get("required_when_equals") or "").strip()[:120]
