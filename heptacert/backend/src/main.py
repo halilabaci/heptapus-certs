@@ -4311,6 +4311,25 @@ def _safe_cert_filename(student_name: str, public_id: str) -> str:
     return "".join(c if c.isalnum() or c in " _-." else "_" for c in base)
 
 
+def _sanitize_zip_path_part(value: str, fallback: str = "item", max_len: int = 90) -> str:
+    cleaned = "".join(c if c.isalnum() or c in "._-" else "_" for c in (value or "").strip())
+    cleaned = cleaned.strip("._-")
+    if not cleaned:
+        cleaned = fallback
+    return cleaned[:max_len]
+
+
+def _safe_registration_document_name(raw_name: str, fallback: str = "document") -> str:
+    filename = Path(raw_name or "").name or fallback
+    stem = Path(filename).stem or fallback
+    suffix = Path(filename).suffix[:12]
+    safe_stem = _sanitize_zip_path_part(stem, fallback=fallback, max_len=100)
+    safe_suffix = "".join(c if c.isalnum() or c == "." else "" for c in suffix)
+    if safe_suffix and not safe_suffix.startswith("."):
+        safe_suffix = f".{safe_suffix}"
+    return f"{safe_stem}{safe_suffix}"[:130]
+
+
 async def _process_one_bulk_certificate_job(job_id: int) -> None:
     ISSUE_UNITS_PER_CERT = 10
 
@@ -12453,6 +12472,132 @@ async def export_attendance(
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename=katilimcilar-event-{event_id}.csv"},
         )
+
+
+@app.get(
+    "/api/admin/events/{event_id}/registration-documents/export",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def export_registration_documents_grouped(
+    event_id: int,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_for_admin(event_id, me, db)
+    registration_fields = _get_event_registration_fields(event)
+    file_fields = [field for field in registration_fields if field.get("type") == "file"]
+    field_id_to_label = {
+        str(field.get("id")): str(field.get("label") or field.get("id") or "Belge")
+        for field in file_fields
+        if field.get("id")
+    }
+
+    res = await db.execute(
+        select(Attendee)
+        .where(Attendee.event_id == event_id)
+        .order_by(Attendee.registered_at.asc())
+    )
+    attendees = res.scalars().all()
+
+    storage_root = Path(settings.local_storage_dir).resolve()
+    expected_prefix = f"registration_docs/event_{event_id}/"
+
+    zip_buffer = io.BytesIO()
+    used_paths: set[str] = set()
+    manifest_rows: List[Dict[str, Any]] = []
+    added_files = 0
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for attendee in attendees:
+            answers = attendee.registration_answers or {}
+            docs_raw = answers.get("__documents")
+            if not isinstance(docs_raw, list):
+                continue
+
+            attendee_folder = _sanitize_zip_path_part(
+                f"{attendee.name}_{attendee.email}_{attendee.id}",
+                fallback=f"attendee_{attendee.id}",
+                max_len=120,
+            )
+
+            for doc_index, doc in enumerate(docs_raw, start=1):
+                if not isinstance(doc, dict):
+                    continue
+                rel_path = str(doc.get("path") or "").strip().lstrip("/")
+                if not rel_path or not rel_path.startswith(expected_prefix):
+                    continue
+
+                abs_path = (storage_root / rel_path).resolve()
+                if not str(abs_path).startswith(str(storage_root)) or not abs_path.exists() or not abs_path.is_file():
+                    continue
+
+                field_id = str(doc.get("field_id") or "").strip()
+                field_label = field_id_to_label.get(field_id) or (field_id if field_id else "Diger")
+                field_folder = _sanitize_zip_path_part(field_label, fallback="Diger", max_len=100)
+
+                original_name = str(doc.get("name") or Path(rel_path).name)
+                safe_name = _safe_registration_document_name(original_name, fallback=f"document_{doc_index}")
+                base_arcname = f"{field_folder}/{attendee_folder}/{safe_name}"
+                arcname = base_arcname
+                duplicate_no = 2
+                while arcname in used_paths:
+                    alt_name = _safe_registration_document_name(
+                        f"{Path(safe_name).stem}_{duplicate_no}{Path(safe_name).suffix}",
+                        fallback=f"document_{doc_index}_{duplicate_no}",
+                    )
+                    arcname = f"{field_folder}/{attendee_folder}/{alt_name}"
+                    duplicate_no += 1
+
+                zip_file.write(abs_path, arcname=arcname)
+                used_paths.add(arcname)
+                added_files += 1
+
+                manifest_rows.append(
+                    {
+                        "attendee_id": attendee.id,
+                        "attendee_name": attendee.name,
+                        "attendee_email": attendee.email,
+                        "field_id": field_id,
+                        "field_label": field_label,
+                        "original_name": original_name,
+                        "zip_path": arcname,
+                        "size_bytes": int(doc.get("size_bytes") or abs_path.stat().st_size),
+                    }
+                )
+
+        if manifest_rows:
+            manifest_buf = io.StringIO()
+            writer = csv.DictWriter(
+                manifest_buf,
+                fieldnames=[
+                    "attendee_id",
+                    "attendee_name",
+                    "attendee_email",
+                    "field_id",
+                    "field_label",
+                    "original_name",
+                    "zip_path",
+                    "size_bytes",
+                ],
+            )
+            writer.writeheader()
+            writer.writerows(manifest_rows)
+            zip_file.writestr("manifest.csv", manifest_buf.getvalue().encode("utf-8-sig"))
+
+        if added_files == 0:
+            zip_file.writestr(
+                "README.txt",
+                "Bu etkinlikte indirilebilir kayıt belgesi bulunamadı.",
+            )
+
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="registration-documents-event-{event_id}.zip"',
+        },
+    )
 
 
 @app.get(

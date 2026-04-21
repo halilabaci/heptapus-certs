@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   listAttendees, importAttendees, createManualAttendee, deleteAttendee, getAdminAttendeeSurveyLink,
   getAttendanceMatrix, bulkCertifyQueue, getBulkGenerateJob,
-  exportAttendanceFile, apiFetch, getMySubscription,
+  exportAttendanceFile, exportRegistrationDocumentsZip, apiFetch, getMySubscription,
   type AttendeeOut, type AttendanceMatrix, type RegistrationField, type SubscriptionInfo
 } from "@/lib/api";
 import Link from "next/link";
@@ -45,6 +45,7 @@ export default function AdminAttendeesPage() {
   const [manualFirstName, setManualFirstName] = useState("");
   const [manualLastName, setManualLastName] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [exportingDocuments, setExportingDocuments] = useState(false);
   const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null);
   const [manualResult, setManualResult] = useState<string | null>(null);
   const [copyingSurveyId, setCopyingSurveyId] = useState<number | null>(null);
@@ -235,6 +236,26 @@ export default function AdminAttendeesPage() {
     }
   }
 
+  async function handleExportRegistrationDocuments() {
+    setExportingDocuments(true);
+    setListError(null);
+    try {
+      const { blob, filename } = await exportRegistrationDocumentsZip(eventId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setListError(e.message || "Belgeler toplu indirilemedi.");
+    } finally {
+      setExportingDocuments(false);
+    }
+  }
+
   function handleBulkCertify() {
     setShowCertifyConfirm(true);
   }
@@ -284,6 +305,7 @@ export default function AdminAttendeesPage() {
 
   const totalPages = Math.ceil(total / limit);
   const eligibleCount = matrix ? matrix.rows.filter((r) => r.meets_threshold && !r.has_certificate).length : 0;
+  const hasFileRegistrationField = registrationFields.some((field) => field.type === "file");
   const getRegistrationPreview = useCallback((attendee: AttendeeOut) => {
     const fieldPreview = registrationFields
       .map((field) => {
@@ -346,6 +368,16 @@ export default function AdminAttendeesPage() {
               >
                 {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Excel İndir
               </button>
+              {hasFileRegistrationField && (
+                <button
+                  type="button"
+                  onClick={() => void handleExportRegistrationDocuments()}
+                  disabled={exportingDocuments}
+                  className="inline-flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition"
+                >
+                  {exportingDocuments ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Belgeleri İndir (ZIP)
+                </button>
+              )}
             <Link
               href={`/admin/events/${eventId}/checkin`}
               className="inline-flex items-center justify-center gap-2 border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-indigo-100 transition"
