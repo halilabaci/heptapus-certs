@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
-import { getPublicEventInfo, getPublicMemberMe, getPublicMemberToken, publicRegisterAttendee, uploadPublicRegistrationDocument, type RegistrationField, type RegistrationDocumentUploadOut } from "@/lib/api";
+import { getEventCapacities, getPublicEventInfo, getPublicMemberMe, getPublicMemberToken, publicRegisterAttendee, uploadPublicRegistrationDocument, type RegistrationField, type RegistrationDocumentUploadOut } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 import {
   CheckCircle2,
