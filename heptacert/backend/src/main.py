@@ -566,8 +566,131 @@ async def _get_event_capacities(event_id: int, db: AsyncSession) -> Dict[str, Li
         if opts:
             out[fid] = opts
     return out
-    value: Mapped[dict] = mapped_column(JSONB, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+def _collect_registration_option_reservations(
+    event: "Event",
+    registration_answers: Dict[str, Any],
+) -> List[Tuple[int, str, str, Optional[int]]]:
+    reservations_to_attempt: List[Tuple[int, str, str, Optional[int]]] = []
+    registration_fields = _get_event_registration_fields(event)
+    for field in registration_fields:
+        if field.get("type") != "select":
+            continue
+        field_id = str(field.get("id") or "").strip()
+        if not field_id:
+            continue
+        selected = registration_answers.get(field_id)
+        if not selected:
+            continue
+        selected_values = selected if isinstance(selected, (list, tuple)) else [selected]
+        options = field.get("options") or []
+        for sel in selected_values:
+            sel_label = str(sel or "").strip()
+            if not sel_label:
+                continue
+            opt_obj: Optional[dict] = None
+            for option in options:
+                if isinstance(option, dict) and str(option.get("label") or "").strip() == sel_label:
+                    opt_obj = option
+                    break
+                if isinstance(option, str) and option == sel_label:
+                    opt_obj = {"label": option, "capacity": None}
+                    break
+            if not opt_obj:
+                continue
+            capacity_value = opt_obj.get("capacity")
+            try:
+                capacity_int = int(capacity_value) if capacity_value is not None and str(capacity_value).strip() != "" else None
+            except Exception:
+                capacity_int = None
+            reservations_to_attempt.append((event.id, field_id, sel_label, capacity_int))
+    return reservations_to_attempt
+
+
+async def _sync_registration_option_capacities(db: AsyncSession, event: "Event") -> None:
+    registration_fields = _get_event_registration_fields(event)
+    select_fields = [field for field in registration_fields if field.get("type") == "select"]
+    if not select_fields:
+        await db.execute(delete(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id))
+        return
+
+    current_specs: Dict[Tuple[str, str], Optional[int]] = {}
+    for field in select_fields:
+        field_id = str(field.get("id") or "").strip()
+        if not field_id:
+            continue
+        for option in field.get("options") or []:
+            if isinstance(option, dict):
+                label = str(option.get("label") or "").strip()
+                capacity_value = option.get("capacity")
+            else:
+                label = str(option or "").strip()
+                capacity_value = None
+            if not label:
+                continue
+            try:
+                current_specs[(field_id, label)] = int(capacity_value) if capacity_value is not None and str(capacity_value).strip() != "" else None
+            except Exception:
+                current_specs[(field_id, label)] = None
+
+    if not current_specs:
+        await db.execute(delete(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id))
+        return
+
+    verified_counts: Dict[Tuple[str, str], int] = {}
+    attendee_rows = await db.execute(
+        select(Attendee.registration_answers).where(
+            Attendee.event_id == event.id,
+            Attendee.email_verified.is_(True),
+        )
+    )
+    for raw_answers in attendee_rows.scalars().all():
+        answers = raw_answers if isinstance(raw_answers, dict) else {}
+        for field in select_fields:
+            field_id = str(field.get("id") or "").strip()
+            if not field_id:
+                continue
+            selected_value = answers.get(field_id)
+            if not selected_value:
+                continue
+            selected_values = selected_value if isinstance(selected_value, (list, tuple)) else [selected_value]
+            for selected in selected_values:
+                label = str(selected or "").strip()
+                key = (field_id, label)
+                if label and key in current_specs:
+                    verified_counts[key] = verified_counts.get(key, 0) + 1
+
+    existing_rows_res = await db.execute(
+        select(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id)
+    )
+    existing_rows = {
+        (row.field_id, row.option_label): row
+        for row in existing_rows_res.scalars().all()
+    }
+
+    current_keys = set(current_specs.keys())
+    for key, capacity in current_specs.items():
+        field_id, label = key
+        used_count = verified_counts.get(key, 0)
+        row = existing_rows.get(key)
+        if row:
+            row.capacity = capacity
+            row.reserved_count = used_count
+        else:
+            db.add(
+                RegistrationOptionCapacity(
+                    event_id=event.id,
+                    field_id=field_id,
+                    option_label=label,
+                    capacity=capacity,
+                    reserved_count=used_count,
+                )
+            )
+
+    for key, row in existing_rows.items():
+        if key not in current_keys:
+            await db.delete(row)
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Payment DB models (created by migration 002) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -9367,6 +9490,8 @@ async def rename_event(
         config_dirty = True
     if config_dirty:
         ev.config = next_config
+        if "registration_fields" in payload.model_fields_set:
+            await _sync_registration_option_capacities(db, ev)
     if payload.registration_quota is not None and bool(next_config.get("registration_quota_enabled")):
         attendee_count_res = await db.execute(
             select(func.count()).where(Attendee.event_id == ev.id)
@@ -12381,45 +12506,15 @@ async def public_event_register(
         registration_fields,
         payload.registration_answers,
     )
-    # Enforce per-option capacities using DB-backed atomic reservations.
-    # We attempt to reserve capacity for each selected option before creating the attendee.
-    reservations_to_attempt: List[Tuple[int, str, str, Optional[int]]] = []
-    for field in registration_fields:
-        if field.get("type") != "select":
-            continue
-        field_id = str(field.get("id") or "").strip()
-        options = field.get("options") or []
-        selected = registration_answers.get(field_id)
-        if not selected:
-            continue
-        selected_values = selected if isinstance(selected, (list, tuple)) else [selected]
-        for sel in selected_values:
-            sel_label = str(sel or "").strip()
-            if not sel_label:
-                continue
-            # find option object to read capacity
-            opt_obj = None
-            for o in options:
-                if isinstance(o, dict) and str(o.get("label") or "").strip() == sel_label:
-                    opt_obj = o
-                    break
-                if isinstance(o, str) and o == sel_label:
-                    opt_obj = {"label": o, "capacity": None}
-                    break
-            if not opt_obj:
-                continue
-            cap = opt_obj.get("capacity")
-            try:
-                cap_int = int(cap) if cap is not None and str(cap).strip() != "" else None
-            except Exception:
-                cap_int = None
-            reservations_to_attempt.append((event_db_id, field_id, sel_label, cap_int))
+    reservations_to_attempt = _collect_registration_option_reservations(ev, registration_answers)
 
-    # Attempt reservations; if any reservation fails, raise error (transaction will roll back)
-    for (ev_id, fid, label, cap) in reservations_to_attempt:
-        ok = await _reserve_option_capacity(db, ev_id, fid, label, cap)
-        if not ok:
-            raise bad_request(f'"{fid}" alanındaki "{label}" seçeneği için kontenjan doldu.')
+    # Per-option capacity is only consumed immediately when no email verification is required.
+    # Otherwise it is consumed once the attendee verifies their email.
+    if not require_email_verification:
+        for (ev_id, fid, label, cap) in reservations_to_attempt:
+            ok = await _reserve_option_capacity(db, ev_id, fid, label, cap)
+            if not ok:
+                raise bad_request(f'"{fid}" alanındaki "{label}" seçeneği için kontenjan doldu.')
     required_file_field_ids = {
         str(field.get("id"))
         for field in file_fields
@@ -12650,7 +12745,7 @@ async def public_event_register(
             "verification_required": require_email_verification,
         },
     )
-    if quota_enabled and registration_quota is not None:
+    if quota_enabled and registration_quota is not None and not require_email_verification:
         attendee_count_res = await db.execute(
             select(func.count()).where(Attendee.event_id == event_db_id)
         )
@@ -12721,14 +12816,58 @@ async def verify_attendee_email(event_id: str, token: str = Query(...), db: Asyn
 
     attendee_id = int(payload.get("attendee_id") or 0)
     email = str(payload.get("email") or "").lower()
-    res = await db.execute(select(Attendee).where(Attendee.id == attendee_id, Attendee.event_id == event.id))
+    res = await db.execute(
+        select(Attendee)
+        .where(Attendee.id == attendee_id, Attendee.event_id == event.id)
+        .with_for_update()
+    )
     attendee = res.scalar_one_or_none()
     if not attendee or attendee.email.lower() != email:
         raise HTTPException(status_code=404, detail="Katilimci bulunamadi.")
 
+    if attendee.email_verified:
+        return {
+            "detail": "E-posta zaten dogrulanmis.",
+            "attendee_id": attendee.id,
+            "event_id": event.id,
+            "status_url": build_public_status_url(event_id=_get_public_event_identifier(event), attendee_id=attendee.id, email=attendee.email),
+        }
+
+    registration_quota = _get_event_registration_quota(event)
+    quota_enabled = _is_event_registration_quota_enabled(event)
+    if quota_enabled and registration_quota is not None:
+        verified_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event.id, Attendee.email_verified.is_(True))
+        )
+        verified_count = int(verified_count_res.scalar_one() or 0)
+        if verified_count >= registration_quota:
+            next_config = dict(event.config or {})
+            next_config["registration_closed"] = True
+            event.config = next_config
+            await db.commit()
+            raise HTTPException(status_code=403, detail="Registration quota reached for this event.")
+
+    if _get_event_email_verification_required(event):
+        reservation_requests = _collect_registration_option_reservations(event, attendee.registration_answers or {})
+        for (ev_id, fid, label, cap) in reservation_requests:
+            ok = await _reserve_option_capacity(db, ev_id, fid, label, cap)
+            if not ok:
+                raise bad_request(f'"{fid}" alanındaki "{label}" seçeneği için kontenjan doldu.')
+
     attendee.email_verified = True
     attendee.email_verification_token = None
     attendee.email_verified_at = datetime.now(timezone.utc)
+
+    if quota_enabled and registration_quota is not None:
+        verified_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event.id, Attendee.email_verified.is_(True))
+        )
+        verified_count = int(verified_count_res.scalar_one() or 0)
+        if verified_count + 1 >= registration_quota:
+            next_config = dict(event.config or {})
+            next_config["registration_closed"] = True
+            event.config = next_config
+
     await db.commit()
 
     return {
