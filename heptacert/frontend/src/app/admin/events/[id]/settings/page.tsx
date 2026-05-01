@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -626,15 +626,15 @@ export default function EventSettingsPage() {
       )}
 
       {success && (
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="success-banner items-center">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           {success}
         </div>
       )}
 
       {/* Sticky Tab Bar */}
-      <div className="sticky top-0 z-20 -mx-4 bg-white border-b border-surface-200 px-4">
-        <div className="flex gap-0 sm:gap-1 overflow-x-auto">
+      <div className="sticky top-0 z-20 -mx-4 border-b border-surface-200 bg-white/90 px-4 py-2 backdrop-blur">
+        <div className="scrollbar-polished flex gap-1 overflow-x-auto rounded-lg border border-surface-200 bg-surface-50 p-1">
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             const label = lang === "tr" ? tab.label_tr : tab.label_en;
@@ -643,10 +643,10 @@ export default function EventSettingsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                className={`flex items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
                   isActive
-                    ? "border-brand-600 text-brand-600"
-                    : "border-transparent text-surface-600 hover:text-surface-900"
+                    ? "border-brand-200 bg-white text-brand-700 shadow-soft"
+                    : "border-transparent text-surface-600 hover:bg-white hover:text-surface-900"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -665,7 +665,7 @@ export default function EventSettingsPage() {
             {/* Temel Bilgiler */}
             <section className="card p-6 sm:p-7">
               <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-brand-50 p-3 text-brand-600">
+                <div className="rounded-lg bg-brand-50 p-3 text-brand-600">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
@@ -719,7 +719,7 @@ export default function EventSettingsPage() {
             {/* Visibility */}
             <section className="card p-6 sm:p-7">
               <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-600">
+                <div className="rounded-lg bg-emerald-50 p-3 text-emerald-600">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
@@ -755,7 +755,7 @@ export default function EventSettingsPage() {
             {/* Registration Status */}
             <section className="card p-6 sm:p-7">
               <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-rose-50 p-3 text-rose-600">
+                <div className="rounded-lg bg-rose-50 p-3 text-rose-600">
                   <AlertCircle className="h-5 w-5" />
                 </div>
                 <div>
@@ -765,7 +765,7 @@ export default function EventSettingsPage() {
               </div>
 
               <div className="mt-6 space-y-4">
-                <label className="flex items-start gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 px-4 py-4">
                   <input
                     type="checkbox"
                     checked={formData.registration_closed}
@@ -783,7 +783,7 @@ export default function EventSettingsPage() {
                   </div>
                 </label>
                 <div>
-                  <label className="mb-3 flex items-start gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                  <label className="mb-3 flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 px-4 py-4">
                     <input
                       type="checkbox"
                       checked={formData.registration_quota_enabled}
@@ -828,7 +828,7 @@ export default function EventSettingsPage() {
             {/* Email Verification */}
             <section className="card p-6 sm:p-7">
               <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-amber-50 p-3 text-amber-600">
+                <div className="rounded-lg bg-amber-50 p-3 text-amber-600">
                   <Mail className="h-5 w-5" />
                 </div>
                 <div>
@@ -838,7 +838,7 @@ export default function EventSettingsPage() {
               </div>
 
               <div className="mt-6 space-y-4">
-                <label className="flex items-start gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 px-4 py-4">
                   <input
                     type="checkbox"
                     checked={formData.require_email_verification}
@@ -865,7 +865,7 @@ export default function EventSettingsPage() {
           <section className="card p-6 sm:p-7">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="rounded-2xl bg-violet-50 p-3 text-violet-600">
+                <div className="rounded-lg bg-violet-50 p-3 text-violet-600">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
@@ -879,7 +879,7 @@ export default function EventSettingsPage() {
               </button>
             </div>
 
-            <div className="mt-6 rounded-2xl bg-blue-50 border border-blue-200 p-4 flex gap-3">
+            <div className="mt-6 rounded-lg bg-blue-50 border border-blue-200 p-4 flex gap-3">
               <Lightbulb className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-blue-900">
                 <p className="font-semibold mb-1">{lang === "tr" ? "Form oluşturma ipuçları:" : "Form building tips:"}</p>
@@ -893,7 +893,7 @@ export default function EventSettingsPage() {
 
             <div className="mt-6 space-y-4">
               {formData.registration_fields.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-surface-300 bg-surface-50 px-5 py-6 text-sm text-surface-500">
+                <div className="rounded-lg border border-dashed border-surface-300 bg-surface-50 px-5 py-6 text-sm text-surface-500">
                   <p className="font-medium text-surface-700">{copy.emptyFields}</p>
                   <p className="mt-1">{copy.previewHint}</p>
                 </div>
@@ -911,7 +911,7 @@ export default function EventSettingsPage() {
                     .filter(Boolean);
 
                   return (
-                    <div key={field.id} className="rounded-2xl border border-surface-200 bg-white p-5 hover:shadow-md transition">
+                    <div key={field.id} className="rounded-lg border border-surface-200 bg-white p-5 hover:shadow-md transition">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4 pb-4 border-b border-surface-100">
                         <div className="flex items-start gap-3">
                           <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-sm font-bold text-brand-700 flex-shrink-0">
@@ -1123,7 +1123,7 @@ export default function EventSettingsPage() {
                         )}
 
                         <div className="flex items-center gap-4 pt-2">
-                          <label className="inline-flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-2.5 text-sm font-medium text-surface-700 cursor-pointer hover:bg-surface-50 transition">
+                          <label className="inline-flex items-center gap-3 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-medium text-surface-700 cursor-pointer hover:bg-surface-50 transition">
                             <input
                               type="checkbox"
                               checked={field.required}
@@ -1216,7 +1216,7 @@ export default function EventSettingsPage() {
         {activeTab === "banner" && (
           <section className="card p-6 sm:p-7">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-sky-50 p-3 text-sky-600">
+              <div className="rounded-lg bg-sky-50 p-3 text-sky-600">
                 <ImageIcon className="h-5 w-5" />
               </div>
               <div>
@@ -1226,7 +1226,7 @@ export default function EventSettingsPage() {
             </div>
 
             <div className="mt-6 space-y-4">
-              <div className="overflow-hidden rounded-3xl border border-surface-200 bg-surface-50">
+              <div className="overflow-hidden rounded-lg border border-surface-200 bg-surface-50">
                 {bannerPreview || formData.event_banner_url ? (
                   <img
                     src={bannerPreview || formData.event_banner_url}
@@ -1258,7 +1258,7 @@ export default function EventSettingsPage() {
         {activeTab === "email" && (
           <section className="card p-6 sm:p-7">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-600">
+              <div className="rounded-lg bg-emerald-50 p-3 text-emerald-600">
                 <Mail className="h-5 w-5" />
               </div>
               <div className="flex-1">
@@ -1275,7 +1275,7 @@ export default function EventSettingsPage() {
             </div>
 
             {!hasGrowthPlan ? (
-              <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+              <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
                 <div className="flex items-start gap-3">
                   <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                   <div>
@@ -1289,7 +1289,7 @@ export default function EventSettingsPage() {
               </div>
             ) : (
               <div className="mt-6 space-y-5">
-                <label className="flex items-start gap-3 rounded-3xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <label className="flex items-start gap-3 rounded-lg border border-surface-200 bg-surface-50 px-4 py-4">
                   <input
                     type="checkbox"
                     checked={formData.auto_email_on_cert}
@@ -1337,13 +1337,13 @@ export default function EventSettingsPage() {
                     </select>
 
                     {availableEmailTemplates.length === 0 && (
-                      <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                         {copy.noTemplates}
                       </p>
                     )}
 
                     {formData.cert_email_template_id && (
-                      <div className="rounded-3xl border border-surface-200 bg-white p-4">
+                      <div className="rounded-lg border border-surface-200 bg-white p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-400">{copy.active}</p>
                         <p className="mt-2 font-semibold text-surface-900">
                           {availableEmailTemplates.find((template) => template.id === formData.cert_email_template_id)?.name}
@@ -1370,7 +1370,7 @@ export default function EventSettingsPage() {
         {activeTab === "comments" && (
           <section className="card p-6 sm:p-7">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-blue-50 p-3 text-blue-600">
+              <div className="rounded-lg bg-blue-50 p-3 text-blue-600">
                 <MessageSquare className="h-5 w-5" />
               </div>
               <div className="flex-1">
@@ -1380,7 +1380,7 @@ export default function EventSettingsPage() {
             </div>
 
             {error && (
-              <div className="mt-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+              <div className="mt-6 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
                 <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 flex-none text-rose-600" />
                 <p>{error}</p>
               </div>
@@ -1391,7 +1391,7 @@ export default function EventSettingsPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
               </div>
             ) : comments.length === 0 ? (
-              <div className="mt-6 rounded-2xl border border-surface-200 bg-surface-50 py-12 text-center text-sm text-surface-500">
+              <div className="mt-6 rounded-lg border border-surface-200 bg-surface-50 py-12 text-center text-sm text-surface-500">
                 {copy.commentsEmpty}
               </div>
             ) : (
@@ -1405,7 +1405,7 @@ export default function EventSettingsPage() {
                         : "border-slate-200 bg-slate-100 text-slate-700";
 
                   return (
-                    <article key={comment.id} className="rounded-2xl border border-surface-200 bg-white p-5 sm:p-6">
+                    <article key={comment.id} className="rounded-lg border border-surface-200 bg-white p-5 sm:p-6">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -1428,7 +1428,7 @@ export default function EventSettingsPage() {
                             type="button"
                             onClick={() => void handleCommentStatusChange(comment.id, "visible")}
                             disabled={commentsSavingId === comment.id || comment.status === "visible"}
-                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 lg:w-full"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 lg:w-full"
                           >
                             {commentsSavingId === comment.id && <Loader2 className="h-4 w-4 animate-spin" />}
                             {copy.commentsPublish}
@@ -1437,7 +1437,7 @@ export default function EventSettingsPage() {
                             type="button"
                             onClick={() => void handleCommentStatusChange(comment.id, "hidden")}
                             disabled={commentsSavingId === comment.id || comment.status === "hidden"}
-                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 lg:w-full"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 lg:w-full"
                           >
                             {commentsSavingId === comment.id && <Loader2 className="h-4 w-4 animate-spin" />}
                             {copy.commentsHide}

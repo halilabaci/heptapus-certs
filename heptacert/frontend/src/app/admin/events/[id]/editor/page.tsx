@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ImagePlus,
   Save,
-  TableProperties,
   FileText,
   Type,
   SlidersHorizontal,
@@ -21,8 +20,6 @@ import {
   CheckCircle2,
   QrCode,
   User,
-  Download,
-  Upload,
   RefreshCcw,
   ZoomIn,
   ZoomOut,
@@ -41,12 +38,12 @@ import {
   Minus,
   Plus,
   Crosshair,
+  Upload,
 } from "lucide-react";
 import EventAdminNav from "@/components/Admin/EventAdminNav";
 import { useT } from "@/lib/i18n";
 
 /* ─── Types ──────────────────────────────────────────────── */
-type Pos = { x: number; y: number };
 type FieldConfig = {
   x: number; y: number;
   font_size: number;
@@ -96,15 +93,28 @@ const DEFAULT_CFG: EditorConfig = {
 };
 
 /* ─── Panel wrappers ─────────────────────────────────────── */
-function PanelSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function PanelSection({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50 bg-gray-50/70">
-        <span className="p-1.5 rounded-lg bg-brand-50 text-brand-600">{icon}</span>
-        <span className="text-xs font-bold text-gray-700 tracking-wide uppercase">{title}</span>
+    <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-soft">
+      <div className="flex items-start gap-3 border-b border-gray-100 bg-gray-50/80 px-4 py-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">{icon}</span>
+        <div className="min-w-0">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-gray-800">{title}</h3>
+          {description && <p className="mt-0.5 text-[11px] leading-4 text-gray-500">{description}</p>}
+        </div>
       </div>
       <div className="p-4">{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -118,12 +128,12 @@ function FieldPanel({ label, field, onChange }: {
   return (
     <div className="space-y-4">
       {/* Visibility */}
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}</span>
+      <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-600">{label}</span>
         <button
           type="button"
           onClick={() => onChange({ show: !field.show })}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+          className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
             field.show ? "bg-brand-50 text-brand-600" : "bg-gray-100 text-gray-400"
           }`}
         >
@@ -133,7 +143,7 @@ function FieldPanel({ label, field, onChange }: {
       </div>
 
       {/* Font size stepper + presets */}
-      <div>
+      <div className={field.show ? "" : "opacity-60"}>
         <label className="label text-[10px] mb-1.5">Yazı Boyutu</label>
         <div className="flex items-center gap-1.5">
           <button
@@ -159,6 +169,14 @@ function FieldPanel({ label, field, onChange }: {
             <Plus className="h-3 w-3" />
           </button>
         </div>
+        <input
+          type="range"
+          value={field.font_size}
+          min={8}
+          max={140}
+          onChange={e => onChange({ font_size: +e.target.value })}
+          className="mt-3 h-1.5 w-full accent-brand-600"
+        />
         <div className="mt-2 flex gap-1">
           {FONT_PRESETS.map(size => (
             <button
@@ -178,7 +196,7 @@ function FieldPanel({ label, field, onChange }: {
       </div>
 
       {/* Color */}
-      <div>
+      <div className={field.show ? "" : "opacity-60"}>
         <label className="label text-[10px] mb-1.5">Renk</label>
         <div className="flex items-center gap-2">
           <input
@@ -197,10 +215,24 @@ function FieldPanel({ label, field, onChange }: {
             maxLength={7}
           />
         </div>
+        <div className="mt-2 flex gap-1.5">
+          {["#111827", "#334155", "#ffffff", "#b45309", "#047857"].map(color => (
+            <button
+              key={color}
+              type="button"
+              onClick={() => onChange({ font_color: color })}
+              title={color}
+              className={`h-6 flex-1 rounded-md border transition-all ${
+                field.font_color.toLowerCase() === color ? "border-gray-900 ring-2 ring-gray-200" : "border-gray-200"
+              }`}
+              style={{ backgroundColor: color }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Style toggles */}
-      <div>
+      <div className={field.show ? "" : "opacity-60"}>
         <label className="label text-[10px] mb-1.5">Stil ve Hizalama</label>
         <div className="flex items-center justify-between gap-2">
           {/* Bold + Italic */}
@@ -301,7 +333,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [activePanel, setActivePanel] = useState<"typography" | "bulk" | "history">("typography");
+  const [activePanel, setActivePanel] = useState<"typography" | "history">("typography");
   const [zoom, setZoom] = useState(100);
   const [showGrid, setShowGrid] = useState(false);
 
@@ -348,10 +380,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     if (activePanel === "history") loadSnapshots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePanel]);
-
-  const [bulkFile, setBulkFile] = useState<File | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
 
   const [bgUploading, setBgUploading] = useState(false);
   const bgInputRef = useRef<HTMLInputElement>(null);
@@ -494,69 +522,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   }
 
-  /* Bulk excel generate */
-  async function generateBulk() {
-    if (!bulkFile) return setErr("Lütfen bir Excel dosyası seçin.");
-    setBulkLoading(true);
-    setErr(null);
-    setBulkProgress("Kuyruğa alınıyor...");
-    try {
-      const form = new FormData();
-      form.append("file", bulkFile);
-      const res = await apiFetch(`/admin/events/${eventId}/bulk-generate`, {
-        method: "POST",
-        body: form,
-      });
-      const job = await res.json();
-      const jobId = job?.id;
-      if (!jobId) throw new Error("Job başlatılamadı");
 
-      const startedAt = Date.now();
-      const MAX_WAIT_MS = 30 * 60 * 1000;
-
-      while (true) {
-        if (Date.now() - startedAt > MAX_WAIT_MS) {
-          throw new Error("İşlem çok uzun sürdü. Job arka planda devam ediyor.");
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const statusRes = await apiFetch(`/admin/events/${eventId}/bulk-generate-jobs/${jobId}`);
-        const status = await statusRes.json();
-
-        const total = status?.total_count || 0;
-        const current = status?.current_index || 0;
-        const created = status?.created_count || 0;
-        const failed = status?.failed_count || 0;
-        setBulkProgress(`İşleniyor: ${current}/${total} • Oluşan: ${created} • Hata: ${failed}`);
-
-        if (status?.status === "completed") {
-          setBulkProgress("Tamamlandı, ZIP indiriliyor...");
-          const dlRes = await apiFetch(`/admin/events/${eventId}/bulk-generate-jobs/${jobId}/download`);
-          const blob = await dlRes.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `certificates-event-${eventId}-job-${jobId}.zip`;
-          a.click();
-          URL.revokeObjectURL(url);
-          setBulkProgress(`Tamamlandı: ${created} sertifika üretildi.`);
-          break;
-        }
-
-        if (status?.status === "failed") {
-          throw new Error(status?.error_message || "Toplu üretim job başarısız.");
-        }
-
-        if (status?.status === "cancelled") {
-          throw new Error("Toplu üretim job iptal edildi.");
-        }
-      }
-    } catch (e: any) {
-      setErr(e?.message || "Toplu üretim başarısız.");
-    } finally {
-      setBulkLoading(false);
-    }
-  }
 
   /* Drag handlers */
   // Text elements are RENDER_W-wide: x is always 0 in the canvas (full-width).
@@ -605,12 +571,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const qrRS = toRenderPx(cfg.qr.size, cfg.image_width);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden bg-gray-100">
 
       {/* TOP BAR */}
-      <div className="border-b border-gray-100 bg-white shrink-0">
+      <div className="shrink-0 border-b border-gray-200 bg-white">
         {/* Row 1: breadcrumb + actions */}
-        <div className="flex items-center justify-between px-5 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <div className="min-w-0">
           <div className="flex items-center gap-3">
             <Link href="/admin/events" className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors">
               <ChevronLeft className="h-4 w-4" /> Etkinlikler
@@ -623,7 +590,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+            <p className="mt-1 text-xs text-gray-500">Şablon görselini, metin alanlarını ve QR konumunu tek ekranda düzenleyin.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Link href={`/admin/events/${eventId}/settings`}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors font-medium">
               <Settings className="h-3.5 w-3.5" /> Ayarlar
@@ -661,9 +631,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       <div className="flex flex-1 overflow-hidden">
 
         {/* CANVAS AREA — intentionally dark (design tool experience) */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-slate-950">
+        <div className="flex flex-1 flex-col overflow-hidden bg-slate-950">
           {/* Canvas toolbar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/90 px-4 py-2.5">
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -728,7 +698,11 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto flex items-center justify-center p-8">
+          <div className="border-b border-slate-800 bg-slate-900/55 px-4 py-2 text-xs text-slate-400">
+            Öğeleri sürükleyerek yerleştirin. Hassas ayar için sağ paneldeki X/Y alanlarını kullanın.
+          </div>
+
+          <div className="flex flex-1 items-center justify-center overflow-auto p-8">
           <div className="relative" style={{ width: RENDER_W * (zoom / 100), height: renderH * (zoom / 100), transform: "none", transition: "width 0.15s, height 0.15s" }}>
             <div className="absolute inset-0" style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left", width: RENDER_W, height: renderH }}>
 
@@ -845,13 +819,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
 
         {/* RIGHT PANEL — light theme */}
-        <div className="w-[320px] flex flex-col overflow-hidden border-l border-gray-100 bg-gray-50">
+        <aside className="flex w-[360px] flex-col overflow-hidden border-l border-gray-200 bg-gray-50">
 
           {/* Panel tabs */}
+          <div className="shrink-0 border-b border-gray-100 bg-white px-4 py-3">
+            <p className="text-sm font-bold text-gray-900">Düzenleme Paneli</p>
+            <p className="mt-0.5 text-xs text-gray-500">Alanları açıp kapatın, ölçüleri değiştirin ve önizleyin.</p>
+          </div>
+
           <div className="flex shrink-0 border-b border-gray-100 bg-white">
             {([
               { id: "typography", icon: <Type className="h-3.5 w-3.5" />, label: "Tasarım" },
-              { id: "bulk", icon: <TableProperties className="h-3.5 w-3.5" />, label: "Toplu" },
               { id: "history", icon: <History className="h-3.5 w-3.5" />, label: "Geçmiş" },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActivePanel(tab.id)}
@@ -865,7 +843,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto p-4">
 
             <AnimatePresence>
               {err && (
@@ -881,7 +859,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
 
                 {/* Canvas dimensions */}
-                <PanelSection icon={<Maximize2 className="h-3.5 w-3.5" />} title="Boyutlar">
+                <PanelSection icon={<Maximize2 className="h-3.5 w-3.5" />} title="Boyutlar" description="Şablon ölçüsünü çıktı boyutuyla aynı tutun.">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="relative">
                       <label className="label text-[10px] mb-1.5">Genişlik (px)</label>
@@ -912,17 +890,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 </PanelSection>
 
                 {/* Name field */}
-                <PanelSection icon={<User className="h-3.5 w-3.5" />} title={t("editor_name_field")}>
+                <PanelSection icon={<User className="h-3.5 w-3.5" />} title={t("editor_name_field")} description="Katılımcı adının sertifika üzerindeki görünümü.">
                   <FieldPanel label="Ad Soyad" field={cfg.name} onChange={p => setCfg(c => ({ ...c, name: { ...c.name, ...p } }))} />
                 </PanelSection>
 
                 {/* Cert ID field */}
-                <PanelSection icon={<Hash className="h-3.5 w-3.5" />} title={t("editor_certid_field")}>
+                <PanelSection icon={<Hash className="h-3.5 w-3.5" />} title={t("editor_certid_field")} description="Doğrulama numarası için stil ve konum ayarları.">
                   <FieldPanel label="Sertifika ID" field={cfg.cert_id} onChange={p => setCfg(c => ({ ...c, cert_id: { ...c.cert_id, ...p } }))} />
                 </PanelSection>
 
                 {/* QR */}
-                <PanelSection icon={<QrCode className="h-3.5 w-3.5" />} title="QR Kodu">
+                <PanelSection icon={<QrCode className="h-3.5 w-3.5" />} title="QR Kodu" description="Doğrulama QR kodunu konumlandırın.">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">QR Kodu</span>
@@ -1047,35 +1025,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </motion.div>
             )}
 
-            {activePanel === "bulk" && (
-              <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
-                <PanelSection icon={<TableProperties className="h-3.5 w-3.5" />} title={t("editor_bulk_title")}>
-                  <div className="space-y-3">
-                    <p className="text-[11px] text-gray-400 leading-relaxed">{t("editor_bulk_desc")}</p>
-                    <label className="flex flex-col gap-1.5 cursor-pointer">
-                      <span className="label">{t("editor_bulk_file")}</span>
-                      <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 p-6 hover:border-brand-300 hover:bg-brand-50/30 transition-all group">
-                        <Upload className="h-6 w-6 text-gray-300 group-hover:text-brand-400 transition-colors" />
-                        <span className="text-xs text-gray-400">
-                          {bulkFile ? bulkFile.name : t("editor_bulk_select")}
-                        </span>
-                        <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                          onChange={e => setBulkFile(e.target.files?.[0] || null)} />
-                      </div>
-                    </label>
-                    <button onClick={generateBulk} disabled={bulkLoading || !bulkFile}
-                      className="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
-                      {bulkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {t("editor_bulk_generate")}
-                    </button>
-                    {bulkProgress && (
-                      <p className="text-[11px] text-gray-500 leading-relaxed">{bulkProgress}</p>
-                    )}
-                  </div>
-                </PanelSection>
-              </motion.div>
-            )}
-
             {activePanel === "history" && (
               <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1122,7 +1071,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </motion.div>
             )}
           </div>
-        </div>
+
+          <div className="shrink-0 border-t border-gray-200 bg-white p-4">
+            <button onClick={saveConfig} disabled={saving} className="btn-primary w-full text-sm">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+            </button>
+            <p className="mt-2 text-center text-[11px] text-gray-400">Kısayol: Ctrl + S</p>
+          </div>
+        </aside>
       </div>
     </div>
   );

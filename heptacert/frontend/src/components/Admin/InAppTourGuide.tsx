@@ -476,7 +476,7 @@ export default function InAppTourGuide() {
           )}
 
           {/* Minimalist In-App Tour Card (Sağ Alt) */}
-          <div className="fixed bottom-20 right-6 z-50 w-full max-w-[340px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.1)]">
+          <div className="fixed bottom-20 right-6 z-50 w-full max-w-[340px] overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-modal">
             
             {/* Üst İlerleme Çubuğu */}
             <div className="h-1 w-full bg-slate-100">

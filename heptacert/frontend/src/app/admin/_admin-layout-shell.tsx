@@ -243,9 +243,9 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-50">
+    <div className="flex h-screen overflow-hidden bg-surface-50 text-surface-900">
       <aside
-        className={`hidden border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-all duration-200 lg:flex lg:shrink-0 lg:flex-col ${
+        className={`hidden border-r border-sidebar-border bg-sidebar/95 shadow-[1px_0_0_rgba(231,229,224,0.55)] backdrop-blur transition-all duration-200 lg:flex lg:shrink-0 lg:flex-col ${
           collapsed ? "lg:w-[64px]" : "lg:w-[240px]"
         }`}
       >
@@ -263,7 +263,7 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.10),transparent_22%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.10),transparent_18%)]" />
-        <header className="relative flex shrink-0 items-center gap-3 border-b border-surface-200 bg-white/80 px-4 py-3 backdrop-blur lg:px-6">
+        <header className="relative z-20 flex shrink-0 items-center gap-3 border-b border-surface-200 bg-white/90 px-4 py-3 shadow-soft backdrop-blur lg:px-6">
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-lg p-1.5 text-surface-600 hover:bg-surface-100 lg:hidden"
@@ -304,14 +304,14 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="relative flex-1 overflow-y-auto">
+        <main className="scrollbar-polished relative flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="mx-auto w-full max-w-[1600px] p-4 pb-28 lg:p-6 lg:pb-6"
+              className="mx-auto w-full max-w-[1600px] p-4 pb-28 lg:p-6 lg:pb-8"
             >
               {children}
             </motion.div>

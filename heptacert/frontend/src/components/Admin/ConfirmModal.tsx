@@ -37,7 +37,7 @@ export function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-surface-900/45 backdrop-blur-sm"
             onClick={onCancel}
           />
 
@@ -46,10 +46,14 @@ export function ConfirmModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 24 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="relative z-10 w-full max-w-lg rounded-t-[28px] border border-surface-200 bg-white p-5 shadow-modal sm:rounded-2xl sm:p-6"
+            className="relative z-10 w-full max-w-lg rounded-t-2xl border border-surface-200 bg-white p-5 shadow-modal sm:rounded-lg sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-modal-title"
           >
             <button
               onClick={onCancel}
+              aria-label="Kapat"
               className="absolute right-4 top-4 rounded-lg p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700"
             >
               <X className="h-4 w-4" />
@@ -57,12 +61,12 @@ export function ConfirmModal({
 
             <div className="mb-4 flex items-start gap-3">
               {danger && (
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
                   <AlertTriangle className="h-5 w-5" />
                 </div>
               )}
               <div>
-                <h2 className="text-sm font-semibold text-surface-900">{title}</h2>
+                <h2 id="confirm-modal-title" className="text-sm font-semibold text-surface-900">{title}</h2>
                 {description && <p className="mt-1 text-sm text-surface-500">{description}</p>}
               </div>
             </div>

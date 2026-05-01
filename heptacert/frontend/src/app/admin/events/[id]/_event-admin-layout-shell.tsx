@@ -11,7 +11,7 @@ type EventAdminLayoutShellProps = {
 export function EventAdminLayoutShell({ eventId, children }: EventAdminLayoutShellProps) {
   return (
     <EventAdminLayoutProvider hideInlineNav>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         <EventAdminNav eventId={eventId} variant="sidebar" />
         <div className="min-w-0">{children}</div>
       </div>

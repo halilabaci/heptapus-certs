@@ -315,11 +315,11 @@ export default function AdminEvents() {
         <StatCard label={copy.balance} value={`${me?.heptacoin_balance ?? 0} HC`} icon={<Coins className="h-5 w-5 text-sky-600" />} iconBg="bg-sky-50 text-sky-600" />
       </div>
 
-      <div className="card overflow-hidden p-5">
+      <div className="surface-panel overflow-hidden p-5">
         <div className="grid gap-4 lg:grid-cols-[1.25fr,0.95fr]">
-          <div className="rounded-[24px] border border-brand-100 bg-gradient-to-br from-brand-50 via-white to-emerald-50 p-5">
+          <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-5">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-white p-3 text-brand-600 shadow-soft">
+              <div className="rounded-lg bg-white p-3 text-brand-600 shadow-soft">
                 <Zap className="h-5 w-5" />
               </div>
               <div>
@@ -344,7 +344,7 @@ export default function AdminEvents() {
               </button>
             </div>
           </div>
-          <div className="rounded-[24px] border border-surface-200 bg-surface-50/80 p-5">
+          <div className="rounded-lg border border-surface-200 bg-surface-50/80 p-5">
             <label className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-surface-400">
               {copy.searchLabel}
             </label>
@@ -389,12 +389,12 @@ export default function AdminEvents() {
             {[...Array(3)].map((_, i) => (
               <div key={i} className="card animate-pulse p-5">
                 <div className="flex items-center gap-4">
-                  <div className="h-11 w-11 rounded-xl bg-surface-100" />
+                  <div className="h-11 w-11 rounded-lg bg-surface-100" />
                   <div className="flex-1 space-y-2">
                     <div className="h-4 w-48 rounded bg-surface-100" />
                     <div className="h-3 w-32 rounded bg-surface-100" />
                   </div>
-                  <div className="hidden h-8 w-64 rounded-xl bg-surface-100 sm:block" />
+                  <div className="hidden h-8 w-64 rounded-lg bg-surface-100 sm:block" />
                 </div>
               </div>
             ))}
@@ -417,10 +417,10 @@ export default function AdminEvents() {
             ) : (
               filteredEvents.map((ev) => (
                 <motion.div key={ev.id} variants={itemVars}>
-                  <div className="group card p-5 transition-all duration-200 hover:shadow-lifted">
+                  <div className="group card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card">
                     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                       <div className="flex min-w-0 flex-1 items-center gap-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-surface-200 bg-surface-50 text-surface-400 transition-all group-hover:border-brand-100 group-hover:bg-brand-50 group-hover:text-brand-600">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-surface-200 bg-surface-50 text-surface-400 transition-all group-hover:border-brand-100 group-hover:bg-brand-50 group-hover:text-brand-600">
                           <ImageIcon className="h-5 w-5" />
                         </div>
 

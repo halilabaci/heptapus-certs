@@ -126,7 +126,7 @@ export default function EventAdminNav({
   if (variant === "sidebar") {
     return (
       <div className={className || "space-y-3"}>
-        <div className="card p-4 lg:p-5">
+        <div className="surface-panel p-4 lg:p-5">
           <Link
             href="/admin/events"
             className="mb-2 flex w-fit items-center gap-1 text-xs font-medium text-surface-400 transition-colors hover:text-surface-600"
@@ -145,16 +145,16 @@ export default function EventAdminNav({
         <div
           ref={scrollerRef}
           onWheel={handleWheel}
-          className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="scrollbar-polished overflow-x-auto pb-1"
         >
-          <div className="flex min-w-max items-center gap-1.5 rounded-2xl border border-surface-200 bg-surface-50 p-1.5 lg:min-w-0 lg:flex-wrap">
+          <div className="flex min-w-max items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 p-1.5 lg:min-w-0 lg:flex-wrap">
             {NAV_ITEMS.map(({ tab, label, icon: Icon, href }) => {
               const isAct = resolvedActive === tab;
               return (
                 <Link
                   key={tab}
                   href={href(eventId)}
-                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition ${
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm font-semibold transition ${
                     isAct
                       ? "border-brand-300 bg-white text-brand-700 shadow-soft"
                       : "border-transparent bg-transparent text-surface-600 hover:border-surface-200 hover:bg-white hover:text-surface-900"
@@ -181,16 +181,16 @@ export default function EventAdminNav({
       <div
         ref={scrollerRef}
         onWheel={handleWheel}
-        className="overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="scrollbar-polished overflow-x-auto pb-2"
       >
-        <div className="flex min-w-max gap-0.5 border-b border-surface-200 lg:min-w-0 lg:flex-wrap lg:border-b-0 lg:gap-1 lg:rounded-2xl lg:border lg:bg-surface-50 lg:p-1.5">
+        <div className="flex min-w-max gap-0.5 border-b border-surface-200 lg:min-w-0 lg:flex-wrap lg:gap-1 lg:rounded-lg lg:border lg:bg-surface-50 lg:p-1.5">
           {NAV_ITEMS.map(({ tab, label, icon: Icon, href }) => {
             const isAct = resolvedActive === tab;
             return (
               <Link
                 key={tab}
                 href={href(eventId)}
-                className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all lg:rounded-xl lg:px-3.5 relative ${
+                className={`group relative flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all lg:px-3.5 ${
                   isAct
                     ? "text-brand-700 bg-brand-50 lg:bg-white lg:border lg:border-brand-200"
                     : "text-surface-600 hover:text-surface-900 hover:bg-surface-100 lg:hover:bg-white lg:hover:border lg:hover:border-surface-200"

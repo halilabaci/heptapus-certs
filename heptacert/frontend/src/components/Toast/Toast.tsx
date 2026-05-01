@@ -62,7 +62,8 @@ export function Toast({ toast }: ToastProps) {
 
   return (
     <div
-      className={`animate-in fade-in slide-in-from-top-4 pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg border px-4 py-3 shadow-lg ${getStyles()}`}
+      className={`animate-in fade-in slide-in-from-top-4 pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg border px-4 py-3 shadow-modal ${getStyles()}`}
+      role={toast.type === "error" ? "alert" : "status"}
     >
       {getIcon()}
       <div className="flex-1">
@@ -84,7 +85,8 @@ export function Toast({ toast }: ToastProps) {
 
       <button
         onClick={() => removeToast(toast.id)}
-        className={`flex-shrink-0 ${getTextColor()} hover:opacity-75`}
+        className={`flex-shrink-0 rounded-lg p-1 transition hover:bg-white/50 ${getTextColor()} hover:opacity-75`}
+        aria-label="Bildirimi kapat"
       >
         <X className="h-4 w-4" />
       </button>

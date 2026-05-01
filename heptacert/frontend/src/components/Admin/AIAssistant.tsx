@@ -270,7 +270,7 @@ export default function AIAssistant() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 flex items-center justify-center h-14 w-14 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 transition z-40"
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-brand transition hover:bg-brand-700"
           title={lang === "tr" ? "AI Asistan" : "AI Assistant"}
         >
           <MessageCircle className="h-6 w-6" />
@@ -279,9 +279,9 @@ export default function AIAssistant() {
 
       {/* Chat Widget */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col z-50 border border-surface-200">
+        <div className="fixed bottom-6 right-4 z-50 flex h-[min(600px,calc(100vh-3rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-modal sm:right-6 sm:w-96">
           {/* Header */}
-          <div className="bg-brand-600 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
+          <div className="flex items-center justify-between bg-brand-600 px-6 py-4 text-white">
             <div className="flex items-center gap-2">
               <Lightbulb className="h-5 w-5" />
               <h3 className="font-semibold">
@@ -297,7 +297,7 @@ export default function AIAssistant() {
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-50">
+          <div className="scrollbar-polished flex-1 space-y-4 overflow-y-auto bg-surface-50 p-4">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
@@ -320,7 +320,7 @@ export default function AIAssistant() {
           {/* Support Form */}
           {showSupportForm && (
             <div className="border-t border-surface-200 p-4 space-y-3 bg-amber-50">
-              <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0 text-amber-600" />
                 <p className="font-medium">
                   {lang === "tr"
@@ -334,7 +334,7 @@ export default function AIAssistant() {
                 placeholder={lang === "tr" ? "Konu..." : "Subject..."}
                 value={supportSubject}
                 onChange={(e) => setSupportSubject(e.target.value)}
-                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="input-field py-2"
                 disabled={loading}
               />
               
@@ -343,21 +343,21 @@ export default function AIAssistant() {
                 value={supportMessage}
                 onChange={(e) => setSupportMessage(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                className="input-field resize-none py-2"
                 disabled={loading}
               />
 
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowSupportForm(false)}
-                  className="flex-1 px-3 py-2.5 border border-surface-300 rounded-lg text-sm font-semibold text-surface-700 bg-white hover:bg-surface-50 transition disabled:opacity-50"
+                  className="btn-secondary min-h-0 flex-1 px-3 py-2.5 text-sm"
                   disabled={loading}
                 >
                   {lang === "tr" ? "İptal" : "Cancel"}
                 </button>
                 <button
                   onClick={handleCreateSupport}
-                  className="flex-1 px-3 py-2.5 bg-gradient-to-r from-brand-600 to-brand-700 text-white rounded-lg text-sm font-semibold hover:from-brand-700 hover:to-brand-800 transition disabled:opacity-50 shadow-md"
+                  className="btn-primary min-h-0 flex-1 px-3 py-2.5 text-sm"
                   disabled={loading || !supportSubject.trim() || !supportMessage.trim()}
                 >
                   {loading ? (
@@ -382,19 +382,19 @@ export default function AIAssistant() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                    className="flex-1 px-3 py-2 border border-surface-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="input-field flex-1 py-2"
                   />
                   <button
                     onClick={handleSendMessage}
                     disabled={!input.trim()}
-                    className="p-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 transition"
+                    className="rounded-lg bg-brand-600 p-2 text-white transition hover:bg-brand-700 disabled:opacity-50"
                   >
                     <Send className="h-4 w-4" />
                   </button>
                 </div>
                 <button
                   onClick={() => setShowSupportForm(true)}
-                  className="w-full px-4 py-2.5 border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 rounded-lg text-sm font-semibold hover:from-amber-100 hover:to-orange-100 transition shadow-sm"
+                  className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100"
                 >
                   <span className="flex items-center justify-center gap-2">
                     <AlertCircle className="h-4 w-4" />
