@@ -46,14 +46,13 @@ export function PageHeader({
           ))}
         </nav>
       )}
-      <div className="relative overflow-hidden rounded-[28px] border border-surface-200 bg-white/95 p-5 shadow-soft backdrop-blur sm:p-6">
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_top_right,rgba(15,118,110,0.16),transparent_62%)]" />
-        <div className="pointer-events-none absolute left-0 top-0 h-24 w-24 -translate-x-6 -translate-y-6 rounded-full bg-brand-50/70 blur-2xl" />
+      <div className="relative overflow-hidden rounded-lg border border-surface-200 bg-white/95 p-5 shadow-soft backdrop-blur sm:p-6">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-emerald-500 to-sky-500 opacity-80" />
         <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             {icon && (
               <div
-                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-soft ${iconBg}`}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg shadow-soft ${iconBg}`}
               >
                 {icon}
               </div>

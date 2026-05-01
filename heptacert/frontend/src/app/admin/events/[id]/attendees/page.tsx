@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  listAttendees, importAttendees, deleteAttendee, getAdminAttendeeSurveyLink,
+  listAttendees, importAttendees, createManualAttendee, deleteAttendee, getAdminAttendeeSurveyLink,
   getAttendanceMatrix, bulkCertifyQueue, getBulkGenerateJob,
-  exportAttendanceFile, apiFetch, getMySubscription,
+  exportAttendanceFile, exportRegistrationDocumentsZip, apiFetch, getMySubscription,
   type AttendeeOut, type AttendanceMatrix, type RegistrationField, type SubscriptionInfo
 } from "@/lib/api";
 import Link from "next/link";
@@ -14,7 +14,7 @@ import ConfirmModal from "@/components/Admin/ConfirmModal";
 import {
   Users, Upload, Search, Trash2, Loader2, ChevronLeft, Download,
   Award, BarChart3, CheckSquare, XSquare, RefreshCw, AlertCircle,
-  UserCheck, UserX, CheckCircle2, QrCode, LockKeyhole, Hash,
+  UserCheck, UserX, CheckCircle2, QrCode, LockKeyhole, Hash, UserPlus,
   ShieldAlert, Sparkles, Copy, Link2
 } from "lucide-react";
 
@@ -40,8 +40,14 @@ export default function AdminAttendeesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [addingManual, setAddingManual] = useState(false);
+  const [manualEmail, setManualEmail] = useState("");
+  const [manualFirstName, setManualFirstName] = useState("");
+  const [manualLastName, setManualLastName] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [exportingDocuments, setExportingDocuments] = useState(false);
   const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null);
+  const [manualResult, setManualResult] = useState<string | null>(null);
   const [copyingSurveyId, setCopyingSurveyId] = useState<number | null>(null);
   const [copiedSurveyId, setCopiedSurveyId] = useState<number | null>(null);
   const [selectedAttendee, setSelectedAttendee] = useState<AttendeeOut | null>(null);
@@ -160,6 +166,39 @@ export default function AdminAttendeesPage() {
     }
   }
 
+  async function handleManualAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setListError(null);
+    setManualResult(null);
+
+    const email = manualEmail.trim();
+    const firstName = manualFirstName.trim();
+    const lastName = manualLastName.trim();
+
+    if (!email || !firstName || !lastName) {
+      setListError("E-posta, ad ve soyad alanlari zorunlu.");
+      return;
+    }
+
+    setAddingManual(true);
+    try {
+      await createManualAttendee(eventId, {
+        email,
+        first_name: firstName,
+        last_name: lastName,
+      });
+      setManualEmail("");
+      setManualFirstName("");
+      setManualLastName("");
+      setManualResult("Katilimci basariyla eklendi.");
+      await loadAttendees(1, "");
+    } catch (e: any) {
+      setListError(e.message || "Manuel katilimci eklenemedi.");
+    } finally {
+      setAddingManual(false);
+    }
+  }
+
   async function handleCopySurveyLink(attendeeId: number) {
     setCopyingSurveyId(attendeeId);
     setListError(null);
@@ -194,6 +233,26 @@ export default function AdminAttendeesPage() {
       setListError(e.message || "Katılımcılar dışa aktarılamadı.");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleExportRegistrationDocuments() {
+    setExportingDocuments(true);
+    setListError(null);
+    try {
+      const { blob, filename } = await exportRegistrationDocumentsZip(eventId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setListError(e.message || "Belgeler toplu indirilemedi.");
+    } finally {
+      setExportingDocuments(false);
     }
   }
 
@@ -246,16 +305,30 @@ export default function AdminAttendeesPage() {
 
   const totalPages = Math.ceil(total / limit);
   const eligibleCount = matrix ? matrix.rows.filter((r) => r.meets_threshold && !r.has_certificate).length : 0;
+  const hasFileRegistrationField = registrationFields.some((field) => field.type === "file");
   const getRegistrationPreview = useCallback((attendee: AttendeeOut) => {
-    if (!registrationFields.length) return [];
-    return registrationFields
+    const fieldPreview = registrationFields
       .map((field) => {
         const value = attendee.registration_answers?.[field.id];
         if (!value) return null;
-        return { label: field.label, value };
+        return { label: field.label, value: String(value) };
       })
-      .filter((item): item is { label: string; value: string } => Boolean(item))
-      .slice(0, 2);
+      .filter((item): item is { label: string; value: string } => Boolean(item));
+
+    const extraPreview: Array<{ label: string; value: string }> = [];
+    const docsRaw = attendee.registration_answers?.["__documents"];
+    if (Array.isArray(docsRaw) && docsRaw.length > 0) {
+      extraPreview.push({ label: "Belge", value: `${docsRaw.length} dosya` });
+    }
+    const kvkkRaw = attendee.registration_answers?.["__kvkk"];
+    if (kvkkRaw && typeof kvkkRaw === "object") {
+      const accepted = (kvkkRaw as Record<string, unknown>).accepted;
+      if (accepted === true) {
+        extraPreview.push({ label: "KVKK", value: "Onaylandı" });
+      }
+    }
+
+    return [...fieldPreview, ...extraPreview].slice(0, 3);
   }, [registrationFields]);
 
   return (
@@ -295,6 +368,16 @@ export default function AdminAttendeesPage() {
               >
                 {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Excel İndir
               </button>
+              {hasFileRegistrationField && (
+                <button
+                  type="button"
+                  onClick={() => void handleExportRegistrationDocuments()}
+                  disabled={exportingDocuments}
+                  className="inline-flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-gray-50 transition"
+                >
+                  {exportingDocuments ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Belgeleri İndir (ZIP)
+                </button>
+              )}
             <Link
               href={`/admin/events/${eventId}/checkin`}
               className="inline-flex items-center justify-center gap-2 border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-indigo-100 transition"
@@ -335,6 +418,44 @@ export default function AdminAttendeesPage() {
 
         {tab === "list" && (
           <>
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-emerald-500" /> Manuel Katilimci Ekle
+              </h2>
+              <form onSubmit={handleManualAdd} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
+                <input
+                  type="email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  placeholder="ornek@mail.com"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <input
+                  type="text"
+                  value={manualFirstName}
+                  onChange={(e) => setManualFirstName(e.target.value)}
+                  placeholder="Ad"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <input
+                  type="text"
+                  value={manualLastName}
+                  onChange={(e) => setManualLastName(e.target.value)}
+                  placeholder="Soyad"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  type="submit"
+                  disabled={addingManual}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {addingManual ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  Ekle
+                </button>
+              </form>
+              {manualResult && <p className="mt-2 text-xs text-emerald-700">✅ {manualResult}</p>}
+            </div>
+
             {/* Import */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-5 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -713,10 +834,49 @@ export default function AdminAttendeesPage() {
                 <div className="mt-4 grid gap-3">
                   {registrationFields.map((field) => {
                     const value = selectedAttendee.registration_answers?.[field.id];
+                    const docsRaw = selectedAttendee.registration_answers?.["__documents"];
+                    const docsForField = Array.isArray(docsRaw)
+                      ? docsRaw
+                          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+                          .filter((item) => String(item.field_id || "") === field.id)
+                      : [];
+                    const renderedValue = value == null ? "—" : String(value);
                     return (
                       <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{field.label}</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">{value || "—"}</p>
+                        {field.type === "file" ? (
+                          docsForField.length === 0 ? (
+                            <p className="mt-2 text-sm font-semibold text-slate-900">—</p>
+                          ) : (
+                            <div className="mt-2 space-y-1.5">
+                              {docsForField.map((doc, index) => {
+                                const docName = String(doc.name || `Dosya ${index + 1}`);
+                                const docPath = String(doc.path || "");
+                                if (!docPath) {
+                                  return (
+                                    <p key={`${field.id}-doc-${index}`} className="text-sm font-semibold text-slate-900">
+                                      {docName}
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <a
+                                    key={`${field.id}-doc-${index}`}
+                                    href={`/api/files/${encodeURI(docPath)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block truncate text-sm font-semibold text-indigo-700 underline-offset-2 hover:underline"
+                                    title={docName}
+                                  >
+                                    {docName}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )
+                        ) : (
+                          <p className="mt-2 text-sm font-semibold text-slate-900">{renderedValue}</p>
+                        )}
                       </div>
                     );
                   })}

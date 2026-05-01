@@ -1,4 +1,5 @@
 import csv
+import base64
 import hashlib
 import hmac
 import io
@@ -14,16 +15,18 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.header import Header as EmailHeader
 from email.utils import formataddr
 from enum import Enum
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Tuple
 from pydantic import field_validator
 import uuid as _uuid_module
 import aiosmtplib
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
+from cryptography.fernet import Fernet, InvalidToken
 import pandas as pd
 import pyotp
 from fastapi import FastAPI, Body, Depends, HTTPException, UploadFile, File, Query, Request, BackgroundTasks
@@ -51,8 +54,10 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import (
     Boolean, String, Integer, BigInteger, DateTime, ForeignKey, Text,
-    Enum as SAEnum, UniqueConstraint, Index, select, func, distinct, update, delete, or_, Date as sa_Date, Time as sa_Time
+    Enum as SAEnum, UniqueConstraint, Index, select, func, distinct, update, delete, or_,
+    Date as sa_Date, Time as sa_Time, literal, union_all
 )
+from sqlalchemy import cast
 from sqlalchemy import JSON as _JSON
 from sqlalchemy.dialects.postgresql import JSONB as _PgJSONB, INET as _PgINET, insert as _pg_insert
 
@@ -219,6 +224,10 @@ def sanitize_event_description_html(value: Optional[str]) -> Optional[str]:
 
 class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
+    db_pool_size: int = Field(default=20, alias="DB_POOL_SIZE")
+    db_pool_max_overflow: int = Field(default=20, alias="DB_POOL_MAX_OVERFLOW")
+    db_pool_timeout: int = Field(default=15, alias="DB_POOL_TIMEOUT")
+    db_pool_recycle: int = Field(default=1800, alias="DB_POOL_RECYCLE")
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_expires_minutes: int = Field(default=1440, alias="JWT_EXPIRES_MINUTES")
 
@@ -257,14 +266,25 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = Field(default="", alias="STRIPE_WEBHOOK_SECRET")
     stripe_publishable_key: str = Field(default="", alias="STRIPE_PUBLISHABLE_KEY")
 
+    enable_scheduler: bool = Field(default=True, alias="ENABLE_SCHEDULER")
+
 
 settings = Settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _startup_time: float = time.time()
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+engine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=max(1, settings.db_pool_size),
+    max_overflow=max(0, settings.db_pool_max_overflow),
+    pool_timeout=max(1, settings.db_pool_timeout),
+    pool_recycle=max(60, settings.db_pool_recycle),
+)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 bulk_cert_job_lock = asyncio.Lock()
+superadmin_bulk_email_tasks_lock = asyncio.Lock()
+superadmin_bulk_email_tasks: Dict[int, asyncio.Task] = {}
 
 # Lightweight in-process caches for high-traffic QR check-in reads
 CHECKIN_CONTEXT_TTL_SECONDS = 20
@@ -313,6 +333,29 @@ class User(Base):
 
 
 class PublicMember(Base):
+    """Public member profiles - SHARED between Events and Social systems.
+    
+    Used by:
+    - Social/Community Feed System: Member profiles, post authors, commenters, likers
+    - Events System: Event attendees with public profiles
+    
+    A public member can be:
+    1. An event attendee who also participates in social (comments, likes, posts to global feed)
+    2. A non-attendee who only participates in social (view, comment, like)
+    
+    Fields:
+    - public_id: Shareable profile identifier
+    - email: Unique email, used for both event and social authentication
+    - display_name: Public name shown in both systems
+    - bio, avatar_url, headline, location, website_url: Social profile data
+    - password_hash: Authentication for social platform
+    - attendees: Event registrations (one PublicMember -> many Attendees)
+    - comments: Event comments (comments on specific events)
+    
+    ** When a public member registers for an event, a new Attendee record is created
+       with a foreign key to public_member_id. This allows events to track member data
+       while social system tracks the same person's profile and activity.
+    """
     __tablename__ = "public_members"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -323,6 +366,7 @@ class PublicMember(Base):
     headline: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     website_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -414,8 +458,239 @@ class Transaction(Base):
 class SystemConfig(Base):
     __tablename__ = "system_configs"
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
-    value: Mapped[dict] = mapped_column(JSONB, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RegistrationOptionCapacity(Base):
+    __tablename__ = "registration_option_capacities"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    field_id: Mapped[str] = mapped_column(String(64), index=True)
+    option_label: Mapped[str] = mapped_column(String(200))
+    capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reserved_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("event_id", "field_id", "option_label", name="uq_regopt_event_field_option"),)
+
+
+async def _ensure_capacity_row(db: AsyncSession, event_id: int, field_id: str, option_label: str, capacity: Optional[int]):
+    # Insert row if not exists with provided capacity (only when capacity is not None)
+    try:
+        if capacity is None:
+            return
+        insert_stmt = _pg_insert(RegistrationOptionCapacity.__table__).values(
+            event_id=event_id,
+            field_id=field_id,
+            option_label=option_label,
+            capacity=capacity,
+            reserved_count=0,
+        ).on_conflict_do_nothing(index_elements=["event_id", "field_id", "option_label"])
+        await db.execute(insert_stmt)
+    except Exception:
+        # Best-effort: ignore failures here
+        return
+
+
+async def _reserve_option_capacity(db: AsyncSession, event_id: int, field_id: str, option_label: str, capacity: Optional[int]) -> bool:
+    """Attempt an atomic reservation for a single option. Returns True on success, False if no capacity left.
+
+    If capacity is None (unlimited), returns True immediately.
+    """
+    if capacity is None:
+        return True
+
+    # Ensure a capacity row exists (best-effort)
+    await _ensure_capacity_row(db, event_id, field_id, option_label, capacity)
+
+    # Try atomic increment where reserved_count < capacity
+    upd = (
+        update(RegistrationOptionCapacity)
+        .where(
+            RegistrationOptionCapacity.event_id == event_id,
+            RegistrationOptionCapacity.field_id == field_id,
+            RegistrationOptionCapacity.option_label == option_label,
+            RegistrationOptionCapacity.reserved_count < RegistrationOptionCapacity.capacity,
+        )
+        .values(reserved_count=(RegistrationOptionCapacity.reserved_count + 1))
+        .returning(RegistrationOptionCapacity.reserved_count)
+    )
+    try:
+        res = await db.execute(upd)
+        row = res.scalar_one_or_none()
+        if row is None:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+async def _get_event_capacities(event_id: int, db: AsyncSession) -> Dict[str, List[Dict[str, Any]]]:
+    """Return capacities for event as mapping field_id -> list of {label, capacity, remaining}.
+    If DB row not present for an option, derive from event.config if present.
+    """
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    # Load DB rows
+    res = await db.execute(select(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event_id))
+    rows = res.scalars().all()
+    by_field: Dict[str, List[RegistrationOptionCapacity]] = {}
+    for r in rows:
+        by_field.setdefault(r.field_id, []).append(r)
+
+    # Also load event config options as fallback
+    ev_res = await db.execute(select(Event).where(Event.id == event_id))
+    ev = ev_res.scalar_one_or_none()
+    registration_fields = _get_event_registration_fields(ev) if ev else []
+
+    for field in registration_fields:
+        if field.get("type") != "select":
+            continue
+        fid = str(field.get("id") or "").strip()
+        opts = []
+        db_rows = {r.option_label: r for r in by_field.get(fid, [])}
+        for o in field.get("options") or []:
+            if isinstance(o, dict):
+                label = str(o.get("label") or "").strip()
+                cap = o.get("capacity")
+            else:
+                label = str(o or "").strip()
+                cap = None
+            if label == "":
+                continue
+            row = db_rows.get(label)
+            if row:
+                remaining = None if row.capacity is None else max(0, int(row.capacity) - int(row.reserved_count or 0))
+                opts.append({"label": label, "capacity": row.capacity, "remaining": remaining})
+            else:
+                remaining = None if cap is None else int(cap)
+                opts.append({"label": label, "capacity": cap, "remaining": remaining})
+        if opts:
+            out[fid] = opts
+    return out
+
+
+def _collect_registration_option_reservations(
+    event: "Event",
+    registration_answers: Dict[str, Any],
+) -> List[Tuple[int, str, str, Optional[int]]]:
+    reservations_to_attempt: List[Tuple[int, str, str, Optional[int]]] = []
+    registration_fields = _get_event_registration_fields(event)
+    for field in registration_fields:
+        if field.get("type") != "select":
+            continue
+        field_id = str(field.get("id") or "").strip()
+        if not field_id:
+            continue
+        selected = registration_answers.get(field_id)
+        if not selected:
+            continue
+        selected_values = selected if isinstance(selected, (list, tuple)) else [selected]
+        options = field.get("options") or []
+        for sel in selected_values:
+            sel_label = str(sel or "").strip()
+            if not sel_label:
+                continue
+            opt_obj: Optional[dict] = None
+            for option in options:
+                if isinstance(option, dict) and str(option.get("label") or "").strip() == sel_label:
+                    opt_obj = option
+                    break
+                if isinstance(option, str) and option == sel_label:
+                    opt_obj = {"label": option, "capacity": None}
+                    break
+            if not opt_obj:
+                continue
+            capacity_value = opt_obj.get("capacity")
+            try:
+                capacity_int = int(capacity_value) if capacity_value is not None and str(capacity_value).strip() != "" else None
+            except Exception:
+                capacity_int = None
+            reservations_to_attempt.append((event.id, field_id, sel_label, capacity_int))
+    return reservations_to_attempt
+
+
+async def _sync_registration_option_capacities(db: AsyncSession, event: "Event") -> None:
+    registration_fields = _get_event_registration_fields(event)
+    select_fields = [field for field in registration_fields if field.get("type") == "select"]
+    if not select_fields:
+        await db.execute(delete(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id))
+        return
+
+    current_specs: Dict[Tuple[str, str], Optional[int]] = {}
+    for field in select_fields:
+        field_id = str(field.get("id") or "").strip()
+        if not field_id:
+            continue
+        for option in field.get("options") or []:
+            if isinstance(option, dict):
+                label = str(option.get("label") or "").strip()
+                capacity_value = option.get("capacity")
+            else:
+                label = str(option or "").strip()
+                capacity_value = None
+            if not label:
+                continue
+            try:
+                current_specs[(field_id, label)] = int(capacity_value) if capacity_value is not None and str(capacity_value).strip() != "" else None
+            except Exception:
+                current_specs[(field_id, label)] = None
+
+    if not current_specs:
+        await db.execute(delete(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id))
+        return
+
+    verified_counts: Dict[Tuple[str, str], int] = {}
+    attendee_rows = await db.execute(
+        select(Attendee.registration_answers).where(
+            Attendee.event_id == event.id,
+            Attendee.email_verified.is_(True),
+        )
+    )
+    for raw_answers in attendee_rows.scalars().all():
+        answers = raw_answers if isinstance(raw_answers, dict) else {}
+        for field in select_fields:
+            field_id = str(field.get("id") or "").strip()
+            if not field_id:
+                continue
+            selected_value = answers.get(field_id)
+            if not selected_value:
+                continue
+            selected_values = selected_value if isinstance(selected_value, (list, tuple)) else [selected_value]
+            for selected in selected_values:
+                label = str(selected or "").strip()
+                key = (field_id, label)
+                if label and key in current_specs:
+                    verified_counts[key] = verified_counts.get(key, 0) + 1
+
+    existing_rows_res = await db.execute(
+        select(RegistrationOptionCapacity).where(RegistrationOptionCapacity.event_id == event.id)
+    )
+    existing_rows = {
+        (row.field_id, row.option_label): row
+        for row in existing_rows_res.scalars().all()
+    }
+
+    current_keys = set(current_specs.keys())
+    for key, capacity in current_specs.items():
+        field_id, label = key
+        used_count = verified_counts.get(key, 0)
+        row = existing_rows.get(key)
+        if row:
+            row.capacity = capacity
+            row.reserved_count = used_count
+        else:
+            db.add(
+                RegistrationOptionCapacity(
+                    event_id=event.id,
+                    field_id=field_id,
+                    option_label=label,
+                    capacity=capacity,
+                    reserved_count=used_count,
+                )
+            )
+
+    for key, row in existing_rows.items():
+        if key not in current_keys:
+            await db.delete(row)
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Payment DB models (created by migration 002) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -533,6 +808,31 @@ class WebhookDelivery(Base):
 
 
 class Organization(Base):
+    """Organization profiles - SHARED between Events and Social systems.
+    
+    Used by:
+    - Social/Community Feed System: Organization profiles, organization-specific feeds
+    - Events System: Admin's organization context (future - for org-specific event management)
+    
+    Fields:
+    - user_id: Foreign key to Users table (admin who owns this organization)
+    - public_id: Shareable identifier for public-facing URLs
+    - org_name: Organization display name
+    - custom_domain: Optional custom domain for branded experience
+    - brand_logo: Organization logo URL
+    - brand_color: Primary color (hex) for branding
+    - settings: JSON config for organization-specific settings
+    
+    Relationships:
+    - CommunityPost: Organization can have organization-specific feeds
+    - OrganizationFollower: Social followers on this organization
+    
+    Permissions:
+    - Admin (user_id) can create posts via /api/admin/community/posts if they have Growth/Enterprise subscription
+    - Public members can view organization feeds via GET /api/public/organizations/{org_id}/feed
+    - Public members can comment/like on organization posts
+    - Public members cannot create posts to organization feeds (use global feed instead)
+    """
     __tablename__ = "organizations"
     id:            Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id:       Mapped[int]           = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
@@ -591,15 +891,60 @@ class CommunityPostLike(Base):
 
 
 class CommunityPostComment(Base):
+    """Comment on a community post. Supports nested replies (max 2-3 levels deep).
+    
+    - parent_comment_id: If set, this comment is a reply to another comment
+    - upvote_count/downvote_count: Vote tracking
+    - status: 'visible' or 'hidden' for moderation
+    """
     __tablename__ = "community_post_comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("community_posts.id", ondelete="CASCADE"), index=True)
     public_member_id: Mapped[int] = mapped_column(Integer, ForeignKey("public_members.id", ondelete="CASCADE"), index=True)
+    parent_comment_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("community_post_comments.id", ondelete="CASCADE"), nullable=True, index=True)
     body: Mapped[str] = mapped_column(Text)
+    upvote_count: Mapped[int] = mapped_column(Integer, default=0)
+    downvote_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="visible", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+
+class CommunityCommentVote(Base):
+    """Vote tracking for community post comments (upvote/downvote).
+    
+    Stores which member voted on which comment and the vote type.
+    vote_type: 'upvote', 'downvote', or 'none' (to track undo)
+    """
+    __tablename__ = "community_comment_votes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    comment_id: Mapped[int] = mapped_column(Integer, ForeignKey("community_post_comments.id", ondelete="CASCADE"), index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("public_members.id", ondelete="CASCADE"), index=True)
+    vote_type: Mapped[str] = mapped_column(String(20))  # 'upvote', 'downvote', 'none'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('comment_id', 'member_id', name='uq_comment_member_vote'),
+    )
+
+
+class SupportTicket(Base):
+    """Support tickets created when AI assistant can't help organizationally.
+    
+    Used for escalation when users need human support.
+    Superadmins can view and respond to these tickets.
+    """
+    __tablename__ = "support_tickets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    subject: Mapped[str] = mapped_column(String(255))
+    messages: Mapped[list] = mapped_column(JSONB, default=list)  # [{role: 'user'|'admin', message: str, timestamp: str}, ...]
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)  # open, in_progress, resolved, closed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class WaitlistEntry(Base):
@@ -706,6 +1051,26 @@ class BulkEmailJob(Base):
     event: Mapped["Event"] = relationship(back_populates="bulk_email_jobs")
     creator: Mapped["User"] = relationship(foreign_keys=[created_by])
     email_template: Mapped[Optional["EmailTemplate"]] = relationship()
+
+
+class SuperadminBulkEmailJob(Base):
+    __tablename__ = "superadmin_bulk_email_jobs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(32), default="all", index=True)
+    subject: Mapped[str] = mapped_column(String(240))
+    body_html: Mapped[str] = mapped_column(Text)
+    total_targets: Mapped[int] = mapped_column(Integer, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    creator: Mapped["User"] = relationship(foreign_keys=[created_by])
 
 
 class BulkCertificateJob(Base):
@@ -830,6 +1195,28 @@ class Attendee(Base):
 
 
 class EventComment(Base):
+    """Event-specific comments - SEPARATE from Social Community Feed system.
+    
+    This model is for comments on EVENT pages, NOT for community posts.
+    
+    Completely separate from:
+    - CommunityPost: Global feed posts by members and organizations
+    - CommunityPostComment: Comments on community feed posts
+    
+    Event comments are:
+    - Specific to a single event page
+    - Visible only on that event's detail page
+    - Free for all authenticated public members (no subscription restriction)
+    - NOT shared in global community feed
+    
+    Endpoints (Events system):
+    - GET /api/public/events/{event_id}/comments - List event page comments
+    - POST /api/public/events/{event_id}/comments - Add comment (free tier allowed)
+    
+    Endpoints (Social system for comparison):
+    - GET/POST /api/public/feed - Global community feed
+    - GET/POST /api/public/posts/{post_id}/comments - Comments on community posts
+    """
     __tablename__ = "event_comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True)
@@ -1016,12 +1403,14 @@ class LoginIn(BaseModel):
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    terms_accepted: bool = False
 
 
 class PublicMemberRegisterIn(BaseModel):
     display_name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    terms_accepted: bool = False
 
 
 class PublicMemberLoginIn(BaseModel):
@@ -1035,6 +1424,7 @@ class PublicMemberProfileUpdateIn(BaseModel):
     headline: Optional[str] = Field(default=None, max_length=160)
     location: Optional[str] = Field(default=None, max_length=160)
     website_url: Optional[str] = Field(default=None, max_length=2000)
+    contact_email: Optional[EmailStr] = None
 
 
 class PublicMemberChangePasswordIn(BaseModel):
@@ -1083,6 +1473,8 @@ class EventRenameIn(BaseModel):
     visibility: Optional[str] = Field(default=None, max_length=32)
     require_email_verification: Optional[bool] = Field(default=None)
     registration_closed: Optional[bool] = Field(default=None)
+    registration_quota: Optional[int] = Field(default=None, ge=1, le=1_000_000)
+    registration_quota_enabled: Optional[bool] = Field(default=None)
 
 
 class CreditCoinsIn(BaseModel):
@@ -1140,8 +1532,11 @@ class EventOut(BaseModel):
     event_banner_url: Optional[str] = None
     auto_email_on_cert: bool = False
     cert_email_template_id: Optional[int] = None
+    registration_closed: bool = False
     visibility: str = "private"
     require_email_verification: bool = True
+    registration_quota: Optional[int] = None
+    registration_quota_enabled: bool = False
 
 
 class PublicMemberMeOut(BaseModel):
@@ -1154,6 +1549,7 @@ class PublicMemberMeOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
 
 
@@ -1165,6 +1561,7 @@ class PublicMemberProfileOut(BaseModel):
     headline: Optional[str] = None
     location: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
     created_at: datetime
     event_count: int = 0
     comment_count: int = 0
@@ -1209,6 +1606,10 @@ class PublicEventDetailOut(BaseModel):
     sessions: List[Dict[str, Any]] = Field(default_factory=list)
     visibility: str = "private"
     require_email_verification: bool = True
+    registration_quota: Optional[int] = None
+    registration_quota_enabled: bool = False
+    kvkk_consent_required: bool = True
+    kvkk_consent_text: Optional[str] = None
 
 
 class PublicMemberEventOut(BaseModel):
@@ -1554,6 +1955,38 @@ class EventSurveyOut(BaseModel):
     updated_at: datetime
 
 
+class SupportTicketMessageIn(BaseModel):
+    """A single message in support ticket"""
+    role: str  # 'user' or 'admin'
+    message: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SupportTicketCreateIn(BaseModel):
+    """Request to create a support ticket"""
+    subject: str = Field(min_length=5, max_length=255)
+    message: str = Field(min_length=10, max_length=5000)
+
+
+class SupportTicketUpdateIn(BaseModel):
+    """Request to update a support ticket (admin reply or status change)"""
+    status: Optional[str] = None  # open, in_progress, resolved, closed
+    admin_reply: Optional[str] = None  # Admin's response message
+
+
+class SupportTicketOut(BaseModel):
+    """Response with support ticket details"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    organization_id: int
+    user_id: int
+    subject: str
+    messages: List[Dict[str, Any]]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class SurveyResponseIn(BaseModel):
     """Request to submit survey response"""
     attendee_id: Optional[int] = Field(default=None, ge=1)
@@ -1859,6 +2292,19 @@ class EmailConfigTestResponse(BaseModel):
     verified_at: Optional[datetime] = None
 
 
+class SavedSMTPAccountOut(BaseModel):
+    id: int
+    smtp_enabled: bool
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_use_tls: bool = True
+    smtp_user: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    updated_at: datetime
+    has_password: bool = False
+
+
 class WebhookSubscriptionOut(BaseModel):
     id: int
     user_id: int
@@ -2152,6 +2598,12 @@ async def _ensure_user_email_config(db: AsyncSession, user_id: int) -> "UserEmai
     res = await db.execute(select(UserEmailConfig).where(UserEmailConfig.user_id == user_id))
     config = res.scalar_one_or_none()
     if config:
+        # Lazy migration: convert legacy plaintext SMTP passwords to encrypted value.
+        if config.smtp_password and not str(config.smtp_password).startswith("enc:v1:"):
+            config.smtp_password = _encrypt_smtp_password(config.smtp_password)
+            db.add(config)
+            await db.commit()
+            await db.refresh(config)
         return config
 
     config = UserEmailConfig(user_id=user_id, smtp_enabled=False, smtp_use_tls=True)
@@ -2159,6 +2611,35 @@ async def _ensure_user_email_config(db: AsyncSession, user_id: int) -> "UserEmai
     await db.commit()
     await db.refresh(config)
     return config
+
+
+def _smtp_password_cipher() -> Fernet:
+    key_material = hashlib.sha256(settings.email_token_secret.encode("utf-8")).digest()
+    fernet_key = base64.urlsafe_b64encode(key_material)
+    return Fernet(fernet_key)
+
+
+def _encrypt_smtp_password(plaintext: str) -> str:
+    raw = (plaintext or "").strip()
+    if not raw:
+        return ""
+    token = _smtp_password_cipher().encrypt(raw.encode("utf-8")).decode("utf-8")
+    return f"enc:v1:{token}"
+
+
+def _decrypt_smtp_password(stored: Optional[str]) -> Optional[str]:
+    if not stored:
+        return None
+    value = str(stored)
+    if not value.startswith("enc:v1:"):
+        # Backward compatibility for legacy plaintext rows.
+        return value
+    token = value[len("enc:v1:"):]
+    try:
+        return _smtp_password_cipher().decrypt(token.encode("utf-8")).decode("utf-8")
+    except InvalidToken:
+        logger.error("SMTP password decryption failed due to invalid token")
+        return None
 
 
 async def send_attendee_verification_email(*, attendee: "Attendee", event: "Event") -> None:
@@ -2385,31 +2866,49 @@ async def send_email_async(
     smtp_reply_to: Optional[str] = None
     smtp_auto_cc: Optional[str] = None
     smtp_use_tls = True
+    using_user_smtp = False
+
+    # Keep a copy for fallback if per-user SMTP is broken.
+    global_smtp_host = settings.smtp_host
+    global_smtp_port = settings.smtp_port
+    global_smtp_user = settings.smtp_user or None
+    global_smtp_password = settings.smtp_password or None
+    global_smtp_from = settings.smtp_from
 
     if sender_user_id is not None:
         async with SessionLocal() as db_mail:
             res = await db_mail.execute(select(UserEmailConfig).where(UserEmailConfig.user_id == sender_user_id))
             user_config = res.scalar_one_or_none()
-            if (
-                user_config
-                and user_config.smtp_enabled
-                and user_config.smtp_host
-                and user_config.smtp_port
-                and (user_config.from_email or user_config.smtp_user)
-            ):
-                smtp_host = user_config.smtp_host
-                smtp_port = int(user_config.smtp_port)
-                smtp_user = user_config.smtp_user or None
-                smtp_password = user_config.smtp_password or None
-                smtp_from_email = user_config.from_email or user_config.smtp_user or settings.smtp_from
-                smtp_from_name = (user_config.from_name or "").strip()
-                smtp_reply_to = (user_config.reply_to or "").strip() or None
-                smtp_auto_cc = (user_config.auto_cc or "").strip() or None
-                smtp_use_tls = bool(user_config.smtp_use_tls)
+            if user_config and user_config.smtp_enabled:
+                has_required_core = bool(
+                    user_config.smtp_host
+                    and user_config.smtp_port
+                    and (user_config.from_email or user_config.smtp_user)
+                )
+                decrypted_user_password = _decrypt_smtp_password(user_config.smtp_password)
+                needs_auth = bool(user_config.smtp_user)
+                has_required_auth = (not needs_auth) or bool(decrypted_user_password)
+
+                if has_required_core and has_required_auth:
+                    smtp_host = user_config.smtp_host
+                    smtp_port = int(user_config.smtp_port)
+                    smtp_user = user_config.smtp_user or None
+                    smtp_password = decrypted_user_password
+                    smtp_from_email = user_config.from_email or user_config.smtp_user or settings.smtp_from
+                    smtp_from_name = (user_config.from_name or "").strip()
+                    smtp_reply_to = (user_config.reply_to or "").strip() or None
+                    smtp_auto_cc = (user_config.auto_cc or "").strip() or None
+                    smtp_use_tls = bool(user_config.smtp_use_tls)
+                    using_user_smtp = True
+                else:
+                    logger.warning(
+                        "User SMTP config invalid for user_id=%s; falling back to global SMTP",
+                        sender_user_id,
+                    )
 
     if not smtp_host:
         logger.warning(
-            "[EMAIL Ã¢â‚¬â€ no SMTP configured] To: %s | Subject: %s\nBody: %s",
+            "[EMAIL - no SMTP configured] To: %s | Subject: %s\nBody: %s",
             to, subject, html_body
         )
         if raise_on_error:
@@ -2428,8 +2927,12 @@ async def send_email_async(
             return
     
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = formataddr((smtp_from_name, smtp_from_email)) if smtp_from_name else smtp_from_email
+    msg["Subject"] = str(EmailHeader(subject, charset="utf-8"))
+    msg["From"] = (
+        formataddr((smtp_from_name, smtp_from_email))
+        if smtp_from_name
+        else smtp_from_email
+    )
     msg["To"] = to
     if smtp_reply_to:
         msg["Reply-To"] = smtp_reply_to
@@ -2438,7 +2941,7 @@ async def send_email_async(
     # Add unsubscribe header (RFC 2369)
     msg["List-Unsubscribe"] = f"<mailto:{smtp_reply_to or smtp_from_email}?subject=unsubscribe>"
     
-    msg.attach(MIMEText(html_body, "html"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
     
     # Attach files if provided
     if attachments:
@@ -2449,7 +2952,7 @@ async def send_email_async(
         for filename, file_bytes, mimetype in attachments:
             maintype, subtype = mimetype.split("/", 1)
             if maintype == "text":
-                attachment = MIMEText(file_bytes.decode(), _subtype=subtype)
+                attachment = MIMEText(file_bytes.decode("utf-8", errors="replace"), _subtype=subtype, _charset="utf-8")
             elif maintype == "image":
                 from email.mime.image import MIMEImage
                 attachment = MIMEImage(file_bytes, _subtype=subtype)
@@ -2482,6 +2985,32 @@ async def send_email_async(
         logger.info("Email sent successfully to %s", to)
     except Exception as exc:
         logger.error("SMTP send failed to %s: %s", to, exc)
+
+        # If per-user SMTP fails, try global SMTP once to avoid system-wide email outage.
+        if using_user_smtp and global_smtp_host:
+            try:
+                fallback_from = global_smtp_from or smtp_from_email
+                msg.replace_header("From", fallback_from)
+                msg.replace_header("List-Unsubscribe", f"<mailto:{smtp_reply_to or fallback_from}?subject=unsubscribe>")
+
+                fallback_implicit_tls = bool(int(global_smtp_port or 0) == 465)
+                fallback_starttls = not fallback_implicit_tls
+
+                await aiosmtplib.send(
+                    msg,
+                    hostname=global_smtp_host,
+                    port=global_smtp_port,
+                    username=global_smtp_user,
+                    password=global_smtp_password,
+                    start_tls=fallback_starttls,
+                    use_tls=fallback_implicit_tls,
+                    timeout=20,
+                )
+                logger.info("Email sent successfully to %s using global SMTP fallback", to)
+                return
+            except Exception as fallback_exc:
+                logger.error("Global SMTP fallback also failed to %s: %s", to, fallback_exc)
+
         if raise_on_error:
             raise
 
@@ -2751,14 +3280,14 @@ class CurrentPublicMember(BaseModel):
     avatar_url: Optional[str] = None
 
 
-from fastapi import Header
+from fastapi import Header as FastAPIHeader
 
 
 def _hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-async def get_current_user(db: AsyncSession = Depends(get_db), Authorization: Optional[str] = Header(default=None)) -> CurrentUser:
+async def get_current_user(db: AsyncSession = Depends(get_db), Authorization: Optional[str] = FastAPIHeader(default=None)) -> CurrentUser:
     if not Authorization or not Authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = Authorization.split(" ", 1)[1].strip()
@@ -2838,7 +3367,7 @@ async def _resolve_public_member_from_authorization(
 
 async def get_current_public_member(
     db: AsyncSession = Depends(get_db),
-    Authorization: Optional[str] = Header(default=None),
+    Authorization: Optional[str] = FastAPIHeader(default=None),
 ) -> CurrentPublicMember:
     if not Authorization or not Authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -2850,7 +3379,7 @@ async def get_current_public_member(
 
 async def get_optional_public_member(
     db: AsyncSession = Depends(get_db),
-    Authorization: Optional[str] = Header(default=None),
+    Authorization: Optional[str] = FastAPIHeader(default=None),
 ) -> Optional[CurrentPublicMember]:
     return await _resolve_public_member_from_authorization(db, Authorization)
 
@@ -3134,6 +3663,15 @@ async def organization_middleware(request: Request, call_next):
                 await db.rollback()
 
     return response
+
+
+@app.get("/api/events/{event_id}/capacities")
+async def public_event_capacities(event_id: str, db: AsyncSession = Depends(get_db)):
+    ev = await _resolve_public_event(db, event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    caps = await _get_event_capacities(ev.id, db)
+    return caps
 
 
 @app.on_event("startup")
@@ -3648,12 +4186,15 @@ async def startup():
                         db_bulk.add(job)
                         await db_bulk.commit()
 
-        scheduler.add_job(_notify_expiring_certs, "cron", hour=2, minute=0)
-        scheduler.add_job(_monthly_hc_renewal, "cron", hour=3, minute=30)
-        scheduler.add_job(_process_bulk_emails, "interval", minutes=5)  # Every 5 minutes
-        scheduler.add_job(_process_bulk_certificate_jobs, "interval", seconds=3)
-        scheduler.start()
-        logger.info("APScheduler started Ã¢â‚¬â€ cert notifications + monthly HC renewal + bulk email processing + bulk certificate queue")
+        if settings.enable_scheduler:
+            scheduler.add_job(_notify_expiring_certs, "cron", hour=2, minute=0)
+            scheduler.add_job(_monthly_hc_renewal, "cron", hour=3, minute=30)
+            scheduler.add_job(_process_bulk_emails, "interval", minutes=5)  # Every 5 minutes
+            scheduler.add_job(_process_bulk_certificate_jobs, "interval", seconds=3)
+            scheduler.start()
+            logger.info("APScheduler started Ã¢â‚¬â€ cert notifications + monthly HC renewal + bulk email processing + bulk certificate queue")
+        else:
+            logger.info("APScheduler skipped because ENABLE_SCHEDULER=false")
     except Exception as e:
         logger.warning("APScheduler init failed (non-fatal): %s", e)
 
@@ -3668,8 +4209,175 @@ def bad_request(msg: str) -> HTTPException:
     return HTTPException(status_code=400, detail=msg)
 
 
-REGISTRATION_FIELD_TYPES = {"text", "textarea", "number", "tel", "select", "date"}
+REGISTRATION_FIELD_TYPES = {"text", "textarea", "number", "tel", "select", "date", "file"}
 EVENT_VISIBILITY_VALUES = {"private", "unlisted", "public"}
+CERT_TEMPLATE_CONFIG_KEYS = {
+    "isim_x",
+    "isim_y",
+    "qr_x",
+    "qr_y",
+    "qr_size",
+    "font_size",
+    "font_color",
+    "name_text_align",
+    "name_font_weight",
+    "name_font_style",
+    "cert_id_x",
+    "cert_id_y",
+    "cert_id_font_size",
+    "cert_id_color",
+    "show_hologram",
+}
+
+
+def _validate_registration_fields_for_write(raw_fields: Any, *, existing_fields: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    existing_fields = existing_fields or []
+    if raw_fields is None:
+        return existing_fields
+    if not isinstance(raw_fields, list):
+        raise bad_request("registration_fields must be a list.")
+    if existing_fields and not raw_fields:
+        raise bad_request("registration_fields cannot be cleared accidentally. Provide valid fields or remove them explicitly in a dedicated flow.")
+
+    def _ctx(index: int, item: Any) -> str:
+        if not isinstance(item, dict):
+            return f"registration_fields[{index}]"
+        field_id = str(item.get("id") or "").strip()
+        label = str(item.get("label") or "").strip()
+        parts = [f"registration_fields[{index}]"]
+        if field_id:
+            parts.append(f"id={field_id}")
+        if label:
+            parts.append(f'label="{label}"')
+        return " ".join(parts)
+
+    normalized: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    field_types_by_id: Dict[str, str] = {}
+    select_options_by_id: Dict[str, set[str]] = {}
+    conditional_specs: List[Tuple[int, str, str, str]] = []
+
+    for index, item in enumerate(raw_fields):
+        if not isinstance(item, dict):
+            raise bad_request(f"{_ctx(index, item)} must be an object.")
+
+        field_id = str(item.get("id") or "").strip()
+        if not field_id:
+            raise bad_request(f"{_ctx(index, item)}.id is required.")
+        if len(field_id) > 64:
+            raise bad_request(f"{_ctx(index, item)}.id is too long.")
+        if field_id in seen_ids:
+            raise bad_request(f"{_ctx(index, item)}.id is duplicated.")
+
+        label = str(item.get("label") or "").strip()
+        if not label:
+            raise bad_request(f"{_ctx(index, item)}.label is required.")
+        if len(label) > 120:
+            raise bad_request(f"{_ctx(index, item)}.label is too long.")
+
+        field_type = str(item.get("type") or "text").strip().lower()
+        if field_type not in REGISTRATION_FIELD_TYPES:
+            raise bad_request(f"{_ctx(index, item)}.type is invalid.")
+
+        placeholder_raw = item.get("placeholder")
+        placeholder = None
+        if placeholder_raw is not None:
+            placeholder = str(placeholder_raw).strip()
+            if len(placeholder) > 200:
+                raise bad_request(f"{_ctx(index, item)}.placeholder is too long.")
+            if not placeholder:
+                placeholder = None
+
+        helper_text_raw = item.get("helper_text")
+        helper_text = None
+        if helper_text_raw is not None:
+            helper_text = str(helper_text_raw).strip()
+            if len(helper_text) > 5000:
+                raise bad_request(f"{_ctx(index, item)}.helper_text is too long.")
+            if not helper_text:
+                helper_text = None
+
+        raw_options = item.get("options")
+        options: List[Dict[str, Any]] = []
+        selection_mode = "single"
+
+        if field_type == "select":
+            if not isinstance(raw_options, list) or not raw_options:
+                raise bad_request(f"{_ctx(index, item)}.options is required for select fields.")
+            seen_labels: set[str] = set()
+            for opt_index, opt in enumerate(raw_options):
+                if isinstance(opt, dict):
+                    opt_label = str(opt.get("label") or "").strip()
+                    capacity_raw = opt.get("capacity")
+                else:
+                    opt_label = str(opt or "").strip()
+                    capacity_raw = None
+                if not opt_label:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is required.")
+                if len(opt_label) > 120:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is too long.")
+                if opt_label in seen_labels:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is duplicated.")
+                if capacity_raw in (None, ""):
+                    capacity_val = None
+                else:
+                    try:
+                        capacity_val = int(capacity_raw)
+                    except Exception as exc:
+                        raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].capacity is invalid.") from exc
+                options.append({"label": opt_label, "capacity": capacity_val})
+                seen_labels.add(opt_label)
+            if len(options) > 30:
+                raise bad_request(f"{_ctx(index, item)}.options cannot exceed 30 items.")
+            raw_selection_mode = str(item.get("selection_mode") or "single").strip().lower()
+            if raw_selection_mode not in {"single", "multiple"}:
+                raise bad_request(f"{_ctx(index, item)}.selection_mode is invalid.")
+            selection_mode = raw_selection_mode
+        elif raw_options not in (None, []):
+            raise bad_request(f"{_ctx(index, item)}.options is only valid for select fields.")
+
+        required_when_field_id = str(item.get("required_when_field_id") or "").strip()
+        required_when_equals = str(item.get("required_when_equals") or "").strip()
+        if bool(required_when_field_id) ^ bool(required_when_equals):
+            raise bad_request(f"{_ctx(index, item)} conditional fields must include both required_when_field_id and required_when_equals.")
+        if required_when_field_id and len(required_when_field_id) > 64:
+            raise bad_request(f"{_ctx(index, item)}.required_when_field_id is too long.")
+        if required_when_equals and len(required_when_equals) > 120:
+            raise bad_request(f"{_ctx(index, item)}.required_when_equals is too long.")
+
+        normalized_item: Dict[str, Any] = {
+            "id": field_id,
+            "label": label,
+            "type": field_type,
+            "required": bool(item.get("required")),
+            "placeholder": placeholder,
+            "helper_text": helper_text,
+        }
+        if field_type == "select":
+            normalized_item["options"] = options
+            normalized_item["selection_mode"] = selection_mode
+            select_options_by_id[field_id] = {option["label"] for option in options}
+        if required_when_field_id and required_when_equals:
+            normalized_item["required_when_field_id"] = required_when_field_id
+            normalized_item["required_when_equals"] = required_when_equals
+            conditional_specs.append((index, field_id, required_when_field_id, required_when_equals))
+
+        normalized.append(normalized_item)
+        seen_ids.add(field_id)
+        field_types_by_id[field_id] = field_type
+
+    valid_ids = set(field_types_by_id)
+    for index, field_id, cond_id, cond_value in conditional_specs:
+        if cond_id not in valid_ids:
+            raise bad_request(f"registration_fields[{index}] id={field_id} references an unknown required_when_field_id: {cond_id}.")
+        if cond_id == field_id:
+            raise bad_request(f"registration_fields[{index}] id={field_id} cannot depend on itself.")
+        if field_types_by_id.get(cond_id) != "select":
+            raise bad_request(f"registration_fields[{index}] id={field_id} required_when_field_id must reference a select field: {cond_id}.")
+        if cond_value not in select_options_by_id.get(cond_id, set()):
+            raise bad_request(f"registration_fields[{index}] id={field_id} required_when_equals must match one of the referenced select options on {cond_id}: {cond_value}.")
+
+    return normalized
 
 
 def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
@@ -3698,17 +4406,45 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
             field_type = "text"
 
         placeholder = str(item.get("placeholder") or "").strip()[:200] or None
-        helper_text = str(item.get("helper_text") or "").strip()[:300] or None
+        helper_text = str(item.get("helper_text") or "").strip()[:5000] or None
         required = bool(item.get("required"))
+        required_when_field_id = str(item.get("required_when_field_id") or "").strip()[:64]
+        required_when_equals = str(item.get("required_when_equals") or "").strip()[:120]
 
-        options: List[str] = []
+        options: List[Dict[str, Any]] = []
+        selection_mode = "single"
         raw_options = item.get("options")
         if isinstance(raw_options, list):
-            options = [str(option).strip()[:120] for option in raw_options if str(option).strip()]
+            for opt in raw_options:
+                if isinstance(opt, dict):
+                    lbl = str(opt.get("label") or "").strip()[:120]
+                    if not lbl:
+                        continue
+                    cap = opt.get("capacity")
+                    try:
+                        cap_val = int(cap) if cap is not None and str(cap).strip() != "" else None
+                    except Exception:
+                        cap_val = None
+                    options.append({"label": lbl, "capacity": cap_val})
+                else:
+                    s = str(opt or "").strip()[:120]
+                    if s:
+                        options.append({"label": s, "capacity": None})
         if field_type == "select":
-            options = list(dict.fromkeys(options))[:30]
+            # dedupe by label keeping first occurrence
+            seen = set()
+            deduped: List[Dict[str, Any]] = []
+            for o in options:
+                if o["label"] in seen:
+                    continue
+                seen.add(o["label"])
+                deduped.append(o)
+            options = deduped[:30]
             if not options:
                 field_type = "text"
+            else:
+                raw_selection_mode = str(item.get("selection_mode") or "single").strip().lower()
+                selection_mode = "multiple" if raw_selection_mode == "multiple" else "single"
 
         normalized_item: Dict[str, Any] = {
             "id": field_id,
@@ -3720,9 +4456,21 @@ def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
         }
         if field_type == "select":
             normalized_item["options"] = options
+            normalized_item["selection_mode"] = selection_mode
+        if required_when_field_id and required_when_equals:
+            normalized_item["required_when_field_id"] = required_when_field_id
+            normalized_item["required_when_equals"] = required_when_equals
 
         normalized.append(normalized_item)
         seen_ids.add(field_id)
+
+    valid_ids = {item["id"] for item in normalized}
+    for item in normalized:
+        cond_id = str(item.get("required_when_field_id") or "").strip()
+        cond_value = str(item.get("required_when_equals") or "").strip()
+        if not cond_id or not cond_value or cond_id not in valid_ids or cond_id == item["id"]:
+            item.pop("required_when_field_id", None)
+            item.pop("required_when_equals", None)
 
     return normalized
 
@@ -3739,6 +4487,16 @@ def _normalize_event_visibility(raw_visibility: Any) -> str:
     return value
 
 
+def _merge_certificate_template_config(event_config: Optional[Dict[str, Any]], template_config: Any) -> Dict[str, Any]:
+    next_config = dict(event_config or {})
+    if not isinstance(template_config, dict):
+        return next_config
+    for key in CERT_TEMPLATE_CONFIG_KEYS:
+        if key in template_config:
+            next_config[key] = template_config[key]
+    return next_config
+
+
 def _get_event_visibility(event: Event) -> str:
     config = event.config or {}
     return _normalize_event_visibility(config.get("visibility"))
@@ -3750,6 +4508,70 @@ def _get_event_email_verification_required(event: Event) -> bool:
     if raw_value is None:
         return True
     return bool(raw_value)
+
+
+def _get_event_registration_quota(event: Event) -> Optional[int]:
+    config = event.config or {}
+    raw_value = config.get("registration_quota")
+    if raw_value is None or raw_value == "":
+        return None
+    try:
+        quota = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return quota if quota > 0 else None
+
+
+def _is_event_registration_quota_enabled(event: Event) -> bool:
+    config = event.config or {}
+    raw_value = config.get("registration_quota_enabled")
+    if raw_value is None:
+        # Backward-compatible default: enabled only when quota is set.
+        return _get_event_registration_quota(event) is not None
+    return bool(raw_value)
+
+
+def _is_event_kvkk_consent_required(event: Event) -> bool:
+    config = event.config or {}
+    raw_value = config.get("kvkk_consent_required")
+    if raw_value is None:
+        # Backward compatibility: legacy events without this key are not forced.
+        return False
+    return bool(raw_value)
+
+
+def _get_event_kvkk_consent_text(event: Event) -> str:
+    config = event.config or {}
+    custom = str(config.get("kvkk_consent_text") or "").strip()
+    if custom:
+        return custom
+    return (
+        "KVKK AYDINLATMA METNI\n\n"
+        "1) Veri sorumlusu\n"
+        "Bu etkinlik kaydi kapsaminda paylastiginiz kisisel verileriniz, ilgili organizasyon ve Heptapus Group tarafindan "
+        "6698 sayili Kisisel Verilerin Korunmasi Kanunu (KVKK) hukumlerine uygun sekilde islenebilir.\n\n"
+        "2) Islenen veri kategorileri\n"
+        "Etkinlik kaydi sirasinda ad-soyad, e-posta adresi, kayit formunda girdiginiz ek bilgiler, "
+        "zorunlu/istege bagli yuklediginiz belgeler ve teknik kayitlar (IP, cihaz ve zaman bilgisi) islenebilir.\n\n"
+        "3) Isleme amaclari\n"
+        "Verileriniz; kaydinizin alinmasi, katilimci dogrulama sureclerinin yurutilmesi, yoklama/check-in islemleri, "
+        "sertifika surecleri, destek hizmetleri, guvenlik kontrolleri ve ilgili mevzuattan dogan yukumluluklerin yerine "
+        "getirilmesi amaclariyla kullanilir.\n\n"
+        "4) Hukuki sebep\n"
+        "Kisisel verileriniz KVKK madde 5 ve 6 kapsaminda; acik rizaniz, bir sozlesmenin kurulmasi/ifasi, "
+        "hukuki yukumluluklerin yerine getirilmesi ve mesru menfaat hukuki sebeplerine dayanilarak islenebilir.\n\n"
+        "5) Aktarim\n"
+        "Verileriniz, hizmetin sunulmasi icin gerekli oldugu olcude; altyapi, barindirma, e-posta veya teknik destek "
+        "saglayicilari gibi is ortagi/hizmet saglayicilarla, yalnizca amacla sinirli ve olculu sekilde paylasilabilir.\n\n"
+        "6) Saklama suresi ve guvenlik\n"
+        "Verileriniz ilgili isleme amaci ortadan kalkincaya kadar ve mevzuatta ongorulen saklama sureleri boyunca saklanir. "
+        "Bu sure sonunda veriler silinir, yok edilir veya anonim hale getirilir. Uygun teknik ve idari guvenlik onlemleri uygulanir.\n\n"
+        "7) Haklariniz\n"
+        "KVKK madde 11 kapsaminda; verinize erisim, duzeltme, silme, islemeyi sinirlama, itiraz ve zararin giderilmesini talep etme "
+        "haklarina sahipsiniz.\n\n"
+        "8) Basvuru ve iletisim\n"
+        "KVKK kapsamindaki taleplerinizi contact@heptapusgroup.com adresine iletebilirsiniz."
+    )
 
 
 def _is_event_registration_closed(event: Event) -> bool:
@@ -3839,12 +4661,74 @@ def _build_public_org_summary(
 def _normalize_registration_answers(
     registration_fields: List[Dict[str, Any]],
     raw_answers: Any,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     raw_map = raw_answers if isinstance(raw_answers, dict) else {}
-    normalized: Dict[str, str] = {}
+    normalized: Dict[str, Any] = {}
 
     for field in registration_fields:
         field_id = field["id"]
+        if field.get("type") == "file":
+            # File fields are validated via registration_documents payload.
+            continue
+
+        if field.get("type") == "select":
+            options = field.get("options") or []
+            # options may be list of dicts {label, capacity} or strings; normalize labels
+            option_labels: List[str] = []
+            for o in options:
+                if isinstance(o, dict):
+                    option_labels.append(str(o.get("label") or "").strip())
+                else:
+                    option_labels.append(str(o or "").strip())
+            selection_mode = "multiple" if str(field.get("selection_mode") or "").strip().lower() == "multiple" else "single"
+            raw_value = raw_map.get(field_id)
+
+            if selection_mode == "multiple":
+                if raw_value is None:
+                    values: List[str] = []
+                elif isinstance(raw_value, str):
+                    stripped = raw_value.strip()
+                    values = [stripped] if stripped else []
+                elif isinstance(raw_value, (list, tuple, set)):
+                    values = [str(item).strip()[:120] for item in raw_value if str(item).strip()]
+                else:
+                    raise bad_request(f'"{field["label"]}" alanı için geçerli bir değer girin.')
+
+                values = list(dict.fromkeys(values))[:30]
+                invalid_values = [value for value in values if value not in option_labels]
+                if invalid_values:
+                    raise bad_request(f'"{field["label"]}" alanı için geçerli seçimler yapın.')
+
+                is_required = bool(field.get("required")) or _is_registration_field_condition_met(field, raw_map)
+                if is_required and not values:
+                    raise bad_request(f'"{field["label"]}" alanı zorunludur.')
+
+                if values:
+                    normalized[field_id] = values
+                continue
+
+            if raw_value is None:
+                value = ""
+            elif isinstance(raw_value, str):
+                value = raw_value.strip()
+            elif isinstance(raw_value, (int, float, bool)):
+                value = str(raw_value).strip()
+            else:
+                raise bad_request(f'"{field["label"]}" alanı için geçerli bir değer girin.')
+
+            is_required = bool(field.get("required")) or _is_registration_field_condition_met(field, raw_map)
+            if is_required and not value:
+                raise bad_request(f'"{field["label"]}" alanı zorunludur.')
+
+            if not value:
+                continue
+
+            if value not in option_labels:
+                raise bad_request(f'"{field["label"]}" alanı için geçerli bir seçim yapın.')
+
+            normalized[field_id] = value[:1000]
+            continue
+
         raw_value = raw_map.get(field_id, "")
         if raw_value is None:
             value = ""
@@ -3855,20 +4739,39 @@ def _normalize_registration_answers(
         else:
             raise bad_request(f'"{field["label"]}" alanı için geçerli bir değer girin.')
 
-        if field.get("required") and not value:
+        is_required = bool(field.get("required")) or _is_registration_field_condition_met(field, raw_map)
+        if is_required and not value:
             raise bad_request(f'"{field["label"]}" alanı zorunludur.')
 
         if not value:
             continue
 
-        if field.get("type") == "select":
-            options = field.get("options") or []
-            if value not in options:
-                raise bad_request(f'"{field["label"]}" alanı için geçerli bir seçim yapın.')
-
         normalized[field_id] = value[:1000]
 
     return normalized
+
+
+def _is_registration_field_condition_met(field: Dict[str, Any], answers: Dict[str, Any]) -> bool:
+    condition_field_id = str(field.get("required_when_field_id") or "").strip()
+    condition_value = str(field.get("required_when_equals") or "").strip()
+    if not condition_field_id or not condition_value:
+        return False
+
+    raw_value = answers.get(condition_field_id)
+    if raw_value is None:
+        return False
+
+    if isinstance(raw_value, str):
+        actual_value = raw_value.strip()
+    elif isinstance(raw_value, (int, float, bool)):
+        actual_value = str(raw_value).strip()
+    elif isinstance(raw_value, (list, tuple, set)):
+        normalized_values = [str(item).strip() for item in raw_value if str(item).strip()]
+        return any(value.casefold() == condition_value.casefold() for value in normalized_values)
+    else:
+        return False
+
+    return actual_value.casefold() == condition_value.casefold()
 
 
 async def _get_checkin_context_by_token(checkin_token: str, db: AsyncSession) -> Optional[Dict[str, Any]]:
@@ -3933,6 +4836,25 @@ async def _get_event_total_sessions_cached(event_id: int, db: AsyncSession) -> i
 def _safe_cert_filename(student_name: str, public_id: str) -> str:
     base = f"{student_name}_{public_id}.pdf"
     return "".join(c if c.isalnum() or c in " _-." else "_" for c in base)
+
+
+def _sanitize_zip_path_part(value: str, fallback: str = "item", max_len: int = 90) -> str:
+    cleaned = "".join(c if c.isalnum() or c in "._-" else "_" for c in (value or "").strip())
+    cleaned = cleaned.strip("._-")
+    if not cleaned:
+        cleaned = fallback
+    return cleaned[:max_len]
+
+
+def _safe_registration_document_name(raw_name: str, fallback: str = "document") -> str:
+    filename = Path(raw_name or "").name or fallback
+    stem = Path(filename).stem or fallback
+    suffix = Path(filename).suffix[:12]
+    safe_stem = _sanitize_zip_path_part(stem, fallback=fallback, max_len=100)
+    safe_suffix = "".join(c if c.isalnum() or c == "." else "" for c in suffix)
+    if safe_suffix and not safe_suffix.startswith("."):
+        safe_suffix = f".{safe_suffix}"
+    return f"{safe_stem}{safe_suffix}"[:130]
 
 
 async def _process_one_bulk_certificate_job(job_id: int) -> None:
@@ -4931,8 +5853,8 @@ async def get_event_survey(
 async def submit_builtin_survey(
     event_id: str,
     survey_resp_in: SurveyResponseIn,
-    attendee_id_header_snake: Optional[int] = Header(default=None, alias="attendee_id"),
-    attendee_id_header_kebab: Optional[int] = Header(default=None, alias="attendee-id"),
+    attendee_id_header_snake: Optional[int] = FastAPIHeader(default=None, alias="attendee_id"),
+    attendee_id_header_kebab: Optional[int] = FastAPIHeader(default=None, alias="attendee-id"),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a built-in survey response. Attendee endpoint."""
@@ -5762,9 +6684,12 @@ async def login(request: Request, data: LoginIn, db: AsyncSession = Depends(get_
 @app.post("/api/auth/register", status_code=201)
 @limiter.limit("3/minute")
 async def register(request: Request, data: RegisterIn, db: AsyncSession = Depends(get_db)):
+    if not data.terms_accepted:
+        raise bad_request("Kayıt için kullanım koşullarını kabul etmelisiniz.")
+
     res = await db.execute(select(User).where(User.email == str(data.email)))
     if res.scalar_one_or_none():
-        raise bad_request("Bu e-posta adresi zaten kayÃ„Â±tlÃ„Â±.")
+        raise bad_request("Bu e-posta adresi zaten kayıtlı.")
 
     token = make_email_token({"email": str(data.email), "action": "verify"})
     user = User(
@@ -5781,15 +6706,15 @@ async def register(request: Request, data: RegisterIn, db: AsyncSession = Depend
     verify_link = f"{settings.frontend_base_url}/verify-email?token={token}"
     await send_email_async(
         to=str(data.email),
-        subject="HeptaCert Ã¢â‚¬â€ E-posta Adresinizi DoÃ„Å¸rulayÃ„Â±n",
+        subject="HeptaCert - E-posta Adresinizi Doğrulayın",
         html_body=f"""
         <p>Merhaba,</p>
-        <p>HeptaCert'e hoÃ…Å¸ geldiniz! HesabÃ„Â±nÃ„Â±zÃ„Â± aktif etmek iÃƒÂ§in aÃ…Å¸aÃ„Å¸Ã„Â±daki baÃ„Å¸lantÃ„Â±ya tÃ„Â±klayÃ„Â±n:</p>
+        <p>HeptaCert'e hoş geldiniz! Hesabınızı aktif etmek için aşağıdaki bağlantıya tıklayın:</p>
         <p><a href="{verify_link}">{verify_link}</a></p>
-        <p>Bu baÃ„Å¸lantÃ„Â± 24 saat geÃƒÂ§erlidir.</p>
+        <p>Bu bağlantı 24 saat geçerlidir.</p>
         """,
     )
-    return {"detail": "KayÃ„Â±t baÃ…Å¸arÃ„Â±lÃ„Â±. Aktivasyon e-postasÃ„Â± gÃƒÂ¶nderildi."}
+    return {"detail": "Kayıt başarılı. Aktivasyon e-postası gönderildi."}
 
 
 @app.get("/api/auth/verify-email")
@@ -5797,30 +6722,33 @@ async def verify_email_endpoint(token: str = Query(...), db: AsyncSession = Depe
     try:
         payload = verify_email_token(token, max_age=86400)
     except SignatureExpired:
-        raise bad_request("DoÃ„Å¸rulama baÃ„Å¸lantÃ„Â±sÃ„Â±nÃ„Â±n sÃƒÂ¼resi dolmuÃ…Å¸. LÃƒÂ¼tfen yeniden kayÃ„Â±t olun.")
+        raise bad_request("Doğrulama bağlantısının süresi dolmuş. Lütfen yeniden kayıt olun.")
     except (BadSignature, Exception):
-        raise bad_request("GeÃƒÂ§ersiz doÃ„Å¸rulama baÃ„Å¸lantÃ„Â±sÃ„Â±.")
+        raise bad_request("Geçersiz doğrulama bağlantısı.")
 
     if payload.get("action") != "verify":
-        raise bad_request("GeÃƒÂ§ersiz token tÃƒÂ¼rÃƒÂ¼.")
+        raise bad_request("Geçersiz token türü.")
 
     email = payload.get("email")
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="KullanÃ„Â±cÃ„Â± bulunamadÃ„Â±.")
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
     if user.is_verified:
-        return {"detail": "HesabÃ„Â±nÃ„Â±z zaten doÃ„Å¸rulanmÃ„Â±Ã…Å¸."}
+        return {"detail": "Hesabınız zaten doğrulanmış."}
 
     user.is_verified = True
     user.verification_token = None
     await db.commit()
-    return {"detail": "E-posta baÃ…Å¸arÃ„Â±yla doÃ„Å¸rulandÃ„Â±. GiriÃ…Å¸ yapabilirsiniz."}
+    return {"detail": "E-posta başarıyla doğrulandı. Giriş yapabilirsiniz."}
 
 
 @app.post("/api/public/auth/register", status_code=201)
 @limiter.limit("3/minute")
 async def public_member_register(request: Request, data: PublicMemberRegisterIn, db: AsyncSession = Depends(get_db)):
+    if not data.terms_accepted:
+        raise bad_request("You must accept the terms of use to register.")
+
     email = str(data.email).strip().lower()
     display_name = data.display_name.strip()
     if not display_name:
@@ -5979,14 +6907,14 @@ async def forgot_password(request: Request, data: ForgotPasswordIn, db: AsyncSes
         reset_link = f"{settings.frontend_base_url}/reset-password?token={token}"
         await send_email_async(
             to=str(data.email),
-            subject="HeptaCert Ã¢â‚¬â€ Ã…Âifre SÃ„Â±fÃ„Â±rlama",
+            subject="HeptaCert - Şifre Sıfırlama",
             html_body=f"""
-            <p>Ã…Âifrenizi sÃ„Â±fÃ„Â±rlamak iÃƒÂ§in aÃ…Å¸aÃ„Å¸Ã„Â±daki baÃ„Å¸lantÃ„Â±ya tÃ„Â±klayÃ„Â±n:</p>
+            <p>Şifrenizi sıfırlamak için aşağıdaki bağlantıya tıklayın:</p>
             <p><a href="{reset_link}">{reset_link}</a></p>
-            <p>Bu baÃ„Å¸lantÃ„Â± 1 saat geÃƒÂ§erlidir.</p>
+            <p>Bu bağlantı 1 saat geçerlidir.</p>
             """,
         )
-    return {"detail": "Ã…Âifre sÃ„Â±fÃ„Â±rlama talimatlarÃ„Â± e-posta adresinize gÃƒÂ¶nderildi."}
+    return {"detail": "Şifre sıfırlama talimatları e-posta adresinize gönderildi."}
 
 
 @app.post("/api/auth/reset-password")
@@ -5995,27 +6923,27 @@ async def reset_password(request: Request, data: ResetPasswordIn, db: AsyncSessi
     try:
         payload = verify_email_token(data.token, max_age=3600)
     except SignatureExpired:
-        raise bad_request("Ã…Âifre sÃ„Â±fÃ„Â±rlama baÃ„Å¸lantÃ„Â±sÃ„Â±nÃ„Â±n sÃƒÂ¼resi dolmuÃ…Å¸.")
+        raise bad_request("Şifre sıfırlama bağlantısının süresi dolmuş.")
     except (BadSignature, Exception):
-        raise bad_request("GeÃƒÂ§ersiz sÃ„Â±fÃ„Â±rlama baÃ„Å¸lantÃ„Â±sÃ„Â±.")
+        raise bad_request("Geçersiz sıfırlama bağlantısı.")
 
     if payload.get("action") != "reset":
-        raise bad_request("GeÃƒÂ§ersiz token tÃƒÂ¼rÃƒÂ¼.")
+        raise bad_request("Geçersiz token türü.")
 
     email = payload.get("email")
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="KullanÃ„Â±cÃ„Â± bulunamadÃ„Â±.")
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
     # Validate that the token matches the one stored in DB (prevents replay attacks)
     if not user.password_reset_token or user.password_reset_token != data.token:
-        raise bad_request("Bu sÃ„Â±fÃ„Â±rlama baÃ„Å¸lantÃ„Â±sÃ„Â± zaten kullanÃ„Â±lmÃ„Â±Ã…Å¸.")
+        raise bad_request("Bu sıfırlama bağlantısı zaten kullanılmış.")
 
     user.password_hash = hash_password(data.new_password)
     user.password_reset_token = None
     await db.commit()
-    return {"detail": "Ã…Âifreniz baÃ…Å¸arÃ„Â±yla gÃƒÂ¼ncellendi."}
+    return {"detail": "Şifreniz başarıyla güncellendi."}
 
 
 class AdminListItem(BaseModel):
@@ -6043,6 +6971,251 @@ class AdminRowOut(BaseModel):
     email: EmailStr
     role: Role
     heptacoin_balance: int
+
+
+class SuperadminAudienceItemOut(BaseModel):
+    email: EmailStr
+    public_member_count: int
+    attendee_count: int
+
+
+class SuperadminAudienceOut(BaseModel):
+    items: List[SuperadminAudienceItemOut]
+    total: int
+    limit: int
+    offset: int
+    source: str
+    unique_public_member_emails: int
+    unique_attendee_emails: int
+    unique_organizer_emails: int
+
+
+class SuperadminBulkEmailIn(BaseModel):
+    subject: str = Field(min_length=3, max_length=240)
+    body_html: str = Field(min_length=10, max_length=100_000)
+    source: str = Field(default="all", pattern="^(all|public_members|attendees|organizers)$")
+    dry_run: bool = False
+
+
+class SuperadminBulkEmailOut(BaseModel):
+    dry_run: bool
+    source: str
+    targeted: int
+    sent: int
+    failed: int
+    message: str
+
+
+class SuperadminBulkEmailJobIn(BaseModel):
+    subject: str = Field(min_length=3, max_length=240)
+    body_html: str = Field(min_length=10, max_length=100_000)
+    source: str = Field(default="all", pattern="^(all|public_members|attendees|organizers)$")
+
+
+class SuperadminBulkEmailJobOut(BaseModel):
+    id: int
+    created_by: int
+    source: str
+    subject: str
+    total_targets: int
+    sent_count: int
+    failed_count: int
+    status: str
+    cancel_requested: bool
+    error_message: Optional[str]
+    created_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SuperadminEmailActivityItemOut(BaseModel):
+    channel: str
+    job_id: int
+    sender_user_id: int
+    sender_email: EmailStr
+    event_id: Optional[int] = None
+    event_name: Optional[str] = None
+    recipient_group: str
+    subject: str
+    status: str
+    total_targets: int
+    sent_count: int
+    failed_count: int
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+
+
+class SuperadminEmailActivityOut(BaseModel):
+    items: List[SuperadminEmailActivityItemOut]
+    total: int
+    limit: int
+    offset: int
+
+
+def _non_empty_normalized_email(column_expr: Any) -> Any:
+    normalized = func.lower(func.trim(column_expr))
+    return normalized, func.trim(column_expr) != ""
+
+
+def _superadmin_audience_union_stmt(source: str):
+    pm_email, pm_non_empty = _non_empty_normalized_email(PublicMember.email)
+    attendee_email, attendee_non_empty = _non_empty_normalized_email(Attendee.email)
+    organizer_email, organizer_non_empty = _non_empty_normalized_email(User.email)
+
+    public_members_stmt = select(
+        pm_email.label("email"),
+        literal(1).label("public_member_count"),
+        literal(0).label("attendee_count"),
+        literal(0).label("organizer_count"),
+    ).where(PublicMember.email.is_not(None), pm_non_empty)
+
+    attendees_stmt = select(
+        attendee_email.label("email"),
+        literal(0).label("public_member_count"),
+        literal(1).label("attendee_count"),
+        literal(0).label("organizer_count"),
+    ).where(Attendee.email.is_not(None), attendee_non_empty)
+
+    organizers_stmt = select(
+        organizer_email.label("email"),
+        literal(0).label("public_member_count"),
+        literal(0).label("attendee_count"),
+        literal(1).label("organizer_count"),
+    ).where(User.email.is_not(None), organizer_non_empty, User.role == Role.admin)
+
+    if source == "public_members":
+        return public_members_stmt
+    if source == "attendees":
+        return attendees_stmt
+    if source == "organizers":
+        return organizers_stmt
+    return union_all(public_members_stmt, attendees_stmt, organizers_stmt)
+
+
+async def _resolve_superadmin_recipient_emails(db: AsyncSession, source: str) -> List[str]:
+    audience_union = _superadmin_audience_union_stmt(source).subquery("audience_send")
+    email_rows_res = await db.execute(
+        select(distinct(audience_union.c.email)).order_by(audience_union.c.email.asc())
+    )
+    return [email for email in email_rows_res.scalars().all() if email]
+
+
+async def _run_superadmin_bulk_email_job(job_id: int) -> None:
+    try:
+        async with SessionLocal() as db_job:
+            res = await db_job.execute(
+                select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id)
+            )
+            job = res.scalar_one_or_none()
+            if not job or job.status != "pending":
+                return
+
+            if job.cancel_requested:
+                job.status = "cancelled"
+                job.completed_at = datetime.now(timezone.utc)
+                db_job.add(job)
+                await db_job.commit()
+                return
+
+            job.status = "sending"
+            job.started_at = datetime.now(timezone.utc)
+            job.error_message = None
+            db_job.add(job)
+            await db_job.commit()
+
+            recipients = await _resolve_superadmin_recipient_emails(db_job, job.source)
+            job.total_targets = len(recipients)
+            db_job.add(job)
+            await db_job.commit()
+
+            if not recipients:
+                job.status = "failed"
+                job.error_message = "Hedef alici bulunamadi."
+                job.completed_at = datetime.now(timezone.utc)
+                db_job.add(job)
+                await db_job.commit()
+                return
+
+            sent_count = 0
+            failed_count = 0
+
+            for idx, recipient in enumerate(recipients):
+                check_res = await db_job.execute(
+                    select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id)
+                )
+                fresh_job = check_res.scalar_one_or_none()
+                if not fresh_job:
+                    return
+                if fresh_job.cancel_requested:
+                    fresh_job.sent_count = sent_count
+                    fresh_job.failed_count = failed_count
+                    fresh_job.status = "cancelled"
+                    fresh_job.completed_at = datetime.now(timezone.utc)
+                    db_job.add(fresh_job)
+                    await db_job.commit()
+                    return
+
+                try:
+                    await send_email_async(
+                        to=recipient,
+                        subject=fresh_job.subject,
+                        html_body=fresh_job.body_html,
+                        raise_on_error=True,
+                        sender_user_id=fresh_job.created_by,
+                    )
+                    sent_count += 1
+                except Exception:
+                    failed_count += 1
+
+                if idx % 10 == 0 or idx == len(recipients) - 1:
+                    fresh_job.sent_count = sent_count
+                    fresh_job.failed_count = failed_count
+                    db_job.add(fresh_job)
+                    await db_job.commit()
+
+            finish_res = await db_job.execute(
+                select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id)
+            )
+            finish_job = finish_res.scalar_one_or_none()
+            if not finish_job:
+                return
+            finish_job.sent_count = sent_count
+            finish_job.failed_count = failed_count
+            finish_job.status = "completed"
+            finish_job.completed_at = datetime.now(timezone.utc)
+            db_job.add(finish_job)
+            await db_job.commit()
+
+    except Exception as exc:
+        async with SessionLocal() as db_err:
+            res = await db_err.execute(
+                select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id)
+            )
+            job = res.scalar_one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_message = str(exc)[:2000]
+                job.completed_at = datetime.now(timezone.utc)
+                db_err.add(job)
+                await db_err.commit()
+
+
+async def _enqueue_superadmin_bulk_email_job(job_id: int) -> None:
+    async with superadmin_bulk_email_tasks_lock:
+        current_task = superadmin_bulk_email_tasks.get(job_id)
+        if current_task and not current_task.done():
+            return
+        task = asyncio.create_task(_run_superadmin_bulk_email_job(job_id))
+        superadmin_bulk_email_tasks[job_id] = task
+
+        def _cleanup(_: asyncio.Task) -> None:
+            superadmin_bulk_email_tasks.pop(job_id, None)
+
+        task.add_done_callback(_cleanup)
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Email Templates Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -6311,7 +7484,7 @@ async def apply_cert_template(
     
     # Update event with template image and config
     event.template_image_url = cert_template.template_image_url
-    event.config = cert_template.config if cert_template.config else event.config
+    event.config = _merge_certificate_template_config(event.config, cert_template.config)
     db.add(event)
     await db.commit()
     await db.refresh(event)
@@ -6358,7 +7531,7 @@ async def update_email_config(
     if payload.smtp_user is not None:
         config.smtp_user = payload.smtp_user.strip() or None
     if payload.smtp_password:
-        config.smtp_password = payload.smtp_password
+        config.smtp_password = _encrypt_smtp_password(payload.smtp_password)
     if payload.from_name is not None:
         config.from_name = payload.from_name.strip() or None
     if payload.reply_to is not None:
@@ -6371,6 +7544,34 @@ async def update_email_config(
     await db.commit()
     await db.refresh(config)
     return config
+
+
+@app.get(
+    "/api/admin/email-config/saved-accounts",
+    response_model=list[SavedSMTPAccountOut],
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
+)
+async def list_saved_smtp_accounts(
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    config = await _ensure_user_email_config(db, me.id)
+    if not (config.smtp_host or config.smtp_user or config.from_email):
+        return []
+    return [
+        SavedSMTPAccountOut(
+            id=config.id,
+            smtp_enabled=bool(config.smtp_enabled),
+            smtp_host=config.smtp_host,
+            smtp_port=config.smtp_port,
+            smtp_use_tls=bool(config.smtp_use_tls),
+            smtp_user=config.smtp_user,
+            from_email=config.from_email,
+            from_name=config.from_name,
+            updated_at=config.updated_at,
+            has_password=bool(config.smtp_password),
+        )
+    ]
 
 
 @app.post(
@@ -7074,6 +8275,383 @@ async def list_admins(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@app.get(
+    "/api/superadmin/email-audience",
+    response_model=SuperadminAudienceOut,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def get_superadmin_email_audience(
+    source: str = Query(default="all", pattern="^(all|public_members|attendees|organizers)$"),
+    search: Optional[str] = Query(default=None, max_length=320),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    audience_union = _superadmin_audience_union_stmt(source).subquery("audience_union")
+
+    grouped = select(
+        audience_union.c.email,
+        func.sum(audience_union.c.public_member_count).label("public_member_count"),
+        func.sum(audience_union.c.attendee_count).label("attendee_count"),
+        func.sum(audience_union.c.organizer_count).label("organizer_count"),
+    ).group_by(audience_union.c.email)
+
+    if search and search.strip():
+        search_like = f"%{search.strip().lower()}%"
+        grouped = grouped.where(audience_union.c.email.ilike(search_like))
+
+    grouped_subquery = grouped.subquery("audience_grouped")
+
+    total_res = await db.execute(select(func.count()).select_from(grouped_subquery))
+    total = int(total_res.scalar_one() or 0)
+
+    unique_public_res = await db.execute(
+        select(func.count(distinct(func.lower(func.trim(PublicMember.email))))).where(
+            PublicMember.email.is_not(None),
+            func.trim(PublicMember.email) != "",
+        )
+    )
+    unique_public_member_emails = int(unique_public_res.scalar_one() or 0)
+
+    unique_attendee_res = await db.execute(
+        select(func.count(distinct(func.lower(func.trim(Attendee.email))))).where(
+            Attendee.email.is_not(None),
+            func.trim(Attendee.email) != "",
+        )
+    )
+    unique_attendee_emails = int(unique_attendee_res.scalar_one() or 0)
+
+    unique_organizer_res = await db.execute(
+        select(func.count(distinct(func.lower(func.trim(User.email))))).where(
+            User.email.is_not(None),
+            func.trim(User.email) != "",
+            User.role == Role.admin,
+        )
+    )
+    unique_organizer_emails = int(unique_organizer_res.scalar_one() or 0)
+
+    rows_res = await db.execute(
+        select(grouped_subquery)
+        .order_by(grouped_subquery.c.email.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = rows_res.all()
+
+    items = [
+        SuperadminAudienceItemOut(
+            email=row.email,
+            public_member_count=int(row.public_member_count or 0),
+            attendee_count=int(row.attendee_count or 0),
+        )
+        for row in rows
+    ]
+
+    return SuperadminAudienceOut(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        source=source,
+        unique_public_member_emails=unique_public_member_emails,
+        unique_attendee_emails=unique_attendee_emails,
+        unique_organizer_emails=unique_organizer_emails,
+    )
+
+
+@app.post(
+    "/api/superadmin/bulk-email",
+    response_model=SuperadminBulkEmailOut,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def send_superadmin_bulk_email(
+    payload: SuperadminBulkEmailIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    recipient_emails = await _resolve_superadmin_recipient_emails(db, payload.source)
+
+    if not recipient_emails:
+        return SuperadminBulkEmailOut(
+            dry_run=payload.dry_run,
+            source=payload.source,
+            targeted=0,
+            sent=0,
+            failed=0,
+            message="Hedef alici bulunamadi.",
+        )
+
+    if payload.dry_run:
+        return SuperadminBulkEmailOut(
+            dry_run=True,
+            source=payload.source,
+            targeted=len(recipient_emails),
+            sent=0,
+            failed=0,
+            message="Dry-run tamamlandi. E-posta gonderimi yapilmadi.",
+        )
+
+    sem = asyncio.Semaphore(10)
+    sent_count = 0
+    failed_count = 0
+
+    async def _send_single(to_email: str) -> None:
+        nonlocal sent_count, failed_count
+        async with sem:
+            try:
+                await send_email_async(
+                    to=to_email,
+                    subject=payload.subject,
+                    html_body=payload.body_html,
+                    raise_on_error=True,
+                    sender_user_id=me.id,
+                )
+                sent_count += 1
+            except Exception:
+                failed_count += 1
+
+    await asyncio.gather(*[_send_single(email) for email in recipient_emails])
+
+    return SuperadminBulkEmailOut(
+        dry_run=False,
+        source=payload.source,
+        targeted=len(recipient_emails),
+        sent=sent_count,
+        failed=failed_count,
+        message="Toplu e-posta islemi tamamlandi.",
+    )
+
+
+@app.post(
+    "/api/superadmin/bulk-email/jobs",
+    response_model=SuperadminBulkEmailJobOut,
+    status_code=201,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def create_superadmin_bulk_email_job(
+    payload: SuperadminBulkEmailJobIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    recipient_emails = await _resolve_superadmin_recipient_emails(db, payload.source)
+    if not recipient_emails:
+        raise HTTPException(status_code=400, detail="Hedef alici bulunamadi.")
+
+    job = SuperadminBulkEmailJob(
+        created_by=me.id,
+        source=payload.source,
+        subject=payload.subject,
+        body_html=payload.body_html,
+        total_targets=len(recipient_emails),
+        status="pending",
+        cancel_requested=False,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    await _enqueue_superadmin_bulk_email_job(job.id)
+    return job
+
+
+@app.get(
+    "/api/superadmin/bulk-email/jobs",
+    response_model=list[SuperadminBulkEmailJobOut],
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def list_superadmin_bulk_email_jobs(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(SuperadminBulkEmailJob)
+        .order_by(SuperadminBulkEmailJob.created_at.desc(), SuperadminBulkEmailJob.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return res.scalars().all()
+
+
+@app.get(
+    "/api/superadmin/email-activity",
+    response_model=SuperadminEmailActivityOut,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def list_superadmin_email_activity(
+    channel: str = Query(default="all", pattern="^(all|event_bulk|superadmin_bulk)$"),
+    status: Optional[str] = Query(default=None, max_length=32),
+    sender_user_id: Optional[int] = Query(default=None, ge=1),
+    search: Optional[str] = Query(default=None, max_length=320),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    event_bulk_stmt = select(
+        literal("event_bulk").label("channel"),
+        BulkEmailJob.id.label("job_id"),
+        BulkEmailJob.created_by.label("sender_user_id"),
+        User.email.label("sender_email"),
+        BulkEmailJob.event_id.label("event_id"),
+        Event.name.label("event_name"),
+        BulkEmailJob.recipient_type.label("recipient_group"),
+        func.coalesce(EmailTemplate.subject_tr, EmailTemplate.subject_en, "(template)").label("subject"),
+        BulkEmailJob.status.label("status"),
+        func.coalesce(BulkEmailJob.recipients_count, 0).label("total_targets"),
+        func.coalesce(BulkEmailJob.sent_count, 0).label("sent_count"),
+        func.coalesce(BulkEmailJob.failed_count, 0).label("failed_count"),
+        BulkEmailJob.created_at.label("created_at"),
+        BulkEmailJob.started_at.label("started_at"),
+        BulkEmailJob.completed_at.label("completed_at"),
+        BulkEmailJob.error_message.label("error_message"),
+    ).join(User, User.id == BulkEmailJob.created_by).outerjoin(Event, Event.id == BulkEmailJob.event_id).outerjoin(
+        EmailTemplate, EmailTemplate.id == BulkEmailJob.email_template_id
+    )
+
+    superadmin_bulk_stmt = select(
+        literal("superadmin_bulk").label("channel"),
+        SuperadminBulkEmailJob.id.label("job_id"),
+        SuperadminBulkEmailJob.created_by.label("sender_user_id"),
+        User.email.label("sender_email"),
+        literal(None).label("event_id"),
+        literal(None).label("event_name"),
+        SuperadminBulkEmailJob.source.label("recipient_group"),
+        SuperadminBulkEmailJob.subject.label("subject"),
+        SuperadminBulkEmailJob.status.label("status"),
+        func.coalesce(SuperadminBulkEmailJob.total_targets, 0).label("total_targets"),
+        func.coalesce(SuperadminBulkEmailJob.sent_count, 0).label("sent_count"),
+        func.coalesce(SuperadminBulkEmailJob.failed_count, 0).label("failed_count"),
+        SuperadminBulkEmailJob.created_at.label("created_at"),
+        SuperadminBulkEmailJob.started_at.label("started_at"),
+        SuperadminBulkEmailJob.completed_at.label("completed_at"),
+        SuperadminBulkEmailJob.error_message.label("error_message"),
+    ).join(User, User.id == SuperadminBulkEmailJob.created_by)
+
+    if channel == "event_bulk":
+        activity_query = event_bulk_stmt
+    elif channel == "superadmin_bulk":
+        activity_query = superadmin_bulk_stmt
+    else:
+        activity_query = union_all(event_bulk_stmt, superadmin_bulk_stmt)
+
+    activity_sub = activity_query.subquery("email_activity")
+    filtered = select(activity_sub)
+
+    if status:
+        filtered = filtered.where(activity_sub.c.status == status)
+    if sender_user_id:
+        filtered = filtered.where(activity_sub.c.sender_user_id == sender_user_id)
+    if search and search.strip():
+        search_like = f"%{search.strip().lower()}%"
+        filtered = filtered.where(
+            or_(
+                activity_sub.c.sender_email.ilike(search_like),
+                activity_sub.c.subject.ilike(search_like),
+                activity_sub.c.event_name.ilike(search_like),
+            )
+        )
+
+    filtered_sub = filtered.subquery("email_activity_filtered")
+    total_res = await db.execute(select(func.count()).select_from(filtered_sub))
+    total = int(total_res.scalar_one() or 0)
+
+    rows_res = await db.execute(
+        select(filtered_sub)
+        .order_by(filtered_sub.c.created_at.desc(), filtered_sub.c.job_id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = rows_res.all()
+
+    items = [
+        SuperadminEmailActivityItemOut(
+            channel=row.channel,
+            job_id=row.job_id,
+            sender_user_id=row.sender_user_id,
+            sender_email=row.sender_email,
+            event_id=row.event_id,
+            event_name=row.event_name,
+            recipient_group=row.recipient_group,
+            subject=row.subject,
+            status=row.status,
+            total_targets=int(row.total_targets or 0),
+            sent_count=int(row.sent_count or 0),
+            failed_count=int(row.failed_count or 0),
+            created_at=row.created_at,
+            started_at=row.started_at,
+            completed_at=row.completed_at,
+            error_message=row.error_message,
+        )
+        for row in rows
+    ]
+
+    return SuperadminEmailActivityOut(items=items, total=total, limit=limit, offset=offset)
+
+
+@app.post(
+    "/api/superadmin/bulk-email/jobs/{job_id}/cancel",
+    response_model=SuperadminBulkEmailJobOut,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def cancel_superadmin_bulk_email_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id))
+    job = res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job bulunamadi")
+
+    if job.status in {"completed", "failed", "cancelled"}:
+        return job
+
+    job.cancel_requested = True
+    if job.status == "pending":
+        job.status = "cancelled"
+        job.completed_at = datetime.now(timezone.utc)
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@app.post(
+    "/api/superadmin/bulk-email/jobs/{job_id}/retry",
+    response_model=SuperadminBulkEmailJobOut,
+    dependencies=[Depends(require_role(Role.superadmin))],
+)
+async def retry_superadmin_bulk_email_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(SuperadminBulkEmailJob).where(SuperadminBulkEmailJob.id == job_id))
+    job = res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job bulunamadi")
+
+    if job.status in {"pending", "sending"}:
+        return job
+
+    recipient_emails = await _resolve_superadmin_recipient_emails(db, job.source)
+    if not recipient_emails:
+        raise HTTPException(status_code=400, detail="Hedef alici bulunamadi.")
+
+    job.total_targets = len(recipient_emails)
+    job.sent_count = 0
+    job.failed_count = 0
+    job.status = "pending"
+    job.cancel_requested = False
+    job.error_message = None
+    job.started_at = None
+    job.completed_at = None
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    await _enqueue_superadmin_bulk_email_job(job.id)
+    return job
+
+
 @app.get("/api/superadmin/transactions", response_model=TxListOut, dependencies=[Depends(require_role(Role.superadmin))])
 async def list_transactions(
     user_id: Optional[int] = None,
@@ -7268,6 +8846,10 @@ async def update_pricing_config(payload: PricingConfigOut, db: AsyncSession = De
 # Ã¢â€â‚¬Ã¢â€â‚¬ Public Stats Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 DEFAULT_STATS = {
+    "active_members": "12.4K+",
+    "hosted_events": "850+",
+    "issued_certificates": "50.000+",
+    # Backward compatibility keys
     "active_orgs": "500+",
     "certs_issued": "50.000+",
     "uptime_pct": "%100",
@@ -7276,6 +8858,9 @@ DEFAULT_STATS = {
 
 
 class StatsOut(BaseModel):
+    active_members: str
+    hosted_events: str
+    issued_certificates: str
     active_orgs: str
     certs_issued: str
     uptime_pct: str
@@ -7283,6 +8868,9 @@ class StatsOut(BaseModel):
 
 
 class StatsIn(BaseModel):
+    active_members: Optional[str] = None
+    hosted_events: Optional[str] = None
+    issued_certificates: Optional[str] = None
     active_orgs: Optional[str] = None
     certs_issued: Optional[str] = None
     uptime_pct: Optional[str] = None
@@ -7299,9 +8887,11 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
 
     if overrides.get("use_real_counts", True):
         # Real DB counts
-        org_count_res = await db.execute(
-            select(func.count(func.distinct(Event.admin_id)))
-        )
+        member_count_res = await db.execute(select(func.count()).select_from(PublicMember))
+        member_count = member_count_res.scalar_one() or 0
+        event_count_res = await db.execute(select(func.count()).select_from(Event))
+        event_count = event_count_res.scalar_one() or 0
+        org_count_res = await db.execute(select(func.count(func.distinct(Event.admin_id))))
         org_count = org_count_res.scalar_one() or 0
         cert_count_res = await db.execute(
             select(func.count()).select_from(Certificate).where(Certificate.deleted_at.is_(None))
@@ -7309,6 +8899,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         cert_count = cert_count_res.scalar_one() or 0
 
         return StatsOut(
+            active_members=overrides.get("active_members") or f"{member_count:,}".replace(",", "."),
+            hosted_events=overrides.get("hosted_events") or f"{event_count:,}".replace(",", "."),
+            issued_certificates=overrides.get("issued_certificates") or f"{cert_count:,}".replace(",", "."),
             active_orgs=overrides.get("active_orgs") or f"{org_count:,}".replace(",", "."),
             certs_issued=overrides.get("certs_issued") or f"{cert_count:,}".replace(",", "."),
             uptime_pct=overrides.get("uptime_pct") or DEFAULT_STATS["uptime_pct"],
@@ -7316,6 +8909,9 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         )
 
     return StatsOut(
+        active_members=overrides.get("active_members", DEFAULT_STATS["active_members"]),
+        hosted_events=overrides.get("hosted_events", DEFAULT_STATS["hosted_events"]),
+        issued_certificates=overrides.get("issued_certificates", DEFAULT_STATS["issued_certificates"]),
         active_orgs=overrides.get("active_orgs", DEFAULT_STATS["active_orgs"]),
         certs_issued=overrides.get("certs_issued", DEFAULT_STATS["certs_issued"]),
         uptime_pct=overrides.get("uptime_pct", DEFAULT_STATS["uptime_pct"]),
@@ -7657,6 +9253,7 @@ async def public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7682,6 +9279,19 @@ async def get_public_member_subscription(
     }
 
 
+@app.post("/api/public/billing/upgrade")
+async def upgrade_public_member_tier(
+    data: dict,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    # Temporary safeguard: disable member self-service subscription changes.
+    raise HTTPException(
+        status_code=503,
+        detail="Member subscription changes are temporarily disabled.",
+    )
+
+
 @app.patch("/api/public/me", response_model=PublicMemberMeOut)
 async def update_public_me(
     data: PublicMemberProfileUpdateIn,
@@ -7701,11 +9311,13 @@ async def update_public_me(
     headline = (data.headline or "").strip()
     location = (data.location or "").strip()
     website_url = (data.website_url or "").strip()
+    contact_email = (str(data.contact_email).strip().lower() if data.contact_email else "")
     db_member.display_name = display_name
     db_member.bio = bio or None
     db_member.headline = headline or None
     db_member.location = location or None
     db_member.website_url = website_url or None
+    db_member.contact_email = contact_email or None
     await db.commit()
     await db.refresh(db_member)
     return PublicMemberMeOut(
@@ -7718,6 +9330,7 @@ async def update_public_me(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7755,6 +9368,7 @@ async def upload_public_member_avatar(
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
     )
 
@@ -7780,6 +9394,7 @@ async def get_public_member_profile(member_public_id: str, db: AsyncSession = De
         headline=db_member.headline,
         location=db_member.location,
         website_url=db_member.website_url,
+        contact_email=db_member.contact_email,
         created_at=db_member.created_at,
         event_count=int(event_count_res.scalar_one() or 0),
         comment_count=int(comment_count_res.scalar_one() or 0),
@@ -7955,7 +9570,11 @@ async def create_event(
     db: AsyncSession = Depends(get_db),
 ):
     next_config = dict(payload.config or {})
+    if "registration_fields" in next_config:
+        next_config["registration_fields"] = _validate_registration_fields_for_write(next_config.get("registration_fields"))
     next_config["visibility"] = _normalize_event_visibility(next_config.get("visibility"))
+    # New events should require KVKK consent by default.
+    next_config.setdefault("kvkk_consent_required", True)
     public_id = await _generate_event_public_id(db)
     ev = Event(
         public_id=public_id,
@@ -7985,8 +9604,11 @@ def _event_to_out(ev: Event) -> EventOut:
         event_banner_url=ev.event_banner_url,
         auto_email_on_cert=bool(ev.auto_email_on_cert),
         cert_email_template_id=ev.cert_email_template_id,
+        registration_closed=_is_event_registration_closed(ev),
         visibility=_get_event_visibility(ev),
         require_email_verification=_get_event_email_verification_required(ev),
+        registration_quota=_get_event_registration_quota(ev),
+        registration_quota_enabled=_is_event_registration_quota_enabled(ev),
     )
 
 
@@ -8010,6 +9632,7 @@ async def rename_event(
     ev = res.scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
+    existing_registration_fields = _get_event_registration_fields(ev)
     ev.name = payload.name
     if payload.event_date is not None:
         from datetime import date as _date
@@ -8025,7 +9648,10 @@ async def rename_event(
     next_config = dict(ev.config or {})
     config_dirty = False
     if "registration_fields" in payload.model_fields_set:
-        next_config["registration_fields"] = _normalize_registration_fields(payload.registration_fields)
+        next_config["registration_fields"] = _validate_registration_fields_for_write(
+            payload.registration_fields,
+            existing_fields=existing_registration_fields,
+        )
         config_dirty = True
     if "visibility" in payload.model_fields_set:
         next_config["visibility"] = _normalize_event_visibility(payload.visibility)
@@ -8036,8 +9662,28 @@ async def rename_event(
     if "registration_closed" in payload.model_fields_set:
         next_config["registration_closed"] = bool(payload.registration_closed)
         config_dirty = True
+    if "registration_quota" in payload.model_fields_set:
+        if payload.registration_quota is None:
+            next_config.pop("registration_quota", None)
+        else:
+            next_config["registration_quota"] = int(payload.registration_quota)
+        config_dirty = True
+    if "registration_quota_enabled" in payload.model_fields_set:
+        next_config["registration_quota_enabled"] = bool(payload.registration_quota_enabled)
+        config_dirty = True
     if config_dirty:
         ev.config = next_config
+        if "registration_fields" in payload.model_fields_set:
+            await _sync_registration_option_capacities(db, ev)
+    if payload.registration_quota is not None and bool(next_config.get("registration_quota_enabled")):
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == ev.id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= int(payload.registration_quota):
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
     if "auto_email_on_cert" in payload.model_fields_set:
         ev.auto_email_on_cert = bool(payload.auto_email_on_cert)
     if "cert_email_template_id" in payload.model_fields_set:
@@ -8172,7 +9818,23 @@ async def save_event_config(
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Save config snapshot before overwriting
+    if not isinstance(payload, dict):
+        raise bad_request("config payload must be an object.")
+
+    existing_registration_fields = _get_event_registration_fields(ev)
+    next_config = dict(ev.config or {})
+    if "registration_fields" in payload:
+        next_config["registration_fields"] = _validate_registration_fields_for_write(
+            payload.get("registration_fields"),
+            existing_fields=existing_registration_fields,
+        )
+
+    for key, value in payload.items():
+        if key == "registration_fields":
+            continue
+        next_config[key] = value
+
+    # Save config snapshot before merging the new payload
     snap = EventTemplateSnapshot(
         event_id=event_id,
         template_image_url=ev.template_image_url,
@@ -8181,7 +9843,7 @@ async def save_event_config(
     )
     db.add(snap)
 
-    ev.config = payload
+    ev.config = next_config
     await db.commit()
     return {"event_id": ev.id, "config": ev.config}
 
@@ -9464,6 +11126,10 @@ async def patch_organization_settings(
     existing = getattr(org, "settings", {}) or {}
     if not isinstance(existing, dict):
         existing = {}
+    else:
+        # Avoid mutating the ORM-backed dict in-place; create a fresh copy so
+        # SQLAlchemy consistently detects and persists JSON changes.
+        existing = dict(existing)
 
     # AyrÃ„Â± kolonlar
     if "brand_color" in payload:
@@ -9969,8 +11635,13 @@ async def dashboard_stats(
     events_with_stats = [
         {
             "event_id": ev_id,
+            "event_name": event_name_map.get(ev_id, ""),
             "name": event_name_map.get(ev_id, ""),
-            "cert_count": stats["total"],
+            "total": int(stats["total"] or 0),
+            "active": int(stats["active"] or 0),
+            "revoked": int(stats["revoked"] or 0),
+            "expired": int(stats["expired"] or 0),
+            "cert_count": int(stats["total"] or 0),
             "active_count": int(stats["active"] or 0),
             "revoked_count": int(stats["revoked"] or 0),
             "expired_count": int(stats["expired"] or 0),
@@ -10270,16 +11941,16 @@ async def request_magic_link(
         verify_link = f"{settings.frontend_base_url}/admin/magic-verify?token={token}"
         await send_email_async(
             to=str(data.email),
-            subject="HeptaCert Ã¢â‚¬â€ GiriÃ…Å¸ BaÃ„Å¸lantÃ„Â±sÃ„Â±",
+            subject="HeptaCert - Giriş Bağlantısı",
             html_body=f"""
             <p>Merhaba,</p>
-            <p>HeptaCert'e giriÃ…Å¸ yapmak iÃƒÂ§in aÃ…Å¸aÃ„Å¸Ã„Â±daki baÃ„Å¸lantÃ„Â±ya tÃ„Â±klayÃ„Â±n:</p>
-            <p><a href="{verify_link}" style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">GiriÃ…Å¸ Yap Ã¢â€ â€™</a></p>
-            <p>Bu baÃ„Å¸lantÃ„Â± 15 dakika geÃƒÂ§erlidir.</p>
-            <p>EÃ„Å¸er bu isteÃ„Å¸i siz yapmadÃ„Â±ysanÃ„Â±z, bu e-postayÃ„Â± gÃƒÂ¶rmezden gelebilirsiniz.</p>
+            <p>HeptaCert'e giriş yapmak için aşağıdaki bağlantıya tıklayın:</p>
+            <p><a href="{verify_link}" style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Giriş Yap</a></p>
+            <p>Bu bağlantı 15 dakika geçerlidir.</p>
+            <p>Eğer bu isteği siz yapmadıysanız, bu e-postayı görmezden gelebilirsiniz.</p>
             """,
         )
-    return {"detail": "GiriÃ…Å¸ baÃ„Å¸lantÃ„Â±sÃ„Â± e-posta adresinize gÃƒÂ¶nderildi."}
+    return {"detail": "Giriş bağlantısı e-posta adresinize gönderildi."}
 
 
 @app.get("/api/auth/magic-link/verify")
@@ -10290,20 +11961,20 @@ async def verify_magic_link(
     try:
         payload = verify_email_token(token, max_age=900)  # 15 minutes
     except SignatureExpired:
-        raise bad_request("GiriÃ…Å¸ baÃ„Å¸lantÃ„Â±sÃ„Â±nÃ„Â±n sÃƒÂ¼resi dolmuÃ…Å¸. LÃƒÂ¼tfen yeni bir baÃ„Å¸lantÃ„Â± isteyin.")
+        raise bad_request("Giriş bağlantısının süresi dolmuş. Lütfen yeni bir bağlantı isteyin.")
     except (BadSignature, Exception):
-        raise bad_request("GeÃƒÂ§ersiz giriÃ…Å¸ baÃ„Å¸lantÃ„Â±sÃ„Â±.")
+        raise bad_request("Geçersiz giriş bağlantısı.")
 
     if payload.get("action") != "magic_link":
-        raise bad_request("GeÃƒÂ§ersiz token tÃƒÂ¼rÃƒÂ¼.")
+        raise bad_request("Geçersiz token türü.")
 
     email = payload.get("email")
     res = await db.execute(select(User).where(User.email == email))
     user = res.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="KullanÃ„Â±cÃ„Â± bulunamadÃ„Â±.")
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
     if not user.is_verified:
-        raise bad_request("HesabÃ„Â±nÃ„Â±z henÃƒÂ¼z doÃ„Å¸rulanmamÃ„Â±Ã…Å¸.")
+        raise bad_request("Hesabınız henüz doğrulanmamış.")
 
     # Invalidate token after use
     user.magic_link_token = None
@@ -10421,6 +12092,12 @@ class AttendeeImportRow(BaseModel):
     email: EmailStr
 
 
+class ManualAttendeeCreateIn(BaseModel):
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+
+
 class AttendeeOut(BaseModel):
     id: int
     event_id: int
@@ -10433,13 +12110,15 @@ class AttendeeOut(BaseModel):
     public_member_id: Optional[int] = None
     public_member_name: Optional[str] = None
     public_member_email: Optional[str] = None
-    registration_answers: Dict[str, str] = Field(default_factory=dict)
+    registration_answers: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SelfRegisterIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     email: EmailStr
     registration_answers: Dict[str, Any] = Field(default_factory=dict)
+    kvkk_accepted: bool = False
+    registration_documents: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CheckinIn(BaseModel):
@@ -10687,6 +12366,10 @@ def _build_public_event_detail(
         survey=_build_public_survey_info(survey),
         visibility=_get_event_visibility(event),
         require_email_verification=_get_event_email_verification_required(event),
+        registration_quota=_get_event_registration_quota(event),
+        registration_quota_enabled=_is_event_registration_quota_enabled(event),
+        kvkk_consent_required=_is_event_kvkk_consent_required(event),
+        kvkk_consent_text=_get_event_kvkk_consent_text(event),
         sessions=[
             {
                 "id": s.id,
@@ -10927,6 +12610,55 @@ async def public_event_info(event_id: str, db: AsyncSession = Depends(get_db)):
     return _build_public_event_detail(ev, sess_res.scalars().all(), survey_res.scalar_one_or_none()).model_dump()
 
 
+@app.post("/api/events/{event_id}/registration-document")
+@limiter.limit("10/minute")
+async def upload_public_registration_document(
+    request: Request,
+    event_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    ev = await _resolve_public_event(db, event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if _is_event_registration_closed(ev):
+        raise HTTPException(status_code=403, detail="Registration is closed for this event.")
+
+    allowed_content_types = {
+        "application/pdf": ".pdf",
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    ctype = str(file.content_type or "").lower().strip()
+    if ctype not in allowed_content_types:
+        raise bad_request("Only PDF, JPG, PNG or WEBP files are allowed")
+
+    raw = await file.read()
+    if not raw:
+        raise bad_request("Document file is empty")
+    max_size = 2 * 1024 * 1024
+    if len(raw) > max_size:
+        raise HTTPException(status_code=413, detail="Document exceeds 2 MB limit")
+
+    ext = Path(file.filename or "").suffix.lower().strip()
+    if not ext:
+        ext = allowed_content_types[ctype]
+
+    safe_name = f"registration_docs/event_{ev.id}/{secrets.token_hex(16)}{ext}"
+    dest = Path(settings.local_storage_dir) / safe_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(raw)
+
+    return {
+        "path": safe_name,
+        "name": Path(file.filename or f"document{ext}").name[:200],
+        "content_type": ctype,
+        "size_bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
 @app.post("/api/events/{event_id}/register", status_code=201)
 @limiter.limit("10/minute")
 async def public_event_register(
@@ -10941,6 +12673,21 @@ async def public_event_register(
         raise HTTPException(status_code=404, detail="Event not found")
     if _is_event_registration_closed(ev):
         raise HTTPException(status_code=403, detail="Registration is closed for this event.")
+    if _is_event_kvkk_consent_required(ev) and not payload.kvkk_accepted:
+        raise bad_request("KVKK consent is required for this event.")
+    registration_quota = _get_event_registration_quota(ev)
+    quota_enabled = _is_event_registration_quota_enabled(ev)
+    if quota_enabled and registration_quota is not None:
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == ev.id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= registration_quota:
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
+            await db.commit()
+            raise HTTPException(status_code=403, detail="Registration quota reached for this event.")
     event_db_id = ev.id
     require_email_verification = _get_event_email_verification_required(ev)
 
@@ -10952,10 +12699,77 @@ async def public_event_register(
     user_agent = request.headers.get("User-Agent")
     device_id, should_set_device_cookie = _get_registration_device_id(request)
     registration_fields = _get_event_registration_fields(ev)
+    file_fields = [field for field in registration_fields if field.get("type") == "file"]
+    file_field_ids = {str(field.get("id")) for field in file_fields if field.get("id")}
     registration_answers = _normalize_registration_answers(
         registration_fields,
         payload.registration_answers,
     )
+    reservations_to_attempt = _collect_registration_option_reservations(ev, registration_answers)
+
+    # Per-option capacity is only consumed immediately when no email verification is required.
+    # Otherwise it is consumed once the attendee verifies their email.
+    if not require_email_verification:
+        for (ev_id, fid, label, cap) in reservations_to_attempt:
+            ok = await _reserve_option_capacity(db, ev_id, fid, label, cap)
+            if not ok:
+                raise bad_request(f'"{fid}" alanındaki "{label}" seçeneği için kontenjan doldu.')
+    required_file_field_ids = {
+        str(field.get("id"))
+        for field in file_fields
+        if field.get("id") and (
+            bool(field.get("required"))
+            or _is_registration_field_condition_met(field, registration_answers)
+        )
+    }
+    if payload.registration_documents:
+        if not file_field_ids:
+            raise bad_request("Document upload is not enabled for this event")
+        sanitized_docs: List[Dict[str, Any]] = []
+        storage_root = Path(settings.local_storage_dir).resolve()
+        expected_prefix = f"registration_docs/event_{event_db_id}/"
+        for doc in payload.registration_documents[:10]:
+            field_id = str((doc or {}).get("field_id") or "").strip()
+            if not field_id or field_id not in file_field_ids:
+                raise bad_request("Invalid registration document field")
+            rel_path = str((doc or {}).get("path") or "").strip().lstrip("/")
+            if not rel_path or not rel_path.startswith(expected_prefix):
+                raise bad_request("Invalid registration document path")
+            abs_path = (storage_root / rel_path).resolve()
+            if not str(abs_path).startswith(str(storage_root)) or not abs_path.exists() or not abs_path.is_file():
+                raise bad_request("Registration document not found")
+            stat_info = abs_path.stat()
+            if stat_info.st_size > 2 * 1024 * 1024:
+                raise bad_request("Registration document exceeds size limit")
+            sanitized_docs.append(
+                {
+                    "field_id": field_id,
+                    "path": rel_path,
+                    "name": str((doc or {}).get("name") or Path(rel_path).name)[:200],
+                    "content_type": str((doc or {}).get("content_type") or "application/octet-stream")[:120],
+                    "size_bytes": int((doc or {}).get("size_bytes") or stat_info.st_size),
+                    "sha256": str((doc or {}).get("sha256") or "")[:128],
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        if sanitized_docs:
+            uploaded_field_ids = {
+                str(doc.get("field_id"))
+                for doc in sanitized_docs
+                if str(doc.get("field_id") or "").strip()
+            }
+            missing_required_fields = required_file_field_ids - uploaded_field_ids
+            if missing_required_fields:
+                raise bad_request("Required document fields are missing")
+            registration_answers["__documents"] = sanitized_docs
+    elif required_file_field_ids:
+        raise bad_request("Required document fields are missing")
+    registration_answers["__kvkk"] = {
+        "accepted": bool(payload.kvkk_accepted),
+        "accepted_at": datetime.now(timezone.utc).isoformat(),
+        "ip_address": client_ip,
+        "user_agent": user_agent,
+    }
 
     await _enforce_registration_risk_controls(
         db,
@@ -11130,6 +12944,15 @@ async def public_event_register(
             "verification_required": require_email_verification,
         },
     )
+    if quota_enabled and registration_quota is not None and not require_email_verification:
+        attendee_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event_db_id)
+        )
+        attendee_count = int(attendee_count_res.scalar_one() or 0)
+        if attendee_count >= registration_quota:
+            next_config = dict(ev.config or {})
+            next_config["registration_closed"] = True
+            ev.config = next_config
     await db.commit()
     if require_email_verification:
         await send_attendee_verification_email(attendee=attendee, event=ev)
@@ -11192,14 +13015,58 @@ async def verify_attendee_email(event_id: str, token: str = Query(...), db: Asyn
 
     attendee_id = int(payload.get("attendee_id") or 0)
     email = str(payload.get("email") or "").lower()
-    res = await db.execute(select(Attendee).where(Attendee.id == attendee_id, Attendee.event_id == event.id))
+    res = await db.execute(
+        select(Attendee)
+        .where(Attendee.id == attendee_id, Attendee.event_id == event.id)
+        .with_for_update()
+    )
     attendee = res.scalar_one_or_none()
     if not attendee or attendee.email.lower() != email:
         raise HTTPException(status_code=404, detail="Katilimci bulunamadi.")
 
+    if attendee.email_verified:
+        return {
+            "detail": "E-posta zaten dogrulanmis.",
+            "attendee_id": attendee.id,
+            "event_id": event.id,
+            "status_url": build_public_status_url(event_id=_get_public_event_identifier(event), attendee_id=attendee.id, email=attendee.email),
+        }
+
+    registration_quota = _get_event_registration_quota(event)
+    quota_enabled = _is_event_registration_quota_enabled(event)
+    if quota_enabled and registration_quota is not None:
+        verified_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event.id, Attendee.email_verified.is_(True))
+        )
+        verified_count = int(verified_count_res.scalar_one() or 0)
+        if verified_count >= registration_quota:
+            next_config = dict(event.config or {})
+            next_config["registration_closed"] = True
+            event.config = next_config
+            await db.commit()
+            raise HTTPException(status_code=403, detail="Registration quota reached for this event.")
+
+    if _get_event_email_verification_required(event):
+        reservation_requests = _collect_registration_option_reservations(event, attendee.registration_answers or {})
+        for (ev_id, fid, label, cap) in reservation_requests:
+            ok = await _reserve_option_capacity(db, ev_id, fid, label, cap)
+            if not ok:
+                raise bad_request(f'"{fid}" alanındaki "{label}" seçeneği için kontenjan doldu.')
+
     attendee.email_verified = True
     attendee.email_verification_token = None
     attendee.email_verified_at = datetime.now(timezone.utc)
+
+    if quota_enabled and registration_quota is not None:
+        verified_count_res = await db.execute(
+            select(func.count()).where(Attendee.event_id == event.id, Attendee.email_verified.is_(True))
+        )
+        verified_count = int(verified_count_res.scalar_one() or 0)
+        if verified_count + 1 >= registration_quota:
+            next_config = dict(event.config or {})
+            next_config["registration_closed"] = True
+            event.config = next_config
+
     await db.commit()
 
     return {
@@ -11309,6 +13176,172 @@ async def self_checkin(
         sessions_required=ctx["min_sessions_required"],
         total_sessions=total_sessions,
     )
+
+
+# ============================================================================
+# SUPPORT TICKETS - AI Assistant Escalation
+# ============================================================================
+
+async def send_ticket_notification_email(ticket: SupportTicket, user_email: str, db: AsyncSession):
+    """Send email notification to superadmins when a support ticket is created"""
+    try:
+        # Get all superadmins
+        superadmins_res = await db.execute(
+            select(User).where(User.role == Role.superadmin)
+        )
+        superadmins = superadmins_res.scalars().all()
+        
+        # Get organization details
+        org_res = await db.execute(
+            select(Organization).where(Organization.id == ticket.organization_id)
+        )
+        org = org_res.scalar_one_or_none()
+        
+        for superadmin in superadmins:
+            # Create email
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = str(EmailHeader(f"Yeni Destek Talebineği: {ticket.subject}", charset="utf-8"))
+            msg["From"] = formataddr(("HeptaCert Sistem", settings.smtp_from_email))
+            msg["To"] = superadmin.email
+            
+            html = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>Yeni Destek Talebineği</h2>
+                    <p><strong>Organizasyon:</strong> {org.org_name if org else 'Bilinmiyor'}</p>
+                    <p><strong>Kullanıcı:</strong> {user_email}</p>
+                    <p><strong>Konu:</strong> {ticket.subject}</p>
+                    <p><strong>Durum:</strong> {ticket.status}</p>
+                    <hr>
+                    <p><a href="{settings.frontend_base_url}/admin/superadmin/support-tickets/{ticket.id}">Talepleri Görünt-üleme</a></p>
+                </body>
+            </html>
+            """
+            msg.attach(MIMEText(html, "html", "utf-8"))
+            
+            # Send email (non-blocking)
+            try:
+                await aiosmtplib.send_message(
+                    msg,
+                    hostname=settings.smtp_server,
+                    port=settings.smtp_port,
+                    use_tls=True,
+                    username=settings.smtp_username,
+                    password=settings.smtp_password,
+                    timeout=10,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send support ticket email: {e}")
+    except Exception as e:
+        logger.error(f"Error in send_ticket_notification_email: {e}")
+
+
+@app.post("/api/admin/support-tickets", response_model=SupportTicketOut)
+async def create_support_ticket(
+    req: SupportTicketCreateIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a support ticket - Called when AI assistant can't help"""
+    # User must be an admin/superadmin
+    if me.role not in (Role.admin, Role.superadmin):
+        raise HTTPException(status_code=403, detail="Only admins can create support tickets")
+    
+    # Get user's organization
+    org_res = await db.execute(
+        select(Organization).where(Organization.user_id == me.id)
+    )
+    org = org_res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Create ticket
+    ticket = SupportTicket(
+        organization_id=org.id,
+        user_id=me.id,
+        subject=req.subject,
+        messages=[{
+            "role": "user",
+            "message": req.message,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }],
+        status="open"
+    )
+    
+    db.add(ticket)
+    await db.commit()
+    await db.refresh(ticket)
+    
+    # Send notification email to superadmins (non-blocking)
+    asyncio.create_task(send_ticket_notification_email(ticket, me.email, db))
+    
+    return ticket
+
+
+@app.get("/api/superadmin/support-tickets", response_model=list[SupportTicketOut], dependencies=[Depends(require_role(Role.superadmin))])
+async def list_support_tickets(
+    status: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all support tickets (superadmin only)"""
+    query = select(SupportTicket).order_by(SupportTicket.created_at.desc())
+    
+    if status:
+        query = query.where(SupportTicket.status == status)
+    
+    res = await db.execute(query)
+    tickets = res.scalars().all()
+    return tickets
+
+
+@app.get("/api/superadmin/support-tickets/{ticket_id}", response_model=SupportTicketOut, dependencies=[Depends(require_role(Role.superadmin))])
+async def get_support_ticket(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single support ticket"""
+    ticket_res = await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )
+    ticket = ticket_res.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Support ticket not found")
+    
+    return ticket
+
+
+@app.patch("/api/superadmin/support-tickets/{ticket_id}", response_model=SupportTicketOut, dependencies=[Depends(require_role(Role.superadmin))])
+async def update_support_ticket(
+    ticket_id: int,
+    req: SupportTicketUpdateIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update support ticket status or add admin reply"""
+    ticket_res = await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )
+    ticket = ticket_res.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Support ticket not found")
+    
+    # Update status if provided
+    if req.status:
+        ticket.status = req.status
+    
+    # Add admin reply if provided
+    if req.admin_reply:
+        ticket.messages.append({
+            "role": "admin",
+            "message": req.admin_reply,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    
+    ticket.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(ticket)
+    
+    return ticket
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Sessions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -11545,6 +13578,261 @@ async def list_attendees(
 
 
 @app.get(
+    "/api/admin/events/{event_id}/attendance/export",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def export_attendance(
+    event_id: int,
+    fmt: str = Query(default="xlsx", pattern="^(csv|xlsx)$"),
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export attendees list as CSV or XLSX file."""
+    ev = await _get_event_for_admin(event_id, me, db)
+    
+    # Get registration fields mapping (field_id -> field_label)
+    registration_fields = _get_event_registration_fields(ev)
+    field_id_to_label = {field.get("id"): field.get("label", field.get("id")) for field in registration_fields}
+    
+    # Fetch all attendees without pagination
+    res = await db.execute(
+        select(Attendee)
+        .options(selectinload(Attendee.public_member))
+        .where(Attendee.event_id == event_id)
+        .order_by(Attendee.registered_at.desc())
+    )
+    attendees = res.scalars().all()
+    
+    # Build data for export
+    data = []
+    all_answer_keys = set()  # Track all registration answer keys
+    
+    for a in attendees:
+        # Get session count
+        cnt_res = await db.execute(
+            select(func.count()).where(AttendanceRecord.attendee_id == a.id)
+        )
+        sessions_attended = int(cnt_res.scalar_one() or 0)
+        
+        # Check if has certificate
+        cert_res = await db.execute(
+            select(Certificate).where(
+                Certificate.event_id == event_id,
+                Certificate.student_name == a.name,
+                Certificate.deleted_at.is_(None),
+            )
+        )
+        has_certificate = cert_res.scalar_one_or_none() is not None
+        
+        row_data = {
+            "İsim": a.name,
+            "Email": a.email,
+            "Kayıt Tarihi": a.registered_at.isoformat() if a.registered_at else "",
+            "Katıldığı Oturumlar": sessions_attended,
+            "Sertifika": "Evet" if has_certificate else "Hayır",
+            "Kaynak": a.source or "",
+            "Kamu Üye": a.public_member.display_name if a.public_member else "",
+            "Kamu Email": a.public_member.email if a.public_member else "",
+        }
+        
+        # Add registration answers as individual columns
+        if a.registration_answers:
+            for key, value in a.registration_answers.items():
+                # Convert field ID to field label using the mapping
+                field_label = field_id_to_label.get(key, key)
+                all_answer_keys.add(field_label)
+                row_data[field_label] = str(value) if value is not None else ""
+        
+        data.append(row_data)
+    
+    if fmt == "xlsx":
+        try:
+            import openpyxl
+        except ImportError:
+            raise HTTPException(status_code=500, detail="openpyxl library not available")
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Katılımcılar"
+        
+        # Build columns: base columns + dynamic answer keys
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
+        ws.append(columns)
+        
+        for row in data:
+            ws.append([row.get(col, "") for col in columns])
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+        
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=katilimcilar-event-{event_id}.xlsx"},
+        )
+    else:
+        # CSV export
+        buf = io.StringIO()
+        base_columns = ["İsim", "Email", "Kayıt Tarihi", "Katıldığı Oturumlar", "Sertifika", "Kaynak", "Kamu Üye", "Kamu Email"]
+        answer_columns = sorted(list(all_answer_keys))  # Sort for consistent ordering
+        columns = base_columns + answer_columns
+        
+        writer = csv.DictWriter(buf, fieldnames=columns)
+        writer.writeheader()
+        
+        for row in data:
+            writer.writerow({col: row.get(col, "") for col in columns})
+        
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=katilimcilar-event-{event_id}.csv"},
+        )
+
+
+@app.get(
+    "/api/admin/events/{event_id}/registration-documents/export",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def export_registration_documents_grouped(
+    event_id: int,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_for_admin(event_id, me, db)
+    registration_fields = _get_event_registration_fields(event)
+    file_fields = [field for field in registration_fields if field.get("type") == "file"]
+    field_id_to_label = {
+        str(field.get("id")): str(field.get("label") or field.get("id") or "Belge")
+        for field in file_fields
+        if field.get("id")
+    }
+
+    res = await db.execute(
+        select(Attendee)
+        .where(Attendee.event_id == event_id)
+        .order_by(Attendee.registered_at.asc())
+    )
+    attendees = res.scalars().all()
+
+    storage_root = Path(settings.local_storage_dir).resolve()
+    expected_prefix = f"registration_docs/event_{event_id}/"
+
+    zip_buffer = io.BytesIO()
+    used_paths: set[str] = set()
+    manifest_rows: List[Dict[str, Any]] = []
+    added_files = 0
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for attendee in attendees:
+            answers = attendee.registration_answers or {}
+            docs_raw = answers.get("__documents")
+            if not isinstance(docs_raw, list):
+                continue
+
+            attendee_folder = _sanitize_zip_path_part(
+                f"{attendee.name}_{attendee.email}_{attendee.id}",
+                fallback=f"attendee_{attendee.id}",
+                max_len=120,
+            )
+
+            for doc_index, doc in enumerate(docs_raw, start=1):
+                if not isinstance(doc, dict):
+                    continue
+                rel_path = str(doc.get("path") or "").strip().lstrip("/")
+                if not rel_path or not rel_path.startswith(expected_prefix):
+                    continue
+
+                abs_path = (storage_root / rel_path).resolve()
+                if not str(abs_path).startswith(str(storage_root)) or not abs_path.exists() or not abs_path.is_file():
+                    continue
+
+                field_id = str(doc.get("field_id") or "").strip()
+                field_label = field_id_to_label.get(field_id) or (field_id if field_id else "Diger")
+                field_folder = _sanitize_zip_path_part(field_label, fallback="Diger", max_len=100)
+
+                original_name = str(doc.get("name") or Path(rel_path).name)
+                safe_name = _safe_registration_document_name(original_name, fallback=f"document_{doc_index}")
+                base_arcname = f"{field_folder}/{attendee_folder}/{safe_name}"
+                arcname = base_arcname
+                duplicate_no = 2
+                while arcname in used_paths:
+                    alt_name = _safe_registration_document_name(
+                        f"{Path(safe_name).stem}_{duplicate_no}{Path(safe_name).suffix}",
+                        fallback=f"document_{doc_index}_{duplicate_no}",
+                    )
+                    arcname = f"{field_folder}/{attendee_folder}/{alt_name}"
+                    duplicate_no += 1
+
+                zip_file.write(abs_path, arcname=arcname)
+                used_paths.add(arcname)
+                added_files += 1
+
+                manifest_rows.append(
+                    {
+                        "attendee_id": attendee.id,
+                        "attendee_name": attendee.name,
+                        "attendee_email": attendee.email,
+                        "field_id": field_id,
+                        "field_label": field_label,
+                        "original_name": original_name,
+                        "zip_path": arcname,
+                        "size_bytes": int(doc.get("size_bytes") or abs_path.stat().st_size),
+                    }
+                )
+
+        if manifest_rows:
+            manifest_buf = io.StringIO()
+            writer = csv.DictWriter(
+                manifest_buf,
+                fieldnames=[
+                    "attendee_id",
+                    "attendee_name",
+                    "attendee_email",
+                    "field_id",
+                    "field_label",
+                    "original_name",
+                    "zip_path",
+                    "size_bytes",
+                ],
+            )
+            writer.writeheader()
+            writer.writerows(manifest_rows)
+            zip_file.writestr("manifest.csv", manifest_buf.getvalue().encode("utf-8-sig"))
+
+        if added_files == 0:
+            zip_file.writestr(
+                "README.txt",
+                "Bu etkinlikte indirilebilir kayıt belgesi bulunamadı.",
+            )
+
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="registration-documents-event-{event_id}.zip"',
+        },
+    )
+
+
+@app.get(
     "/api/admin/events/{event_id}/attendees/{attendee_id}/survey-link",
     dependencies=[Depends(require_role(Role.admin, Role.superadmin))],
 )
@@ -11735,6 +14023,86 @@ async def import_attendees(
     return {"added": added, "skipped": skipped}
 
 
+@app.post(
+    "/api/admin/events/{event_id}/attendees",
+    response_model=AttendeeOut,
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def create_manual_attendee(
+    event_id: int,
+    payload: ManualAttendeeCreateIn,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_for_admin(event_id, me, db)
+
+    normalized_email = str(payload.email).strip().lower()
+    first_name = " ".join(payload.first_name.strip().split())
+    last_name = " ".join(payload.last_name.strip().split())
+    full_name = f"{first_name} {last_name}".strip()
+
+    if not full_name:
+        raise bad_request("Ad ve soyad gerekli")
+
+    existing_attendee_res = await db.execute(
+        select(Attendee).where(
+            Attendee.event_id == event_id,
+            func.lower(Attendee.email) == normalized_email,
+        )
+    )
+    if existing_attendee_res.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Bu e-posta ile katılımcı zaten kayıtlı")
+
+    public_member_res = await db.execute(
+        select(PublicMember).where(func.lower(PublicMember.email) == normalized_email)
+    )
+    public_member = public_member_res.scalar_one_or_none()
+
+    attendee = Attendee(
+        event_id=event_id,
+        name=full_name,
+        email=normalized_email,
+        source="import",
+        email_verified=True,
+        email_verified_at=datetime.now(timezone.utc),
+        public_member_id=public_member.id if public_member else None,
+        registration_answers={},
+    )
+    db.add(attendee)
+    await db.flush()
+
+    await write_audit_log(
+        db,
+        user_id=me.id,
+        action="attendee.manual_add",
+        resource_type="attendee",
+        resource_id=str(attendee.id),
+        extra={
+            "event_id": event_id,
+            "attendee_email": attendee.email,
+            "source": "admin_manual",
+        },
+    )
+
+    await db.commit()
+    await db.refresh(attendee)
+
+    return AttendeeOut(
+        id=attendee.id,
+        event_id=attendee.event_id,
+        name=attendee.name,
+        email=attendee.email,
+        source=attendee.source,
+        registered_at=attendee.registered_at,
+        sessions_attended=0,
+        has_certificate=False,
+        public_member_id=attendee.public_member_id,
+        public_member_name=public_member.display_name if public_member else None,
+        public_member_email=public_member.email if public_member else None,
+        registration_answers=attendee.registration_answers or {},
+    )
+
+
 @app.delete(
     "/api/admin/events/{event_id}/attendees/{attendee_id}",
     dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
@@ -11756,6 +14124,61 @@ async def delete_attendee(
 
 
 # Ã¢â€â‚¬Ã¢â€â‚¬ Admin: Attendance matrix & manual check-in Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+@app.post(
+    "/api/admin/events/{event_id}/sessions/{session_id}/checkin",
+    dependencies=[Depends(require_role(Role.admin, Role.superadmin)), Depends(require_paid_plan)],
+)
+async def admin_manual_checkin(
+    event_id: int,
+    session_id: int,
+    payload: CheckinIn,
+    request: Request,
+    me: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_for_admin(event_id, me, db)
+
+    session_res = await db.execute(
+        select(EventSession).where(EventSession.id == session_id, EventSession.event_id == event_id)
+    )
+    session = session_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Oturum bulunamadı")
+
+    email = payload.email.strip().lower()
+    attendee_res = await db.execute(
+        select(Attendee).where(
+            Attendee.event_id == event_id,
+            func.lower(Attendee.email) == email,
+        )
+    )
+    attendee = attendee_res.scalar_one_or_none()
+    if not attendee:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu e-posta ile etkinlikte kayıtlı katılımcı bulunamadı.",
+        )
+
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    insert_stmt = (
+        _pg_insert(AttendanceRecord.__table__)
+        .values(
+            attendee_id=attendee.id,
+            session_id=session_id,
+            ip_address=ip,
+        )
+        .on_conflict_do_nothing(index_elements=["attendee_id", "session_id"])
+        .returning(AttendanceRecord.id)
+    )
+    inserted_res = await db.execute(insert_stmt)
+    inserted_id = inserted_res.scalar_one_or_none()
+    await db.commit()
+
+    if inserted_id is None:
+        return {"ok": False, "message": "Bu katılımcı bu oturum için zaten check-in yapılmış."}
+
+    return {"ok": True, "message": f"Check-in başarılı: {attendee.name}"}
 
 async def _get_raffle_for_admin(
     event_id: int,
@@ -12212,6 +14635,7 @@ async def get_attendance_matrix(
     event_id: int,
     me: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    fmt: str = Query(default="json", pattern="^(csv|xlsx|json)$"),
 ):
     ev = await _get_event_for_admin(event_id, me, db)
     sess_res = await db.execute(
@@ -12235,7 +14659,47 @@ async def get_attendance_matrix(
     records = rec_res.all()
     rec_set: dict[tuple, str] = {(r.attendee_id, r.session_id): r.checked_in_at.isoformat() for r in records}
 
-    session_ids = [s.id for s in sessions]
+    # Build certificate lookup by student_name for this event
+    cert_res = await db.execute(
+        select(Certificate.student_name, Certificate.uuid)
+        .where(Certificate.event_id == event_id)
+    )
+    certs = cert_res.all()
+    cert_map: dict[str, str] = {c.student_name: c.uuid for c in certs}
+
+    # Return JSON format if requested
+    if fmt == "json":
+        json_rows = []
+        for a in attendees:
+            checkins: dict[str, str | None] = {}
+            for s in sessions:
+                checkins[str(s.id)] = rec_set.get((a.id, s.id), None)
+            
+            sessions_attended = sum(1 for s in sessions if (a.id, s.id) in rec_set)
+            has_cert = a.name in cert_map
+            cert_uuid = cert_map.get(a.name)
+            
+            row = {
+                "attendee_id": a.id,
+                "name": a.name,
+                "email": a.email,
+                "source": a.source,
+                "sessions_attended": sessions_attended,
+                "meets_threshold": sessions_attended >= ev.min_sessions_required,
+                "has_certificate": has_cert,
+                "certificate_uuid": cert_uuid,
+                "checkins": checkins,
+            }
+            json_rows.append(row)
+        
+        return {
+            "event_id": event_id,
+            "min_sessions_required": ev.min_sessions_required,
+            "sessions": [{"id": s.id, "name": s.name, "session_date": s.session_date.isoformat() if s.session_date else None} for s in sessions],
+            "rows": json_rows,
+        }
+
+    # Excel/CSV format
     rows = []
     for a in attendees:
         row = {
@@ -12250,6 +14714,7 @@ async def get_attendance_matrix(
         row["Katilinan Oturum"] = sum(1 for s in sessions if (a.id, s.id) in rec_set)
         row["Esigi Geciyor"] = "Evet" if row["Katilinan Oturum"] >= ev.min_sessions_required else "Hayir"
         answers = a.registration_answers or {}
+        registration_fields = _get_event_registration_fields(ev)
         for field in registration_fields:
             row[field["label"]] = answers.get(field["id"], "")
         rows.append(row)
@@ -12664,4 +15129,7 @@ app.include_router(_community_api.router)
 
 from . import social_api as _social_api
 app.include_router(_social_api.router)
+
+from . import connections_api as _connections_api
+app.include_router(_connections_api.router)
 

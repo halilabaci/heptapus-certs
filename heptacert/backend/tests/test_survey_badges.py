@@ -5,6 +5,7 @@ from sqlalchemy import select
 from src.main import (
     app,
     Attendee,
+    CertificateTemplate,
     Event,
     Role,
     SessionLocal,
@@ -210,6 +211,307 @@ async def test_public_register_can_skip_email_verification_per_event():
 
 
 @pytest.mark.asyncio
+async def test_email_verified_events_defer_capacity_consumption_until_confirmation():
+    owner = await _create_admin("capacity-deferral-owner@example.com")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with SessionLocal() as sess:
+            async with sess.begin():
+                event = Event(
+                    admin_id=owner.id,
+                    name="Capacity Deferral Event",
+                    template_image_url="template.png",
+                    config={
+                        "require_email_verification": True,
+                        "registration_quota_enabled": True,
+                        "registration_quota": 1,
+                        "registration_fields": [
+                            {
+                                "id": "meal",
+                                "label": "Yemek Tercihi",
+                                "type": "select",
+                                "required": True,
+                                "selection_mode": "single",
+                                "options": [
+                                    {"label": "Vegetarian", "capacity": 2},
+                                ],
+                            }
+                        ],
+                    },
+                )
+                sess.add(event)
+                await sess.flush()
+                event_id = event.id
+
+        first_registered = await ac.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "name": "Pending One",
+                "email": "pending-one@example.com",
+                "registration_answers": {"meal": "Vegetarian"},
+            },
+        )
+        assert first_registered.status_code == 201
+        first_payload = first_registered.json()
+        assert first_payload["verification_required"] is True
+
+        second_registered = await ac.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "name": "Pending Two",
+                "email": "pending-two@example.com",
+                "registration_answers": {"meal": "Vegetarian"},
+            },
+        )
+        assert second_registered.status_code == 201
+
+        capacities_before = await ac.get(f"/api/events/{event_id}/capacities")
+        assert capacities_before.status_code == 200
+        capacities_before_payload = capacities_before.json()
+        assert capacities_before_payload["meal"][0]["remaining"] == 2
+
+        async with SessionLocal() as sess:
+            attendee = (
+                await sess.execute(
+                    select(Attendee).where(Attendee.event_id == event_id, Attendee.email == "pending-one@example.com")
+                )
+            ).scalar_one()
+            verify_token = attendee.email_verification_token
+
+        verified = await ac.get(f"/api/events/{event_id}/verify-email", params={"token": verify_token})
+        assert verified.status_code == 200
+
+        capacities_after = await ac.get(f"/api/events/{event_id}/capacities")
+        assert capacities_after.status_code == 200
+        capacities_after_payload = capacities_after.json()
+        assert capacities_after_payload["meal"][0]["remaining"] == 1
+
+        async with SessionLocal() as sess:
+            second = (
+                await sess.execute(
+                    select(Attendee).where(Attendee.event_id == event_id, Attendee.email == "pending-two@example.com")
+                )
+            ).scalar_one()
+            second_verify_token = second.email_verification_token
+
+        second_verified = await ac.get(f"/api/events/{event_id}/verify-email", params={"token": second_verify_token})
+        assert second_verified.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_can_change_registration_option_capacity_without_old_values_returning():
+    owner = await _create_admin("capacity-update-owner@example.com")
+    token = create_access_token(user_id=owner.id, role=Role.admin)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with SessionLocal() as sess:
+            async with sess.begin():
+                event = Event(
+                    admin_id=owner.id,
+                    name="Capacity Update Event",
+                    template_image_url="template.png",
+                    config={
+                        "registration_fields": [
+                            {
+                                "id": "meal",
+                                "label": "Yemek Tercihi",
+                                "type": "select",
+                                "required": True,
+                                "selection_mode": "single",
+                                "options": [
+                                    {"label": "Vegetarian", "capacity": 20},
+                                ],
+                            }
+                        ]
+                    },
+                )
+                sess.add(event)
+                await sess.flush()
+                event_id = event.id
+
+        initial_caps = await ac.get(f"/api/events/{event_id}/capacities")
+        assert initial_caps.status_code == 200
+        assert initial_caps.json()["meal"][0]["capacity"] == 20
+
+        no_quota_update = await ac.patch(
+            f"/api/admin/events/{event_id}",
+            json={
+                "registration_fields": [
+                    {
+                        "id": "meal",
+                        "label": "Yemek Tercihi",
+                        "type": "select",
+                        "required": True,
+                        "selection_mode": "single",
+                        "options": [
+                            {"label": "Vegetarian", "capacity": None},
+                        ],
+                    }
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert no_quota_update.status_code == 200
+
+        no_quota_caps = await ac.get(f"/api/events/{event_id}/capacities")
+        assert no_quota_caps.status_code == 200
+        assert no_quota_caps.json()["meal"][0]["capacity"] is None
+        assert no_quota_caps.json()["meal"][0]["remaining"] is None
+
+        quota_update = await ac.patch(
+            f"/api/admin/events/{event_id}",
+            json={
+                "registration_fields": [
+                    {
+                        "id": "meal",
+                        "label": "Yemek Tercihi",
+                        "type": "select",
+                        "required": True,
+                        "selection_mode": "single",
+                        "options": [
+                            {"label": "Vegetarian", "capacity": 100},
+                        ],
+                    }
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert quota_update.status_code == 200
+
+        quota_caps = await ac.get(f"/api/events/{event_id}/capacities")
+        assert quota_caps.status_code == 200
+        assert quota_caps.json()["meal"][0]["capacity"] == 100
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_accidentally_clear_registration_fields():
+    owner = await _create_admin("clear-guard-owner@example.com")
+    token = create_access_token(user_id=owner.id, role=Role.admin)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with SessionLocal() as sess:
+            async with sess.begin():
+                event = Event(
+                    admin_id=owner.id,
+                    name="Clear Guard Event",
+                    template_image_url="template.png",
+                    config={
+                        "registration_fields": [
+                            {
+                                "id": "phone",
+                                "label": "Telefon Numarası",
+                                "type": "text",
+                                "required": True,
+                            }
+                        ]
+                    },
+                )
+                sess.add(event)
+                await sess.flush()
+                event_id = event.id
+
+        rejected = await ac.patch(
+            f"/api/admin/events/{event_id}",
+            json={"registration_fields": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert rejected.status_code == 400
+
+        async with SessionLocal() as sess:
+            refreshed = (
+                await sess.execute(select(Event).where(Event.id == event_id))
+            ).scalar_one()
+            fields = _get_event_registration_fields(refreshed)
+
+        assert len(fields) == 1
+        assert fields[0]["id"] == "phone"
+
+
+@pytest.mark.asyncio
+async def test_admin_rejects_invalid_registration_field_shapes():
+    owner = await _create_admin("invalid-shape-owner@example.com")
+    token = create_access_token(user_id=owner.id, role=Role.admin)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with SessionLocal() as sess:
+            async with sess.begin():
+                event = Event(
+                    admin_id=owner.id,
+                    name="Invalid Shape Event",
+                    template_image_url="template.png",
+                    config={
+                        "registration_fields": [
+                            {
+                                "id": "contact",
+                                "label": "İletişim",
+                                "type": "text",
+                                "required": True,
+                            }
+                        ]
+                    },
+                )
+                sess.add(event)
+                await sess.flush()
+                event_id = event.id
+
+        bad_select = await ac.patch(
+            f"/api/admin/events/{event_id}",
+            json={
+                "registration_fields": [
+                    {
+                        "id": "meal",
+                        "label": "Yemek Tercihi",
+                        "type": "select",
+                        "required": True,
+                        "options": [],
+                    }
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert bad_select.status_code == 400
+
+        bad_conditional = await ac.patch(
+            f"/api/admin/events/{event_id}",
+            json={
+                "registration_fields": [
+                    {
+                        "id": "meal",
+                        "label": "Yemek Tercihi",
+                        "type": "select",
+                        "required": True,
+                        "options": ["Vegetarian", "Meat"],
+                    },
+                    {
+                        "id": "notes",
+                        "label": "Notlar",
+                        "type": "text",
+                        "required": False,
+                        "required_when_field_id": "missing_field",
+                        "required_when_equals": "Vegetarian",
+                    },
+                ]
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert bad_conditional.status_code == 400
+
+        async with SessionLocal() as sess:
+            refreshed = (
+                await sess.execute(select(Event).where(Event.id == event_id))
+            ).scalar_one()
+            fields = _get_event_registration_fields(refreshed)
+
+        assert len(fields) == 1
+        assert fields[0]["id"] == "contact"
+
+
+@pytest.mark.asyncio
 async def test_public_register_persists_custom_registration_answers():
     owner = await _create_admin("custom-form-owner@example.com")
 
@@ -237,6 +539,14 @@ async def test_public_register_persists_custom_registration_answers():
                                 "required": False,
                                 "options": ["Yazılım", "Pazarlama"],
                             },
+                            {
+                                "id": "interests",
+                                "label": "Ilgi Alanlari",
+                                "type": "select",
+                                "required": True,
+                                "selection_mode": "multiple",
+                                "options": ["AI", "Cloud", "Security"],
+                            },
                         ]
                     },
                 )
@@ -247,14 +557,28 @@ async def test_public_register_persists_custom_registration_answers():
         info = await ac.get(f"/api/events/{event_id}/info")
         assert info.status_code == 200
         info_payload = info.json()
-        assert len(info_payload["registration_fields"]) == 2
+        assert len(info_payload["registration_fields"]) == 3
         assert info_payload["registration_fields"][0]["id"] == "tc_identity"
+        assert info_payload["registration_fields"][2]["selection_mode"] == "multiple"
 
         invalid = await ac.post(
             f"/api/events/{event_id}/register",
             json={"name": "Missing Field", "email": "missing@example.com", "registration_answers": {}},
         )
         assert invalid.status_code == 400
+
+        invalid_multi = await ac.post(
+            f"/api/events/{event_id}/register",
+            json={
+                "name": "Bad Multi",
+                "email": "bad-multi@example.com",
+                "registration_answers": {
+                    "tc_identity": "12345678901",
+                    "interests": ["Unknown"],
+                },
+            },
+        )
+        assert invalid_multi.status_code == 400
 
         registered = await ac.post(
             f"/api/events/{event_id}/register",
@@ -264,6 +588,7 @@ async def test_public_register_persists_custom_registration_answers():
                 "registration_answers": {
                     "tc_identity": "12345678901",
                     "department": "Pazarlama",
+                    "interests": ["AI", "Security"],
                 },
             },
         )
@@ -278,6 +603,7 @@ async def test_public_register_persists_custom_registration_answers():
         assert attendee.registration_answers == {
             "tc_identity": "12345678901",
             "department": "Pazarlama",
+            "interests": ["AI", "Security"],
         }
 
 
@@ -559,3 +885,120 @@ async def test_badge_list_returns_enriched_badge_metadata():
         public_payload = public_listed.json()
         assert public_payload["total_badges"] == 1
         assert public_payload["badges"][0]["badge_name"] == "Survey Star"
+
+
+@pytest.mark.asyncio
+async def test_apply_cert_template_preserves_event_registration_config():
+    owner = await _create_admin("template-merge-owner@example.com")
+    token = create_access_token(user_id=owner.id, role=Role.admin)
+
+    async with SessionLocal() as sess:
+        async with sess.begin():
+            event = Event(
+                admin_id=owner.id,
+                name="Template Merge Event",
+                template_image_url="old-template.png",
+                config={
+                    "visibility": "public",
+                    "registration_fields": [
+                        {
+                            "id": "meal",
+                            "label": "Yemek Tercihi",
+                            "type": "select",
+                            "required": True,
+                            "selection_mode": "single",
+                            "options": [{"label": "Vegetarian", "capacity": 2}],
+                        }
+                    ],
+                    "font_color": "#111111",
+                },
+            )
+            sess.add(event)
+            await sess.flush()
+
+            template = CertificateTemplate(
+                name="Safe Template",
+                template_image_url="new-template.png",
+                config={
+                    "font_color": "#222222",
+                    "qr_x": 123,
+                    "registration_fields": [],
+                },
+                is_default=True,
+                order_index=999,
+            )
+            sess.add(template)
+            await sess.flush()
+
+            event_id = event.id
+            template_id = template.id
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.post(
+            f"/api/admin/events/{event_id}/apply-cert-template",
+            json={"cert_template_id": template_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+
+    async with SessionLocal() as sess:
+        event = await sess.get(Event, event_id)
+        assert event is not None
+        assert event.template_image_url == "new-template.png"
+        assert event.config["visibility"] == "public"
+        assert event.config["font_color"] == "#222222"
+        assert event.config["qr_x"] == 123
+        assert event.config["registration_fields"][0]["id"] == "meal"
+        assert event.config["registration_fields"][0]["label"] == "Yemek Tercihi"
+
+
+@pytest.mark.asyncio
+async def test_save_event_config_preserves_existing_registration_fields():
+    owner = await _create_admin("config-merge-owner@example.com")
+    token = create_access_token(user_id=owner.id, role=Role.admin)
+
+    async with SessionLocal() as sess:
+        async with sess.begin():
+            event = Event(
+                admin_id=owner.id,
+                name="Config Merge Event",
+                template_image_url="template.png",
+                config={
+                    "font_size": 48,
+                    "registration_fields": [
+                        {
+                            "id": "phone",
+                            "label": "Telefon Numarası",
+                            "type": "text",
+                            "required": True,
+                        }
+                    ],
+                },
+            )
+            sess.add(event)
+            await sess.flush()
+            event_id = event.id
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        saved = await ac.put(
+            f"/api/admin/events/{event_id}/config",
+            json={"font_size": 72},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert saved.status_code == 200
+
+        rejected = await ac.put(
+            f"/api/admin/events/{event_id}/config",
+            json={"registration_fields": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert rejected.status_code == 400
+
+    async with SessionLocal() as sess:
+        event = await sess.get(Event, event_id)
+        assert event is not None
+        assert event.config["font_size"] == 72
+        assert event.config["registration_fields"][0]["id"] == "phone"
+        assert event.config["registration_fields"][0]["label"] == "Telefon Numarası"

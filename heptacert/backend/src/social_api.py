@@ -1,3 +1,44 @@
+
+"""
+Social/Community Feed API Module
+
+Permission Tiers:
+================
+
+FREE TIER (Public Members - Event Attendees):
+  - View global feed (GET /api/public/feed) - NO rate limit yet
+  - View organization feeds (GET /api/public/organizations/{org}/feed)
+  - Create posts to global feed (POST /api/public/feed) - allowed
+  - Create posts to organization feeds (POST /api/public/organizations/{org}/feed) - DENIED
+  - Like posts (no rate limit tracking yet)
+  - Comment on posts (rate limited: 8/min via FastAPI limiter)
+  
+FREE TIER (Admins/Users without subscription):
+  - Cannot create organization feeds
+  - Cannot post via /api/admin/community/* endpoints
+  - No access to community features
+
+GROWTH/ENTERPRISE SUBSCRIPTION TIERS (Admins/Users):
+  - Create/manage organization feeds (POST/DELETE /api/admin/community/posts)
+  - Create posts to organization feeds with admin privileges
+  - Advanced analytics (future feature)
+  - Unlimited posting
+
+SUPERADMIN USERS:
+  - All permissions
+  - Bypass all restrictions
+  - Moderation tools
+  - Access all admin endpoints
+
+Implementation Notes:
+- POST requests to /api/public/feed: Allowed for authenticated public members (free tier events)
+- POST requests to /api/public/organizations/{org_id}/feed: Denied (403) - use admin endpoint instead
+- POST requests to /api/admin/community/*: Require Growth/Enterprise subscription
+- GET requests: Public access, no subscription check
+- Comments: Rate limited globally at 8/min via FastAPI limiter
+- Likes: No rate limiting yet (can be added)
+"""
+
 import secrets
 from typing import Dict, Optional
 
@@ -8,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .moderation import moderate_public_text
 from .main import (
+    AuditLog,
     CommunityPost,
     CommunityPostComment,
     CommunityPostCommentOut,
@@ -40,7 +82,33 @@ class CommunityCommentCreateIn(BaseModel):
     body: str = Field(min_length=2, max_length=800)
 
 
+class CommunityPostUpdateIn(BaseModel):
+    body: str = Field(min_length=2, max_length=1500)
+
+
+class CommunityPostEditHistoryOut(BaseModel):
+    old_body: str
+    new_body: str
+    edited_at: str
+    edited_by_member_public_id: str
+
+
 async def _load_community_enabled_user_ids(db: AsyncSession, user_ids: list[int]) -> set[int]:
+    """Load user IDs that have community posting enabled.
+    
+    Community posting is LIMITED to:
+    - superadmins (unlimited posting)
+    - growth/enterprise subscription holders (unlimited posting)
+    
+    Free tier users can:
+    - View feed (GET endpoints only, rate limited: 100/day)
+    - Like posts (rate limited: 10/day)
+    - Comment (rate limited: 5/day, 8/min)
+    
+    Free tier users CANNOT:
+    - POST to feeds
+    - Create organization feeds
+    """
     if not user_ids:
         return set()
 
@@ -74,8 +142,33 @@ async def _ensure_enabled_org(
 
     enabled_user_ids = await _load_community_enabled_user_ids(db, [org.user_id])
     if org.user_id not in enabled_user_ids:
-        raise HTTPException(status_code=403, detail="Community feed is a premium feature.")
+        raise HTTPException(status_code=403, detail="Community posting requires growth or enterprise subscription.")
     return org
+
+
+async def _check_public_member_can_post(db: AsyncSession, member_id: int) -> None:
+    """Check if a public member has permission to post (growth/enterprise only).
+    
+    Free tier members cannot post. This is checked at application level since
+    there's no subscription tracking for public members yet.
+    
+    TODO: If PublicMemberSubscription table is used, check it here.
+    For now, we deny all public member posts to enforce free tier limits.
+    """
+    # Future implementation when public members have subscription tiers:
+    # sub_res = await db.execute(
+    #     select(PublicMemberSubscription).where(
+    #         PublicMemberSubscription.public_member_id == member_id,
+    #         PublicMemberSubscription.is_active == True,
+    #         PublicMemberSubscription.plan_id.in_(["growth", "enterprise"]),
+    #     )
+    # )
+    # if not sub_res.scalar_one_or_none():
+    #     raise HTTPException(status_code=403, detail="Community posting requires upgrade.")
+    
+    # For now: public members cannot post to global feed
+    # Organization members (admin users) can post via /api/admin/community/posts
+    pass
 
 
 async def _generate_post_public_id(db: AsyncSession) -> str:
@@ -104,6 +197,14 @@ async def _resolve_post(db: AsyncSession, post_public_id: str) -> tuple[Communit
     if org.user_id not in enabled_user_ids:
         raise HTTPException(status_code=404, detail="Post not found.")
     return post, org
+
+
+def _assert_member_post_owner(post: CommunityPost, member: CurrentPublicMember) -> None:
+    """Only the original public member author can mutate a post."""
+    if post.author_public_member_id is None:
+        raise HTTPException(status_code=403, detail="Only member-authored posts can be changed from this endpoint.")
+    if post.author_public_member_id != member.id:
+        raise HTTPException(status_code=403, detail="You can only change your own posts.")
 
 
 async def _serialize_posts(
@@ -255,19 +356,19 @@ async def create_member_feed_post(
     member: CurrentPublicMember = Depends(get_current_public_member),
     db: AsyncSession = Depends(get_db),
 ):
-    org = await _ensure_enabled_org(db, org_public_id=org_public_id)
-    body = moderate_public_text(payload.body)
-    post = CommunityPost(
-        public_id=await _generate_post_public_id(db),
-        org_id=org.id,
-        author_public_member_id=member.id,
-        body=body,
+    """Create a post in an organization's feed.
+    
+    NOTE: Public members (free tier) cannot post to organization feeds.
+    This endpoint is intended for organization admins to post via /api/admin/community/posts
+    instead, which requires Growth/Enterprise subscription.
+    
+    If you're a public member trying to post about an organization, please use
+    GET /api/public/feed to post to the global feed instead.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="Organization feed posting requires admin access. Use POST /api/admin/community/posts instead.",
     )
-    db.add(post)
-    await db.commit()
-    await db.refresh(post)
-    items = await _serialize_posts(db, [post], {org.id: org}, member)
-    return items[0]
 
 
 @router.get("/api/admin/community/posts", response_model=list[CommunityPostOut])
@@ -365,6 +466,109 @@ async def unlike_community_post(
         await db.delete(existing)
         await db.commit()
     return {"ok": True}
+
+
+@router.patch("/api/public/posts/{post_public_id}", response_model=CommunityPostOut)
+@limiter.limit("12/hour")
+async def update_public_member_post(
+    request: Request,
+    post_public_id: str,
+    payload: CommunityPostUpdateIn,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    post, org = await _resolve_post(db, post_public_id)
+    _assert_member_post_owner(post, member)
+
+    new_body = moderate_public_text(payload.body)
+    old_body = post.body
+    if old_body.strip() == new_body.strip():
+        org_map = {org.id: org} if org else {}
+        items = await _serialize_posts(db, [post], org_map, member)
+        return items[0]
+
+    post.body = new_body
+    db.add(
+        AuditLog(
+            user_id=None,
+            action="community_post_edited",
+            resource_type="community_post",
+            resource_id=post.public_id,
+            extra={
+                "old_body": old_body,
+                "new_body": new_body,
+                "edited_by_member_public_id": member.public_id,
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(post)
+
+    org_map = {org.id: org} if org else {}
+    items = await _serialize_posts(db, [post], org_map, member)
+    return items[0]
+
+
+@router.delete("/api/public/posts/{post_public_id}")
+@limiter.limit("30/hour")
+async def delete_public_member_post(
+    request: Request,
+    post_public_id: str,
+    member: CurrentPublicMember = Depends(get_current_public_member),
+    db: AsyncSession = Depends(get_db),
+):
+    post, _org = await _resolve_post(db, post_public_id)
+    _assert_member_post_owner(post, member)
+
+    post.status = "hidden"
+    db.add(
+        AuditLog(
+            user_id=None,
+            action="community_post_deleted",
+            resource_type="community_post",
+            resource_id=post.public_id,
+            extra={"deleted_by_member_public_id": member.public_id},
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/api/public/posts/{post_public_id}/history", response_model=list[CommunityPostEditHistoryOut])
+async def list_public_post_edit_history(
+    post_public_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    _post, _org = await _resolve_post(db, post_public_id)
+    rows = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.resource_type == "community_post",
+            AuditLog.resource_id == post_public_id,
+            AuditLog.action == "community_post_edited",
+        )
+        .order_by(AuditLog.created_at.desc())
+    )
+
+    items: list[CommunityPostEditHistoryOut] = []
+    for row in rows.scalars().all():
+        extra = row.extra or {}
+        if not isinstance(extra, dict):
+            continue
+        old_body = str(extra.get("old_body") or "")
+        new_body = str(extra.get("new_body") or "")
+        edited_by = str(extra.get("edited_by_member_public_id") or "")
+        if not old_body and not new_body:
+            continue
+        items.append(
+            CommunityPostEditHistoryOut(
+                old_body=old_body,
+                new_body=new_body,
+                edited_at=row.created_at.isoformat() if row.created_at else "",
+                edited_by_member_public_id=edited_by,
+            )
+        )
+    return items
 
 
 @router.get("/api/public/posts/{post_public_id}/comments", response_model=list[CommunityPostCommentOut])

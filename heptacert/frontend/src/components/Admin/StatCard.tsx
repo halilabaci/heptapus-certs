@@ -29,10 +29,9 @@ export function StatCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3, ease: "easeOut" }}
-      className={`card group relative overflow-hidden p-5 ${className}`}
+      className={`card group relative overflow-hidden p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card ${className}`}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400/70 via-brand-500/80 to-emerald-400/70 opacity-80" />
-      <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-brand-50/60 blur-2xl transition-transform duration-300 group-hover:scale-110" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-surface-400 truncate">
@@ -52,7 +51,7 @@ export function StatCard({
         </div>
         {icon && (
           <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-soft ${iconBg}`}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg shadow-soft ${iconBg}`}
           >
             {icon}
           </div>
@@ -74,7 +73,7 @@ export function StatCardSkeleton({ count = 4 }: { count?: number }) {
               <div className="h-3 w-24 rounded bg-surface-100" />
               <div className="h-7 w-16 rounded bg-surface-100" />
             </div>
-            <div className="h-10 w-10 rounded-xl bg-surface-100" />
+            <div className="h-10 w-10 rounded-lg bg-surface-100" />
           </div>
         </div>
       ))}

@@ -12,7 +12,7 @@ import {
   ColumnFiltersState,
   VisibilityState,
 } from "@tanstack/react-table";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,7 +22,6 @@ import {
   Search,
   ArrowUpDown,
   Eye,
-  EyeOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 
@@ -124,9 +123,9 @@ export function DataTable<TData extends Record<string, any>>({
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+      <div className="toolbar-surface flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         {searchable && (
-          <div className="relative flex-1 min-w-0">
+          <div className="relative min-w-0 flex-1">
             <label htmlFor="table-search" className="sr-only">
               Search table
             </label>
@@ -136,7 +135,7 @@ export function DataTable<TData extends Record<string, any>>({
               placeholder={searchPlaceholder}
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="input-field py-2 pl-10 pr-4"
               aria-label="Search table content"
               aria-describedby="table-search-help"
             />
@@ -146,10 +145,10 @@ export function DataTable<TData extends Record<string, any>>({
           </div>
         )}
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
           {selectedRows.length > 0 && (
             <div
-              className="px-3 py-2 bg-brand-50 dark:bg-brand-900 border border-brand-200 dark:border-brand-800 rounded-lg text-xs font-semibold text-brand-700 dark:text-brand-300"
+              className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 dark:border-brand-800 dark:bg-brand-900 dark:text-brand-300"
               role="status"
               aria-live="polite"
             >
@@ -160,7 +159,7 @@ export function DataTable<TData extends Record<string, any>>({
           {enableExport && (
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+              className="btn-secondary min-h-0 px-3 py-2 text-xs"
               aria-label={selectedRows.length > 0 ? "Export selected rows as CSV" : "Export all rows as CSV"}
             >
               <Download className="h-4 w-4 text-gray-600 dark:text-gray-400" aria-hidden="true" />
@@ -171,7 +170,7 @@ export function DataTable<TData extends Record<string, any>>({
           {enableColumnVisibility && (
             <details className="relative group">
               <summary
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                className="btn-secondary min-h-0 cursor-pointer px-3 py-2 text-xs"
                 aria-label="Toggle column visibility menu"
               >
                 <Eye className="h-4 w-4 text-gray-600 dark:text-gray-400" aria-hidden="true" />
@@ -179,11 +178,11 @@ export function DataTable<TData extends Record<string, any>>({
               </summary>
 
               <div
-                className="absolute right-0 top-full mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 min-w-48 p-2"
+                className="absolute right-0 top-full z-10 mt-2 min-w-48 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
                 role="menu"
               >
                 {table.getAllLeafColumns().map((column) => (
-                  <label key={column.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer text-sm">
+                  <label key={column.id} className="flex cursor-pointer items-center gap-2 rounded p-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
                     <input
                       type="checkbox"
                       checked={column.getIsVisible()}
@@ -200,17 +199,17 @@ export function DataTable<TData extends Record<string, any>>({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto card dark:bg-gray-800 dark:border-gray-700">
+      <div className="table-shell scrollbar-polished overflow-x-auto dark:border-gray-700 dark:bg-gray-800">
         <table className="w-full text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+              <tr key={headerGroup.id} className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
                 {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                  <th key={header.id} className="whitespace-nowrap px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
                     {header.isPlaceholder ? null : (
                       <div
                         onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-                        className={`flex items-center gap-2 ${header.column.getCanSort() ? "cursor-pointer hover:text-brand-600 dark:hover:text-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500 rounded px-2 py-1" : ""}`}
+                        className={`flex items-center gap-2 ${header.column.getCanSort() ? "cursor-pointer rounded px-2 py-1 hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:hover:text-brand-400" : ""}`}
                         role={header.column.getCanSort() ? "button" : undefined}
                         tabIndex={header.column.getCanSort() ? 0 : undefined}
                         onKeyDown={(e) => {
@@ -234,7 +233,7 @@ export function DataTable<TData extends Record<string, any>>({
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <tr key={row.id} className="border-b border-gray-100 transition-colors last:border-0 hover:bg-gray-50/80 dark:border-gray-700 dark:hover:bg-gray-700">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-6 py-4 text-gray-800 dark:text-gray-200">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -247,32 +246,35 @@ export function DataTable<TData extends Record<string, any>>({
 
         {table.getRowModel().rows.length === 0 && (
           <div
-            className="text-center p-8 text-gray-400 dark:text-gray-500"
+            className="p-10 text-center text-sm font-medium text-gray-500 dark:text-gray-400"
             role="status"
             aria-live="polite"
           >
-            No results found
+            Sonuç bulunamadı
           </div>
         )}
       </div>
 
       {/* Pagination */}
       <div
-        className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600 dark:text-gray-400"
+        className="flex flex-col items-center justify-between gap-4 rounded-lg border border-surface-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-soft dark:text-gray-400 sm:flex-row"
         role="region"
         aria-label="Table pagination"
       >
         <div className="font-medium">
-          Showing {table.getState().pagination.pageIndex * pageSize + 1} to{" "}
-          {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length)} of{" "}
-          {table.getFilteredRowModel().rows.length} results
+          {table.getFilteredRowModel().rows.length === 0
+            ? "Kayıt yok"
+            : `${table.getState().pagination.pageIndex * pageSize + 1} - ${Math.min(
+                (table.getState().pagination.pageIndex + 1) * pageSize,
+                table.getFilteredRowModel().rows.length
+              )} / ${table.getFilteredRowModel().rows.length} kayıt`}
         </div>
 
         <div className="flex gap-2" role="group" aria-label="Pagination controls">
           <button
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="rounded-lg border border-gray-200 p-2 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
             aria-label="Go to first page"
           >
             <ChevronsLeft className="h-4 w-4" aria-hidden="true" />
@@ -281,7 +283,7 @@ export function DataTable<TData extends Record<string, any>>({
           <button
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="rounded-lg border border-gray-200 p-2 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
             aria-label="Go to previous page"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -300,10 +302,10 @@ export function DataTable<TData extends Record<string, any>>({
               }}
               min={1}
               max={table.getPageCount()}
-              className="w-12 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-center text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-12 rounded border border-gray-200 px-2 py-1 text-center text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
               aria-label="Current page"
             />
-            <span>of {table.getPageCount()}</span>
+            <span>/ {table.getPageCount()}</span>
           </div>
 
           <select
@@ -311,12 +313,12 @@ export function DataTable<TData extends Record<string, any>>({
             onChange={(e) => {
               table.setPageSize(Number(e.target.value));
             }}
-            className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
             aria-label="Select number of rows per page"
           >
             {[5, 10, 20, 50, 100].map((size) => (
               <option key={size} value={size}>
-                {size} per page
+                {size} / sayfa
               </option>
             ))}
           </select>
@@ -324,7 +326,7 @@ export function DataTable<TData extends Record<string, any>>({
           <button
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="rounded-lg border border-gray-200 p-2 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
             aria-label="Go to next page"
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -333,7 +335,7 @@ export function DataTable<TData extends Record<string, any>>({
           <button
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="rounded-lg border border-gray-200 p-2 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
             aria-label="Go to last page"
           >
             <ChevronsRight className="h-4 w-4" aria-hidden="true" />
