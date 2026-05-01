@@ -4211,6 +4211,173 @@ def bad_request(msg: str) -> HTTPException:
 
 REGISTRATION_FIELD_TYPES = {"text", "textarea", "number", "tel", "select", "date", "file"}
 EVENT_VISIBILITY_VALUES = {"private", "unlisted", "public"}
+CERT_TEMPLATE_CONFIG_KEYS = {
+    "isim_x",
+    "isim_y",
+    "qr_x",
+    "qr_y",
+    "qr_size",
+    "font_size",
+    "font_color",
+    "name_text_align",
+    "name_font_weight",
+    "name_font_style",
+    "cert_id_x",
+    "cert_id_y",
+    "cert_id_font_size",
+    "cert_id_color",
+    "show_hologram",
+}
+
+
+def _validate_registration_fields_for_write(raw_fields: Any, *, existing_fields: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    existing_fields = existing_fields or []
+    if raw_fields is None:
+        return existing_fields
+    if not isinstance(raw_fields, list):
+        raise bad_request("registration_fields must be a list.")
+    if existing_fields and not raw_fields:
+        raise bad_request("registration_fields cannot be cleared accidentally. Provide valid fields or remove them explicitly in a dedicated flow.")
+
+    def _ctx(index: int, item: Any) -> str:
+        if not isinstance(item, dict):
+            return f"registration_fields[{index}]"
+        field_id = str(item.get("id") or "").strip()
+        label = str(item.get("label") or "").strip()
+        parts = [f"registration_fields[{index}]"]
+        if field_id:
+            parts.append(f"id={field_id}")
+        if label:
+            parts.append(f'label="{label}"')
+        return " ".join(parts)
+
+    normalized: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    field_types_by_id: Dict[str, str] = {}
+    select_options_by_id: Dict[str, set[str]] = {}
+    conditional_specs: List[Tuple[int, str, str, str]] = []
+
+    for index, item in enumerate(raw_fields):
+        if not isinstance(item, dict):
+            raise bad_request(f"{_ctx(index, item)} must be an object.")
+
+        field_id = str(item.get("id") or "").strip()
+        if not field_id:
+            raise bad_request(f"{_ctx(index, item)}.id is required.")
+        if len(field_id) > 64:
+            raise bad_request(f"{_ctx(index, item)}.id is too long.")
+        if field_id in seen_ids:
+            raise bad_request(f"{_ctx(index, item)}.id is duplicated.")
+
+        label = str(item.get("label") or "").strip()
+        if not label:
+            raise bad_request(f"{_ctx(index, item)}.label is required.")
+        if len(label) > 120:
+            raise bad_request(f"{_ctx(index, item)}.label is too long.")
+
+        field_type = str(item.get("type") or "text").strip().lower()
+        if field_type not in REGISTRATION_FIELD_TYPES:
+            raise bad_request(f"{_ctx(index, item)}.type is invalid.")
+
+        placeholder_raw = item.get("placeholder")
+        placeholder = None
+        if placeholder_raw is not None:
+            placeholder = str(placeholder_raw).strip()
+            if len(placeholder) > 200:
+                raise bad_request(f"{_ctx(index, item)}.placeholder is too long.")
+            if not placeholder:
+                placeholder = None
+
+        helper_text_raw = item.get("helper_text")
+        helper_text = None
+        if helper_text_raw is not None:
+            helper_text = str(helper_text_raw).strip()
+            if len(helper_text) > 5000:
+                raise bad_request(f"{_ctx(index, item)}.helper_text is too long.")
+            if not helper_text:
+                helper_text = None
+
+        raw_options = item.get("options")
+        options: List[Dict[str, Any]] = []
+        selection_mode = "single"
+
+        if field_type == "select":
+            if not isinstance(raw_options, list) or not raw_options:
+                raise bad_request(f"{_ctx(index, item)}.options is required for select fields.")
+            seen_labels: set[str] = set()
+            for opt_index, opt in enumerate(raw_options):
+                if isinstance(opt, dict):
+                    opt_label = str(opt.get("label") or "").strip()
+                    capacity_raw = opt.get("capacity")
+                else:
+                    opt_label = str(opt or "").strip()
+                    capacity_raw = None
+                if not opt_label:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is required.")
+                if len(opt_label) > 120:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is too long.")
+                if opt_label in seen_labels:
+                    raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].label is duplicated.")
+                if capacity_raw in (None, ""):
+                    capacity_val = None
+                else:
+                    try:
+                        capacity_val = int(capacity_raw)
+                    except Exception as exc:
+                        raise bad_request(f"{_ctx(index, item)}.options[{opt_index}].capacity is invalid.") from exc
+                options.append({"label": opt_label, "capacity": capacity_val})
+                seen_labels.add(opt_label)
+            if len(options) > 30:
+                raise bad_request(f"{_ctx(index, item)}.options cannot exceed 30 items.")
+            raw_selection_mode = str(item.get("selection_mode") or "single").strip().lower()
+            if raw_selection_mode not in {"single", "multiple"}:
+                raise bad_request(f"{_ctx(index, item)}.selection_mode is invalid.")
+            selection_mode = raw_selection_mode
+        elif raw_options not in (None, []):
+            raise bad_request(f"{_ctx(index, item)}.options is only valid for select fields.")
+
+        required_when_field_id = str(item.get("required_when_field_id") or "").strip()
+        required_when_equals = str(item.get("required_when_equals") or "").strip()
+        if bool(required_when_field_id) ^ bool(required_when_equals):
+            raise bad_request(f"{_ctx(index, item)} conditional fields must include both required_when_field_id and required_when_equals.")
+        if required_when_field_id and len(required_when_field_id) > 64:
+            raise bad_request(f"{_ctx(index, item)}.required_when_field_id is too long.")
+        if required_when_equals and len(required_when_equals) > 120:
+            raise bad_request(f"{_ctx(index, item)}.required_when_equals is too long.")
+
+        normalized_item: Dict[str, Any] = {
+            "id": field_id,
+            "label": label,
+            "type": field_type,
+            "required": bool(item.get("required")),
+            "placeholder": placeholder,
+            "helper_text": helper_text,
+        }
+        if field_type == "select":
+            normalized_item["options"] = options
+            normalized_item["selection_mode"] = selection_mode
+            select_options_by_id[field_id] = {option["label"] for option in options}
+        if required_when_field_id and required_when_equals:
+            normalized_item["required_when_field_id"] = required_when_field_id
+            normalized_item["required_when_equals"] = required_when_equals
+            conditional_specs.append((index, field_id, required_when_field_id, required_when_equals))
+
+        normalized.append(normalized_item)
+        seen_ids.add(field_id)
+        field_types_by_id[field_id] = field_type
+
+    valid_ids = set(field_types_by_id)
+    for index, field_id, cond_id, cond_value in conditional_specs:
+        if cond_id not in valid_ids:
+            raise bad_request(f"registration_fields[{index}] id={field_id} references an unknown required_when_field_id: {cond_id}.")
+        if cond_id == field_id:
+            raise bad_request(f"registration_fields[{index}] id={field_id} cannot depend on itself.")
+        if field_types_by_id.get(cond_id) != "select":
+            raise bad_request(f"registration_fields[{index}] id={field_id} required_when_field_id must reference a select field: {cond_id}.")
+        if cond_value not in select_options_by_id.get(cond_id, set()):
+            raise bad_request(f"registration_fields[{index}] id={field_id} required_when_equals must match one of the referenced select options on {cond_id}: {cond_value}.")
+
+    return normalized
 
 
 def _normalize_registration_fields(raw_fields: Any) -> List[Dict[str, Any]]:
@@ -4318,6 +4485,16 @@ def _normalize_event_visibility(raw_visibility: Any) -> str:
     if value not in EVENT_VISIBILITY_VALUES:
         return "private"
     return value
+
+
+def _merge_certificate_template_config(event_config: Optional[Dict[str, Any]], template_config: Any) -> Dict[str, Any]:
+    next_config = dict(event_config or {})
+    if not isinstance(template_config, dict):
+        return next_config
+    for key in CERT_TEMPLATE_CONFIG_KEYS:
+        if key in template_config:
+            next_config[key] = template_config[key]
+    return next_config
 
 
 def _get_event_visibility(event: Event) -> str:
@@ -7307,7 +7484,7 @@ async def apply_cert_template(
     
     # Update event with template image and config
     event.template_image_url = cert_template.template_image_url
-    event.config = cert_template.config if cert_template.config else event.config
+    event.config = _merge_certificate_template_config(event.config, cert_template.config)
     db.add(event)
     await db.commit()
     await db.refresh(event)
@@ -9393,6 +9570,8 @@ async def create_event(
     db: AsyncSession = Depends(get_db),
 ):
     next_config = dict(payload.config or {})
+    if "registration_fields" in next_config:
+        next_config["registration_fields"] = _validate_registration_fields_for_write(next_config.get("registration_fields"))
     next_config["visibility"] = _normalize_event_visibility(next_config.get("visibility"))
     # New events should require KVKK consent by default.
     next_config.setdefault("kvkk_consent_required", True)
@@ -9453,6 +9632,7 @@ async def rename_event(
     ev = res.scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
+    existing_registration_fields = _get_event_registration_fields(ev)
     ev.name = payload.name
     if payload.event_date is not None:
         from datetime import date as _date
@@ -9468,7 +9648,10 @@ async def rename_event(
     next_config = dict(ev.config or {})
     config_dirty = False
     if "registration_fields" in payload.model_fields_set:
-        next_config["registration_fields"] = _normalize_registration_fields(payload.registration_fields)
+        next_config["registration_fields"] = _validate_registration_fields_for_write(
+            payload.registration_fields,
+            existing_fields=existing_registration_fields,
+        )
         config_dirty = True
     if "visibility" in payload.model_fields_set:
         next_config["visibility"] = _normalize_event_visibility(payload.visibility)
@@ -9635,7 +9818,23 @@ async def save_event_config(
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Save config snapshot before overwriting
+    if not isinstance(payload, dict):
+        raise bad_request("config payload must be an object.")
+
+    existing_registration_fields = _get_event_registration_fields(ev)
+    next_config = dict(ev.config or {})
+    if "registration_fields" in payload:
+        next_config["registration_fields"] = _validate_registration_fields_for_write(
+            payload.get("registration_fields"),
+            existing_fields=existing_registration_fields,
+        )
+
+    for key, value in payload.items():
+        if key == "registration_fields":
+            continue
+        next_config[key] = value
+
+    # Save config snapshot before merging the new payload
     snap = EventTemplateSnapshot(
         event_id=event_id,
         template_image_url=ev.template_image_url,
@@ -9644,7 +9843,7 @@ async def save_event_config(
     )
     db.add(snap)
 
-    ev.config = payload
+    ev.config = next_config
     await db.commit()
     return {"event_id": ev.id, "config": ev.config}
 
